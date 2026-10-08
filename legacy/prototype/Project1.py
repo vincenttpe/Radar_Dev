@@ -3825,17 +3825,16 @@ def get_command_args() -> argparse.Namespace:
         # 分析預設 move.json 的全部記錄
         python Project1.py
 
-        # 依時間範圍掃描 /home/nvidia/Desktop/宏貿/data 內所有 JSON
+        # 依時間範圍掃描 data/samples/ 內所有 JSON
         python Project1.py --start "2025/03/10 08:20" --end "2025/03/10 09:10"
 
-        # 依時間範圍掃描 data 資料夾，從指定時間開始到最後
+        # 依時間範圍掃描 data/samples/，從指定時間開始到最後
         python Project1.py --start "2025/03/10 08:20"
 
-        # 測試指定單一 JSON 檔案
+        # 測試指定單一 JSON 檔案（相對路徑找不到時會到 data/samples/ 找）
         python Project1.py --input 01.json
 
-        # 指定輸出檔名
-        python Project1.py --output custom_report.md
+        # 註：報告只印在終端機，沒有寫檔選項
 
         支援的時間格式：
         - YYYY/MM/DD HH:MM
@@ -5333,10 +5332,10 @@ if __name__ == "__main__":
     if args.input:
         input_file = Path(args.input)
 
-        # 如果輸入的是相對路徑，例如 test_jsons/case_01.json
-        # 就自動接在 Project1.py 所在資料夾下面
-        if not input_file.is_absolute():
-            input_file = BASE_DIR / input_file
+        # 相對路徑：先以目前工作目錄為準（例如 data/samples/01.json），
+        # 找不到再接在 data/samples/ 下面（例如 01.json）
+        if not input_file.is_absolute() and not input_file.exists():
+            input_file = DATA_DIR / input_file
 
     elif args.start or args.end:
         use_data_dir_by_time = True

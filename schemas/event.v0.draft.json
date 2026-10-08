@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Radar event (DRAFT v0, not confirmed)",
   "type": "object",
+  "additionalProperties": false,
   "required": ["schema_version", "event_id", "device_id", "event_type", "timestamps"],
   "properties": {
     "schema_version": { "const": "0-draft" },
@@ -24,15 +25,17 @@
           "name": { "type": "string" },
           "value": { "type": "number" },
           "unit": { "type": "string" }
-        }
+        },
+        "additionalProperties": false
       }
     },
     "voice_confirmation": {
       "type": "object",
       "properties": {
-        "result": { "enum": ["confirmed_fall", "denied", "no_response", "not_asked"] },
+        "result": { "type": "string", "enum": ["confirmed_fall", "denied", "no_response", "not_asked"] },
         "language": { "type": "string", "description": "例如 zh-TW、nan-TW" }
-      }
+      },
+      "additionalProperties": false
     },
     "timestamps": {
       "type": "object",
@@ -40,11 +43,20 @@
       "description": "ISO 8601，含時區",
       "properties": {
         "detected": { "type": "string", "format": "date-time" },
+        "started": { "type": "string", "format": "date-time", "description": "姿態或活動開始；posture、activity 必填" },
+        "ended": { "type": "string", "format": "date-time", "description": "姿態或活動結束；posture、activity 必填。持續時間由 ended − started 算出" },
         "pre_alert_sent": { "type": "string", "format": "date-time" },
         "voice_asked": { "type": "string", "format": "date-time" },
         "voice_answered": { "type": "string", "format": "date-time" },
         "sent": { "type": "string", "format": "date-time" }
-      }
+      },
+      "additionalProperties": false
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "event_type": { "enum": ["posture", "activity"] } } },
+      "then": { "properties": { "timestamps": { "required": ["detected", "started", "ended"] } } }
+    }
+  ]
 }

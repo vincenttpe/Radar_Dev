@@ -16,11 +16,11 @@ CREATE (root)-[:include]->(m1),
 // 3. 下肢肌力 (起站30秒) 結構展開
 // ==========================================
 CREATE (c1_1:Criteria {name: "起站30秒 18次以上", score: 4, rank: "很好"})
-CREATE (s1_1:Suggestion {content: "下肢肌力良好，持續每週下肢肌力訓練（坐站、深蹲、弓箭步），並搭配快走或爬樓梯。 \n【建議數值】每週 66-78 下；每次 11-13 下 x 2-3 組 (深蹲等)；加快走"})
+CREATE (s1_1:Suggestion {content: "下肢肌力很好，持續每週下肢肌力訓練（坐站、深蹲、弓箭步），並搭配快走或爬樓梯。 \n【建議數值】每週 66-78 下；每次 11-13 下 x 2-3 組 (深蹲等)；加快走"})
 CREATE (m1)-[:has_level]->(c1_1)-[:give_advice]->(s1_1)
 
 CREATE (c1_2:Criteria {name: "起站30秒 14~17次", score: 3, rank: "尚好"})
-CREATE (s1_2:Suggestion {content: "下肢肌力很好，建議規律加入坐站、半蹲、抬腿等訓練，逐步增加次數或阻力。 \n【建議數值】每週 60 下；每次 10 下 x 2-3 組 (坐站/抬腿)；漸增至 15 下"})
+CREATE (s1_2:Suggestion {content: "下肢肌力良好，建議規律加入坐站、半蹲、抬腿等訓練，逐步增加次數或阻力。 \n【建議數值】每週 60 下；每次 10 下 x 2-3 組 (坐站/抬腿)；漸增至 15 下"})
 CREATE (m1)-[:has_level]->(c1_2)-[:give_advice]->(s1_2)
 
 CREATE (c1_3:Criteria {name: "起站30秒 11~13次", score: 2, rank: "普通"})
@@ -82,11 +82,11 @@ CREATE (m3)-[:has_level]->(c3_5)-[:give_advice]->(s3_5)
 // 6. 心肺耐力 (抬腳2分鐘) 結構展開
 // ==========================================
 CREATE (c4_1:Criteria {name: "抬腳2分鐘 112次以上", score: 4, rank: "很好"})
-CREATE (s4_1:Suggestion {content: "心肺耐力良好，持續每週中等強度有氧，並可加入間歇快走或騎車。 \n【建議數值】每週 165-195 分鐘 (中強度) 或 83-98 分鐘 (高強度)"})
+CREATE (s4_1:Suggestion {content: "心肺耐力很好，持續每週中等強度有氧，並可加入間歇快走或騎車。 \n【建議數值】每週 165-195 分鐘 (中強度) 或 83-98 分鐘 (高強度)"})
 CREATE (m4)-[:has_level]->(c4_1)-[:give_advice]->(s4_1)
 
 CREATE (c4_2:Criteria {name: "抬腳2分鐘 89~99次", score: 3, rank: "尚好"})
-CREATE (s4_2:Suggestion {content: "心肺耐力很好，持續中等強度有氧（快走、游泳、腳踏車）運動。 \n【建議數值】每週 150 分鐘；每次 30 分鐘"})
+CREATE (s4_2:Suggestion {content: "心肺耐力良好，持續中等強度有氧（快走、游泳、腳踏車）運動。 \n【建議數值】每週 150 分鐘；每次 30 分鐘"})
 CREATE (m4)-[:has_level]->(c4_2)-[:give_advice]->(s4_2)
 CREATE (c4_3:Criteria {name: "抬腳2分鐘 75~88次", score: 2, rank: "普通"})
 CREATE (s4_3:Suggestion {content: "心肺耐力普通，建議採取間歇式訓練，中等強度有氧運動（快走、固定式腳踏車或游泳）。 \n【建議數值】每週 105-135 分鐘；每次 15-25 分鐘；週增 10%"})
