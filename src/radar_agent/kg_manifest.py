@@ -33,12 +33,27 @@ def release_files(version: str) -> list[str]:
 
 
 def compute(manifest: dict[str, Any]) -> dict[str, Any]:
-    """依目前檔案內容重算雜湊，回傳新的清單（核准欄位與說明原樣保留）。"""
+    """依目前檔案內容重算雜湊，回傳新的清單（核准欄位與說明原樣保留）。
+
+    已核准版本的內容若有變動，由 main 拒絕寫入（見 changed_approved_releases）。
+    """
     for release in manifest["releases"]:
         release["files"] = {f: sha256_of(REPO / f) for f in release_files(release["version"])}
     for source in manifest["other_sources"]:
         source["sha256"] = sha256_of(REPO / source["path"])
     return manifest
+
+
+def changed_approved_releases(current: dict[str, Any], fresh: dict[str, Any]) -> list[str]:
+    """已核准、但檔案內容（或檔案清單）和核准時不同的版本。
+
+    核准綁的是當時的內容：內容一變，原本的核准就不能沿用，必須建立新版本重新送審。
+    """
+    fresh_files = {r["version"]: r["files"] for r in fresh["releases"]}
+    return [
+        r["version"] for r in current["releases"]
+        if r["approval"]["status"] == "approved" and r["files"] != fresh_files[r["version"]]
+    ]
 
 
 def load() -> dict[str, Any]:
@@ -58,12 +73,23 @@ def main(argv: list[str] | None = None) -> int:
     except FileNotFoundError as e:
         print(f"清單登記的檔案不存在：{e.filename}", file=sys.stderr)
         return 2
+    changed = changed_approved_releases(current, fresh)
     if "--check" in argv:
+        if changed:
+            print(f"已核准的版本內容被改過：{'、'.join(changed)}；核准不能沿用，請建立新版本重新送審")
+            return 1
         if fresh != current:
             print("kg/releases.json 與實際檔案不一致；請執行 radar-kg-manifest")
             return 1
         print("kg/releases.json 與實際檔案一致")
         return 0
+    if changed:
+        print(
+            f"已核准的版本內容被改過：{'、'.join(changed)}。核准綁的是核准時的內容，不能沿用；"
+            "請還原這些檔案，或建立新版本（例如 kg/v1.1/）重新送審。kg/releases.json 未更新。",
+            file=sys.stderr,
+        )
+        return 2
     dump(fresh)
     print("已更新 kg/releases.json")
     return 0

@@ -86,7 +86,7 @@ def tmp_repo(tmp_path, monkeypatch):
         "releases": [{
             "version": "v1",
             "status": "working",
-            "approval": {"status": "approved", "approver": "王小明", "date": "2026-10-08"},
+            "approval": {"status": "pending", "approver": "王小明", "date": None},
             "note": "這段說明不能被覆蓋",
             "files": {},
         }],
@@ -111,7 +111,7 @@ def test_write_mode_fills_hashes_and_keeps_hand_written_fields(tmp_repo):
     assert manifest["other_sources"][0]["sha256"] == kg_manifest.sha256_of(tmp_repo / "kg/source/old.docx")
     # 手寫的欄位原樣保留
     assert manifest["note"] == "手寫的說明"
-    assert release["approval"] == {"status": "approved", "approver": "王小明", "date": "2026-10-08"}
+    assert release["approval"] == {"status": "pending", "approver": "王小明", "date": None}
     assert release["note"] == "這段說明不能被覆蓋" and release["status"] == "working"
     assert manifest["other_sources"][0]["reason"] == "用詞不同"
 
@@ -160,3 +160,54 @@ def test_missing_registered_source_is_a_clear_error_not_a_traceback(tmp_repo, ca
     assert kg_manifest.main([]) == 2
     assert "清單登記的檔案不存在" in capsys.readouterr().err
     assert kg_manifest.main(["--check"]) == 2
+
+
+# ── 已核准的版本：核准綁的是核准時的內容 ──────────────────
+
+def _approve(tmp_repo):
+    """先登記雜湊，再把 v1 標成已核准（模擬審核人核准）。"""
+    assert kg_manifest.main([]) == 0
+    manifest = kg_manifest.load()
+    manifest["releases"][0]["status"] = "approved"
+    manifest["releases"][0]["approval"] = {"status": "approved", "approver": "王小明", "date": "2026-10-09"}
+    kg_manifest.dump(manifest)
+    return kg_manifest.MANIFEST.read_bytes()
+
+
+def test_approved_release_unchanged_is_fine(tmp_repo):
+    _approve(tmp_repo)
+    assert kg_manifest.main(["--check"]) == 0
+    assert kg_manifest.main([]) == 0
+
+
+def test_editing_an_approved_release_is_refused_and_the_manifest_is_untouched(tmp_repo, capsys):
+    approved = _approve(tmp_repo)
+    (tmp_repo / "kg/v1/a.cypher").write_text("CREATE (a), (被偷改);\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert kg_manifest.main([]) == 2
+    err = capsys.readouterr().err
+    assert "v1" in err and "新版本" in err
+    assert kg_manifest.MANIFEST.read_bytes() == approved  # 核准狀態與舊雜湊都沒被覆寫
+
+    assert kg_manifest.main(["--check"]) == 1
+    assert "已核准的版本內容被改過" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("change", ["add", "delete"])
+def test_adding_or_removing_a_file_in_an_approved_release_is_refused(tmp_repo, change):
+    approved = _approve(tmp_repo)
+    if change == "add":
+        (tmp_repo / "kg/v1/new.json").write_text("{}\n", encoding="utf-8")
+    else:
+        (tmp_repo / "kg/v1/b.json").unlink()
+    assert kg_manifest.main([]) == 2
+    assert kg_manifest.MANIFEST.read_bytes() == approved
+
+
+def test_other_sources_may_change_even_when_the_release_is_approved(tmp_repo):
+    """other_sources（舊 docx、備份）不屬於版本內容，雜湊可以照常更新。"""
+    _approve(tmp_repo)
+    (tmp_repo / "kg/source/old.docx").write_bytes(b"newer-source")
+    assert kg_manifest.main([]) == 0
+    assert kg_manifest.load()["releases"][0]["approval"]["status"] == "approved"
