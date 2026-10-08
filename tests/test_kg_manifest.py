@@ -1,7 +1,7 @@
 """kg/releases.json：雜湊與實際檔案一致、核准狀態合法、kg/v1/ 的每個檔案都登記了。
 
 這個測試失敗通常代表改了 kg/v1/ 的檔案卻沒更新清單，請在 repo 根目錄執行
-PYTHONPATH=src python3 -m radar_agent.kg_manifest 後再提交（並確認該版的核准狀態）。
+radar-kg-manifest 後再提交（並確認該版的核准狀態）。
 """
 import copy
 

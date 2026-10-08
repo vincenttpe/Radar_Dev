@@ -11,7 +11,7 @@
 等會議清單 C1、C2、C3 確認後調整。
 
 執行：
-    PYTHONPATH=src python3 -m radar_agent.weekly_report --input data/samples_fall/2026-06-03.json
+    radar-weekly-report --input data/samples_fall/2026-06-03.json   （需要先 pip install -e .）
 """
 from __future__ import annotations
 

@@ -1,4 +1,2 @@
-# 執行 tests/ 所需；不含舊雛形的模型與資料庫依賴
-pytest>=8
-jsonschema>=4.18
-rfc3339-validator>=0.1.4   # 讓 Schema 的 date-time 格式真的被檢查
+# 開發與測試用：可編輯安裝本專案（含 pytest）。等同 pip install -e ".[dev]"
+-e .[dev]

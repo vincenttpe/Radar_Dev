@@ -1,5 +1,5 @@
 {
-  "note": "知識圖譜的發布清單。files 與 other_sources 的雜湊由 PYTHONPATH=src python3 -m radar_agent.kg_manifest 產生，請勿手改；approval、status、說明可手改。規則見 kg/README.md。",
+  "note": "知識圖譜的發布清單。files 與 other_sources 的雜湊由 radar-kg-manifest 產生，請勿手改；approval、status、說明可手改。規則見 kg/README.md。",
   "releases": [
     {
       "version": "v1",
