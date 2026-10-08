@@ -3825,17 +3825,16 @@ def get_command_args() -> argparse.Namespace:
         # 分析預設 move.json 的全部記錄
         python Project1.py
 
-        # 依時間範圍掃描 /home/nvidia/Desktop/宏貿/data 內所有 JSON
+        # 依時間範圍掃描 data/samples/ 內所有 JSON
         python Project1.py --start "2025/03/10 08:20" --end "2025/03/10 09:10"
 
-        # 依時間範圍掃描 data 資料夾，從指定時間開始到最後
+        # 依時間範圍掃描 data/samples/，從指定時間開始到最後
         python Project1.py --start "2025/03/10 08:20"
 
-        # 測試指定單一 JSON 檔案
+        # 測試指定單一 JSON 檔案（相對路徑找不到時會到 data/samples/ 找）
         python Project1.py --input 01.json
 
-        # 指定輸出檔名
-        python Project1.py --output custom_report.md
+        # 註：報告只印在終端機，沒有寫檔選項
 
         支援的時間格式：
         - YYYY/MM/DD HH:MM
