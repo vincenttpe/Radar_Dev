@@ -3,10 +3,10 @@
 清單記錄每個版本的檔案內容雜湊與核准狀態，讓「同樣標 v1，內容卻不同」會被測試擋下。
 改了 kg/v1/ 裡的檔案後，執行：
 
-    PYTHONPATH=src python3 -m radar_agent.kg_manifest          # 重算雜湊並寫回清單（保留核准欄位）
-    PYTHONPATH=src python3 -m radar_agent.kg_manifest --check  # 只檢查，不一致就以非零結束
+    radar-kg-manifest          # 重算雜湊並寫回清單（保留核准欄位）
+    radar-kg-manifest --check  # 只檢查，不一致就以非零結束
 
-（在 repo 根目錄執行；pytest 已由 pytest.ini 設定 pythonpath = src。）
+需要先 pip install -e .（見 pyproject.toml）。
 
 雜湊是檔案位元組的 SHA-256；請確保換行沒被轉換（本 repo 以 LF 提交）。
 """
@@ -48,12 +48,13 @@ def dump(manifest: dict) -> None:
     MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
     current = load()
     fresh = compute(json.loads(json.dumps(current)))
     if "--check" in argv:
         if fresh != current:
-            print("kg/releases.json 與實際檔案不一致；請在 repo 根目錄執行 PYTHONPATH=src python3 -m radar_agent.kg_manifest")
+            print("kg/releases.json 與實際檔案不一致；請執行 radar-kg-manifest")
             return 1
         print("kg/releases.json 與實際檔案一致")
         return 0
@@ -63,4 +64,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    raise SystemExit(main())

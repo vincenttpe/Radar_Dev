@@ -29,14 +29,32 @@
 2. `docs/02_目標架構.md`：新系統的方向。
 3. `docs/03_待確認事項.md`：開始寫程式前要先確認的事。
 
+## 安裝與使用
+
+需要 Python 3.11 以上。在 repo 根目錄：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate        # Windows：.venv\Scripts\activate
+pip install -e ".[dev]"          # 必須是可編輯安裝（-e），程式會讀 repo 裡的 schemas/、kg/
+```
+
+安裝後，在任何目錄都有這兩個指令：
+
+```bash
+radar-weekly-report --input data/samples_fall/2026-06-03.json --title 機構名稱   # 甲方週報
+radar-kg-manifest --check                                                         # 檢查知識圖譜發布清單
+```
+
+`git pull` 之後如果 `pyproject.toml` 有變動，再執行一次 `pip install -e ".[dev]"`。
+
 ## 測試
 
 ```bash
-pip install -r requirements-dev.txt
 pytest
 ```
 
-需要 Python 3.11 以上。測試涵蓋：
+測試涵蓋：
 
 - 知識圖譜：`kg/v1/` 各檔案彼此一致；門檻沒有未登記的缺口或重疊；`kg/releases.json` 的雜湊與實際檔案相符。
 - 事件格式：`schemas/event.v0.draft.json` 的必填與拒收行為、日期格式、時間先後（`radar_agent.event_validation`）。
