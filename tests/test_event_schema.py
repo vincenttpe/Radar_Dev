@@ -9,7 +9,7 @@ from jsonschema import Draft202012Validator
 @pytest.fixture(scope="module")
 def validator(event_schema):
     Draft202012Validator.check_schema(event_schema)
-    return Draft202012Validator(event_schema)
+    return Draft202012Validator(event_schema, format_checker=Draft202012Validator.FORMAT_CHECKER)
 
 
 def errors(validator, event) -> list[str]:
@@ -81,3 +81,27 @@ def test_confidence_bounds(validator):
 def test_schema_version_is_fixed(validator):
     event = {**BASE, "schema_version": "1", "event_type": "fall", "timestamps": {"detected": T}}
     assert errors(validator, event) == ["'0-draft' was expected"]
+
+
+def test_format_checker_is_really_active():
+    """沒有 rfc3339-validator 時 date-time 不會被檢查；這個測試防止依賴被默默拿掉。"""
+    checker = Draft202012Validator.FORMAT_CHECKER
+    assert not checker.conforms("not-a-date", "date-time")
+    assert checker.conforms("2026-10-08T10:00:00+08:00", "date-time")
+
+
+def test_invalid_date_time_rejected(validator):
+    event = {**BASE, "event_type": "fall", "timestamps": {"detected": "not-a-date"}}
+    assert errors(validator, event) == ["'not-a-date' is not a 'date-time'"]
+
+
+def test_date_time_without_timezone_rejected(validator):
+    """schema 說明要求含時區；RFC 3339 的 date-time 也要求時區。"""
+    event = {**BASE, "event_type": "fall", "timestamps": {"detected": "2026-10-08T10:00:00"}}
+    assert errors(validator, event) == ["'2026-10-08T10:00:00' is not a 'date-time'"]
+
+
+@pytest.mark.parametrize("field", ["event_id", "device_id", "subject_id", "label"])
+def test_empty_identifier_strings_rejected(validator, field):
+    event = {**BASE, "event_type": "fall", "timestamps": {"detected": T}, field: ""}
+    assert errors(validator, event) == ["'' should be non-empty"]

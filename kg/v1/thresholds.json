@@ -1,0 +1,263 @@
+{
+  "version": "v1",
+  "source": "由 metrics.json 的等級名稱逐字轉出；只是結構化，沒有修正任何門檻",
+  "note": "min／max 為來源寫出的數字，'~' 與 '以上' 一律照字面視為含邊界（min_inclusive、max_inclusive 皆 true）。來源沒有定義邊界歸屬與量測精度；已知的缺口與重疊見 tests/test_thresholds.py 的 KNOWN_ISSUES，待審核人決定（docs/05_會議待詢問清單.md E5）。",
+  "metrics": [
+    {
+      "name": "下肢肌力",
+      "unit": "次/30 秒",
+      "resolution": 1,
+      "resolution_note": "次數，整數",
+      "levels": [
+        {
+          "score": 4,
+          "rank": "很好",
+          "min": 18,
+          "max": null,
+          "min_inclusive": true,
+          "max_inclusive": false,
+          "source_text": "起站30秒 18次以上"
+        },
+        {
+          "score": 3,
+          "rank": "尚好",
+          "min": 14,
+          "max": 17,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "起站30秒 14~17次"
+        },
+        {
+          "score": 2,
+          "rank": "普通",
+          "min": 11,
+          "max": 13,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "起站30秒 11~13次"
+        },
+        {
+          "score": 1,
+          "rank": "稍差",
+          "min": 7,
+          "max": 10,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "起站30秒 7~10次"
+        },
+        {
+          "score": 0,
+          "rank": "不好",
+          "min": 0,
+          "max": 6,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "起站30秒 0~6次"
+        }
+      ]
+    },
+    {
+      "name": "單腳站立",
+      "unit": "秒",
+      "resolution": 1,
+      "resolution_note": "秒數，來源只寫整數秒（假設，來源未明說精度）",
+      "levels": [
+        {
+          "score": 4,
+          "rank": "很好",
+          "min": 15,
+          "max": null,
+          "min_inclusive": true,
+          "max_inclusive": false,
+          "source_text": "單腳站立 15秒以上"
+        },
+        {
+          "score": 3,
+          "rank": "尚好",
+          "min": 9,
+          "max": 14,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "單腳站立 9~14秒"
+        },
+        {
+          "score": 2,
+          "rank": "普通",
+          "min": 5,
+          "max": 8,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "單腳站立 5~8秒"
+        },
+        {
+          "score": 1,
+          "rank": "稍差",
+          "min": 3,
+          "max": 4,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "單腳站立 3~4秒"
+        },
+        {
+          "score": 0,
+          "rank": "不好",
+          "min": 0,
+          "max": 2,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "單腳站立 0~2秒"
+        }
+      ]
+    },
+    {
+      "name": "來回行走",
+      "unit": "秒（2.44 公尺）",
+      "resolution": 0.1,
+      "resolution_note": "秒數，來源寫到小數一位（假設，來源未明說量測精度與取整方式）",
+      "levels": [
+        {
+          "score": 4,
+          "rank": "很好",
+          "min": 0,
+          "max": 5.4,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "2.44公尺行走 0~5.4秒"
+        },
+        {
+          "score": 3,
+          "rank": "尚好",
+          "min": 5.5,
+          "max": 6.1,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "2.44公尺行走 5.5~6.1秒"
+        },
+        {
+          "score": 2,
+          "rank": "普通",
+          "min": 6.2,
+          "max": 6.6,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "2.44公尺行走 6.2~6.6秒"
+        },
+        {
+          "score": 1,
+          "rank": "稍差",
+          "min": 6.7,
+          "max": 7.5,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "2.44公尺行走 6.7~7.5秒"
+        },
+        {
+          "score": 0,
+          "rank": "不好",
+          "min": 7.6,
+          "max": null,
+          "min_inclusive": true,
+          "max_inclusive": false,
+          "source_text": "2.44公尺行走 7.6秒以上"
+        }
+      ]
+    },
+    {
+      "name": "心肺耐力",
+      "unit": "次/2 分鐘",
+      "resolution": 1,
+      "resolution_note": "次數，整數",
+      "levels": [
+        {
+          "score": 4,
+          "rank": "很好",
+          "min": 112,
+          "max": null,
+          "min_inclusive": true,
+          "max_inclusive": false,
+          "source_text": "抬腳2分鐘 112次以上"
+        },
+        {
+          "score": 3,
+          "rank": "尚好",
+          "min": 89,
+          "max": 99,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "抬腳2分鐘 89~99次"
+        },
+        {
+          "score": 2,
+          "rank": "普通",
+          "min": 75,
+          "max": 88,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "抬腳2分鐘 75~88次"
+        },
+        {
+          "score": 1,
+          "rank": "稍差",
+          "min": 50,
+          "max": 74,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "抬腳2分鐘 50~74次"
+        },
+        {
+          "score": 0,
+          "rank": "不好",
+          "min": 0,
+          "max": 49,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "抬腳2分鐘 0~49次"
+        }
+      ]
+    },
+    {
+      "name": "步行速度",
+      "unit": "m/s",
+      "resolution": null,
+      "resolution_note": "連續量，來源以共用邊界寫成區間，未定義邊界歸屬",
+      "levels": [
+        {
+          "score": 3,
+          "rank": "尚好",
+          "min": 1,
+          "max": null,
+          "min_inclusive": true,
+          "max_inclusive": false,
+          "source_text": "步行速度 1.0 m/s以上"
+        },
+        {
+          "score": 2,
+          "rank": "普通",
+          "min": 0.8,
+          "max": 1,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "步行速度 0.8~1.0 m/s"
+        },
+        {
+          "score": 1,
+          "rank": "稍差",
+          "min": 0.5,
+          "max": 0.8,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "步行速度 0.5~0.8 m/s"
+        },
+        {
+          "score": 0,
+          "rank": "不好",
+          "min": 0,
+          "max": 0.5,
+          "min_inclusive": true,
+          "max_inclusive": true,
+          "source_text": "步行速度 0~0.5 m/s"
+        }
+      ]
+    }
+  ]
+}
