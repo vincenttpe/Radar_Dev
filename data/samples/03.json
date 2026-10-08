@@ -1,0 +1,62 @@
+[
+    {
+        "Timestamp": "2025/03/12 08:00 AM",
+        "Motion": "A person stays stationary -> the person jumps upward several times -> the person runs in place.",
+        "Speed": "Fast"
+    },
+    {
+        "Timestamp": "2025/03/12 08:10 AM",
+        "Motion": "A person moves forward and then bends down and stands back up.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/12 08:20 AM",
+        "Motion": "A person raises one arm -> moves backward -> returns forward.",
+        "Speed": "Normal"
+    },
+    {
+        "Timestamp": "2025/03/12 08:30 AM",
+        "Motion": "A person walks forward -> walks backward -> runs in place.",
+        "Speed": "Fast"
+    },
+    {
+        "Timestamp": "2025/03/12 08:40 AM",
+        "Motion": "A person stays still -> hops on one foot -> moves to the left.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/12 08:50 AM",
+        "Motion": "A person moves forward, then bends down, then moves backward.",
+        "Speed": "Normal"
+    },
+    {
+        "Timestamp": "2025/03/12 09:00 AM",
+        "Motion": "A person walks to the right; then turns around; then walks to the left.",
+        "Speed": "Normal"
+    },
+    {
+        "Timestamp": "2025/03/12 09:10 AM",
+        "Motion": "A person raises both hands followed by moving sideways followed by moving to the right.",
+        "Speed": "Normal"
+    },
+    {
+        "Timestamp": "2025/03/12 09:20 AM",
+        "Motion": "A person sits down and then stands up and then moves forward.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/12 09:30 AM",
+        "Motion": "A person jumps twice -> moves forward -> moves backward.",
+        "Speed": "Fast"
+    },
+    {
+        "Timestamp": "2025/03/12 09:40 AM",
+        "Motion": "A person walks forward -> stops -> walks backward -> stops again.",
+        "Speed": "Normal"
+    },
+    {
+        "Timestamp": "2025/03/12 09:50 AM",
+        "Motion": "A person raises an arm -> bends down -> stands up.",
+        "Speed": "Slow"
+    }
+]

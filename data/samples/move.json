@@ -1,0 +1,22 @@
+[
+    {
+        "Timestamp": "2025/03/09 15:48 PM",
+        "Motion": "the man carefully sits down on the ground and then stands back up.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/09 15:59 PM",
+        "Motion": "A person stays stationary -> person jump upward and downward multiple times -> person runs in place.",
+        "Speed": "Fast"
+    },
+    {
+        "Timestamp": "2025/03/09 17:31 PM",
+        "Motion": "A person moves quickly.",
+        "Speed": "Fast"
+    },
+    {
+        "Timestamp": "2025/03/09 17:31 PM",
+        "Motion": "A person hop on one foot.",
+        "Speed": "Slow"
+    }
+]

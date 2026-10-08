@@ -1,0 +1,519 @@
+coarsed_sentence,class,score
+A person stays stationery and may raises their hands.,上肢與軀幹活動,0
+A person stays stationery and raises their hands.,上肢與軀幹活動,0
+A person stays stationery with hands movements.,上肢與軀幹活動,0
+A person stays stationary and may raise their hand.,上肢與軀幹活動,0
+A person stays stationary and may raise her hand.,上肢與軀幹活動,0
+A person stays stationery and may raise her hand; person moves lower part of body downwards.,上肢與軀幹活動,0
+A person stays stationary -> person picks up something.,上肢與軀幹活動,0
+A person stay stationary and may raise her hand.,上肢與軀幹活動,0
+A person bends down.,上肢與軀幹活動,1
+A person moves his upper body downwards.,上肢與軀幹活動,1
+A person stays stationary and may raise her arm.,上肢與軀幹活動,1
+A person stays stationery and may raise their hand.,上肢與軀幹活動,1
+A person stays stationary and maybe raises their hands.,上肢與軀幹活動,1
+A person bends .,上肢與軀幹活動,1
+A person bends down .,上肢與軀幹活動,1
+a person picks something up to the left at table height and moves it to table height on their right.,上肢與軀幹活動,1
+A person stays stationery and may raise her hand.,上肢與軀幹活動,1
+A person stays stationary and may raises their arms.,上肢與軀幹活動,1
+A person rubs themselves.,上肢與軀幹活動,1
+A person stays stationery and maybe raises their hands.,上肢與軀幹活動,1
+A person stays stationary -> person picks up thing(s).,上肢與軀幹活動,1
+A person stays stationery and may raise the hand.,上肢與軀幹活動,1
+A person stays stationary and maybe raises theirs arms.,上肢與軀幹活動,1
+A person stays stationary and swings arm around.,上肢與軀幹活動,1
+A person moves his upper body downwards followed by another action.,上肢與軀幹活動,2
+person bends to pick up something,上肢與軀幹活動,2
+A person throw ball.,上肢與軀幹活動,3
+A person hold object with two hands then twist around and put some weight on feet .,上肢與軀幹活動,4
+A person bending down and back up.,上肢與軀幹活動+下肢肌力,2
+A person stays stationary -> a person sits -> a person moves upward with her/his arm.,上肢與軀幹活動+下肢肌力,2
+a man sits with his arms stretched outward.,上肢與軀幹活動+下肢肌力,2
+A person stays stationary -> person moves downward while bending.,上肢與軀幹活動+下肢肌力,2
+A person stays stationary -> person lift arm outward -> person bend downward -> person stand upward.,上肢與軀幹活動+下肢肌力,3
+"A person throw object two times, kick nothing 2 times, walk in clock-wise circle.",上肢與軀幹活動+下肢肌力+來回行走,4
+A person stays stationary -> person bring arm down -> a person moves forward -> a person moves downward while sitting .,上肢與軀幹活動+下肢肌力+空間方位位移,3
+A person moves forward then bends then stand up.,上肢與軀幹活動+下肢肌力+空間方位位移,3
+A person stays stationary -> person put arm down to sides -> a person walk in counterclockwise path -> a person moves backward then to the left.,上肢與軀幹活動+來回行走+空間方位位移,3
+"A person stays stationary, then moves backward, then moves his arm.",上肢與軀幹活動+空間方位位移,2
+A person stays stationery and may raise her hand; a person moves backward.,上肢與軀幹活動+空間方位位移,2
+A person moves sideways and bends .,上肢與軀幹活動+空間方位位移,2
+"A person moves backward, a person moves forward, a person stays stationery and may raise her hand.",上肢與軀幹活動+空間方位位移,2
+"A person moves forward, a person moves backward, a person stays stationary and may raise her hand.",上肢與軀幹活動+空間方位位移,2
+A person moves upward while standing.,上肢與軀幹活動+空間方位位移,2
+A person stays stationary -> grab rail -> walk upward -> walk downward.,上肢與軀幹活動+空間方位位移,2
+A person moves forward and bends down.,上肢與軀幹活動+空間方位位移,3
+A person stays stationary -> person bend forward -> person moves backward then to the left.,上肢與軀幹活動+空間方位位移,3
+A person stays stationary -> a person pick ups something with his left hand -> a person moves to his right.,上肢與軀幹活動+空間方位位移,3
+A person stays stationary -> person picks up object with left hand -> person moves upward -> person moves to the right.,上肢與軀幹活動+空間方位位移,3
+A person stays stationary -> person pick things up -> person put thing away -> person moves forward.,上肢與軀幹活動+空間方位位移,3
+the person is sitting down.,下肢肌力,0
+a person is sitting.,下肢肌力,0
+a person sits down on something.,下肢肌力,0
+A person stays stationary -> person sits .,下肢肌力,0
+A person stays stationary -> person sits down .,下肢肌力,0
+A person sit down then person stay stationary.,下肢肌力,0
+a person sits down.,下肢肌力,0
+A person sits down.,下肢肌力,0
+A person stays stationary -> person sits down.,下肢肌力,0
+figure sits down.,下肢肌力,0
+a person sitting down in the floor.,下肢肌力,0
+A person sits stationary.,下肢肌力,0
+A person stays stationary -> person stand upright.,下肢肌力,1
+A person kicks.,下肢肌力,2
+A person stays stationary -> person stand up.,下肢肌力,2
+a peraon bends down and then stands back up.,下肢肌力,2
+the man carefully sits down on the ground and then stands back up.,下肢肌力,2
+A person squats and returns to standing position.,下肢肌力,2
+A person kicks upward.,下肢肌力,2
+A person stand up.,下肢肌力,2
+A person moves downward and then stands up.,下肢肌力,2
+A person stays stationary -> person stand up .,下肢肌力,2
+A person stays stationary -> person sit down .,下肢肌力,2
+A person bends and stand up.,下肢肌力,2
+a man squats and stays.,下肢肌力,2
+person carefully squats down.,下肢肌力,2
+A person stays stationary -> person sits down -> a person moves upward.,下肢肌力,2
+a person sits down then stands up.,下肢肌力,2
+A person stays stationary -> person sits down -> person moves upward.,下肢肌力,2
+A person kick legs.,下肢肌力,2
+A person stays stationary -> person sit down -> person stand up.,下肢肌力,2
+A person stays stationary -> person stand up -> person moves downward while bending.,下肢肌力,2
+A person crawls.,下肢肌力,2
+a person slowly stand up.,下肢肌力,2
+A person stays stationary -> person crawls.,下肢肌力,2
+A person stays stationary -> person get up from kneeling posture.,下肢肌力,2
+A person stand upward.,下肢肌力,2
+A person jump then kick .,下肢肌力,3
+a person squats down and then stands back up.,下肢肌力,3
+A person jump high then low.,下肢肌力,3
+A person performs jumps.,下肢肌力,4
+A person jump upward.,下肢肌力,4
+A person stays stationary -> person bend knee jump land .,下肢肌力,4
+A person jump twice then stand still .,下肢肌力,4
+a man squats low to the ground and then jumps up repeatedly.,下肢肌力,4
+A person jump upward then return to initial state.,下肢肌力,4
+A person jump then stop.,下肢肌力,4
+A person jump and stays stationery.,下肢肌力,4
+A person jump.,下肢肌力,4
+A person kicks backwards then drops down then kicks backwards.,下肢肌力,4
+A person jump twice.,下肢肌力,4
+A person jump upward and spread apart.,下肢肌力,4
+A person jump then stops.,下肢肌力,4
+A person is jump up and down.,下肢肌力,4
+a person runs in place then walks backward then squats down and walks forward.,下肢肌力+心肺耐力+空間方位位移,4
+person is crawling around.,下肢肌力+來回行走,3
+"A person stand up, person walk in clock wise, person sit down.",下肢肌力+來回行走,3
+A person jump around.,下肢肌力+來回行走,4
+a person walks on all fours to the right and then to the left.,下肢肌力+來回行走,4
+A person stays stationary -> person get up -> person moves backward -> person walkes in counter-clockwise -> person stops moving -> person lies down.,下肢肌力+來回行走+空間方位位移,2
+A person stays stationary -> crawling forward -> moving backward -> turning left.,下肢肌力+來回行走+空間方位位移,4
+A person standstill -> a person hop right.,下肢肌力+空間方位位移,2
+A person kicks forward.,下肢肌力+空間方位位移,2
+A person moves downward while bending.,下肢肌力+空間方位位移,2
+A person crawls forward.,下肢肌力+空間方位位移,2
+A person stays stationary -> person stand up -> a person walk in a clock-wise circle -> a person stay stationary.,下肢肌力+空間方位位移,3
+A person crouchs then standes and a person moves forward.,下肢肌力+空間方位位移,3
+A person stays stationary -> person jump backward.,下肢肌力+空間方位位移,3
+a person crouches low and moves from left to right.,下肢肌力+空間方位位移,3
+A person sit down -> person stand up -> person move forward.,下肢肌力+空間方位位移,3
+A person stays stationary -> person sit down -> person stand up -> person walk forward then stop.,下肢肌力+空間方位位移,3
+A person stays stationary -> a person jumps to the right -> a person bends to the left -> a person jumps to the right -> a person stays stationary -> a person jumps to the left -> a person bends to the right -> a person jumps to the left -> a person stays stationary -> a person repeats same sequence once more -> a person stops moving.,下肢肌力+空間方位位移,4
+A person stays stationary -> person get off the ground -> person moves upward -> person moves forward -> person moves backward -> person stand upright.,下肢肌力+空間方位位移,4
+A person stays stationary -> a person jump upward twice -> a person moves forward.,下肢肌力+空間方位位移,4
+A person jumpes upward and sideward.,下肢肌力+空間方位位移,4
+A person jump forward.,下肢肌力+空間方位位移,4
+A person stays stationary -> a person jump -> a person land -> a person moves upward -> a person jump -> a person return to previous state -> a person jump -> a person return to previous state -> a person move downward -> a person stand still -> a person jump -> a person hold arm upwards.,下肢肌力+空間方位位移,4
+A person moves downward while bending → figure gets down on hands and knees .,下肢肌力+空間方位位移,4
+A person stays stationary -> hop -> walk upward.,下肢肌力+空間方位位移,4
+A person runs forward and then moves backward.,心肺耐力,4
+A person stays stationary -> person run in place .,心肺耐力,4
+A person stays stationary -> a person jogged in place .,心肺耐力,4
+A person stays stationary -> person jump upward and downward multiple times -> person runs in place.,心肺耐力,4
+A person stays stationary -> a person run in place.,心肺耐力,4
+A person runs and moves sideways.,心肺耐力,4
+A person runs forward.,心肺耐力,4
+A person runs.,心肺耐力,4
+A person runs backward.,心肺耐力,4
+A person stays stationary -> a person jogs in place -> a person moves to her left -> a person moves to her right -> a person moves to her left ->...,心肺耐力+空間方位位移,4
+A person runs to the left.,心肺耐力+空間方位位移,4
+A person runs; a person moves downward while bending; a person moves backward.,心肺耐力+空間方位位移,4
+A person runs and then moves to the left.,心肺耐力+空間方位位移,4
+A person walk.,步行速度,1
+A person walks.,步行速度,1
+A person moves quickly.,步行速度,3
+A person moves forward and slightly to his right at a normal pace.,步行速度+空間方位位移,2
+A person walks backward then forward.,來回行走,3
+A person moves forward then moves backward.,來回行走,3
+A person walks in a clockwise circle.,來回行走,3
+A person walks in a half-circle and then stop.,來回行走,3
+A person walkes in a counterclockwise.,來回行走,3
+A person moves forward then walkes in counterclockwise.,來回行走,3
+A person walk in counter-clockwise.,來回行走,3
+A person walks in a clockwises.,來回行走,3
+person is standing there then moved over and back.,來回行走,3
+walking back and forth.,來回行走,3
+A person walk around.,來回行走,3
+A person walks sideways in both directions.,來回行走,3
+A person walkes forward then moves backward.,來回行走,3
+A person moves backward then moves forward.,來回行走,3
+A person walkes around.,來回行走,3
+A person moves to the right then he/she moves to the left then he/she returns to initial location.,來回行走,3
+A person walkes forward then backwards.,來回行走,3
+A person walks in a clock-wise circle and then stops.,來回行走,3
+A person walkes back and forth.,來回行走,3
+A person moves forward then moves backward then moves forward.,來回行走,3
+"A person moves forward, a person moves backward, a person moves forward, a person moves backward, a person moves sideways.",來回行走,3
+A person moves in counter-clockwise.,來回行走,3
+A person moves in counter-clockwise path.,來回行走,3
+A person walkes in a clock-wise circle.,來回行走,3
+A person walkes in a counterclockwise circle and then stoped.,來回行走,3
+A person walks counterclockwise.,來回行走,3
+A person moves forward then moves backward then a person moves upward then stays stationary.,來回行走,3
+A person walks in a counter-clockwise circle.,來回行走,3
+A person moves in counter-clockwise path followed by a person walks in a clockwise circle.,來回行走,3
+"A person moves backward, a person moves forward, a person moves backward.",來回行走,3
+A person walks in a clockwize circle.,來回行走,3
+A person walkes counterclockwise and then stoped.,來回行走,3
+A person walkes forward then backward.,來回行走,3
+A person walk in clock wise circle.,來回行走,3
+A person walkes in a clockwise circle.,來回行走,3
+a person who is stepping in the shape of a square.,來回行走,3
+A person walks in a circle.,來回行走,3
+A person stays stationary -> person walk forward -> person goes backwards.,來回行走,3
+A person walkes in a clockwize circle.,來回行走,3
+A person walkes forward then moving backward.,來回行走,3
+A person stays stationary -> person walk forward and stops -> person moves backward.,來回行走,3
+A person spins around.,來回行走,3
+A person moves sideways → a person stays stationary → a person moves sideways .,來回行走,3
+A person moves forward then moves backward then a person stays stationary then a person moves forward then a person stays stationary.,來回行走,3
+A person moves forward then moves backward then moves forward then moves backward.,來回行走,3
+A person walks in a clock-wise circle.,來回行走,3
+A person walks in a circle and walks forward.,來回行走,3
+A person walkes in a clockwize cirle.,來回行走,3
+A person walkes in a clockwisse cirle.,來回行走,3
+A person walksin a clockwisepaththen stopsmovingforwardandstopping.,來回行走,3
+A person walkes in a counter-clockwise circle.,來回行走,3
+A person walkes in a counter-clockwise.,來回行走,3
+A person walks in a counter-clockwise.,來回行走,3
+A person moves in counter-clockwise path; then he/she/it/person walkes forward and then stoping .,來回行走,3
+A person moves forward then turns around then moves forward then returns.,來回行走,3
+A person walk forward then move backward then move sideways then move backward then move forward.,來回行走,4
+A person walkes forward then turns around then a person moves backward.,來回行走,4
+A person walks in a counter-clockwise .,來回行走,4
+A person moves backward then moving forward then turning around then moving forward.,來回行走,4
+A person moves circularly then a person moves forward then a person moves backward.,來回行走,4
+a person moves around in a circle.,來回行走,4
+A person stays stationary -> a person throw upward -> a person moves to her right -> a person walkes in a clock-wise circle .,來回行走,4
+A person moves to the left then to the right then returns to starting point.,來回行走,4
+A person moves forward and then backward.,來回行走,4
+A person runs around.,來回行走+心肺耐力,4
+A person runs forward then backward.,來回行走+心肺耐力,4
+A person runs back and forth.,來回行走+心肺耐力,4
+A person walks forward and then walkes in a counterclockwise circle.,來回行走+空間方位位移,2
+"A person stays stationary, a person moves backward, a person moves forward.",來回行走+空間方位位移,2
+a person moves forward and then back to its original position.,來回行走+空間方位位移,2
+A person moves to her right then back to her right.,來回行走+空間方位位移,2
+A person walks in a clockwise circle.,來回行走+空間方位位移,2
+A person moves forward then stops then moves forward.,來回行走+空間方位位移,2
+A person moves counterclockwise.,來回行走+空間方位位移,2
+A person walks in a counterclockwise path.,來回行走+空間方位位移,2
+A person runs in a clock-wise circle.,來回行走+空間方位位移,2
+A person walks in a clockwises circle.,來回行走+空間方位位移,2
+A person walks in a counterclockwise.,來回行走+空間方位位移,3
+A person moves forward and walks back.,來回行走+空間方位位移,3
+"A person stays stationary, a person moves to her right, a person returns to initial location.",來回行走+空間方位位移,3
+A person stays stationary and may raise her hand followed by a person walks in a counter-clockwise circle.,來回行走+空間方位位移,3
+A person moves forward and backward.,來回行走+空間方位位移,3
+"A person moves to his right, a person moves forward, a person stays stationary, a person moves to his right, a person moves forward.",來回行走+空間方位位移,3
+"A person moves backward, a person moves forward, a person moves backward, a person moves forward, a person moves to her right.",來回行走+空間方位位移,3
+A person moves forward → a person stays stationary → a person moves backward → a person moves backward.,來回行走+空間方位位移,3
+"A person moves forward, then moving backward, then moving forward.",來回行走+空間方位位移,3
+A person walksin a counterclockwisepath.,來回行走+空間方位位移,3
+"A person walks in a clockwise circle, then walks back counter-clockwise. Now, he is walking erratically in figure-eight patterns in both directions. There are people to his left, right, and forward, and someone else further along the way. As the person stops walking for a while and turns around, someone else starts moving towards them from the distance, even though they are still moving in their own direction.",來回行走+空間方位位移,3
+"A person stays stationary, a person moves forward, a person moves in counter-clockwise path, a person moves forward, a person walks in a clockwise circle, a person moves backward.",來回行走+空間方位位移,3
+A person walks in a counterclockwise circle.,來回行走+空間方位位移,3
+A person moves forward then walk in a clock-wise circle then return to start point.,來回行走+空間方位位移,3
+A person stays stationary -> a person walks in a clockwise circle -> a person moves backward.,來回行走+空間方位位移,4
+"A person moves forward then turn right, a person walkes in a counterclockwise circle, a person moves forward, a person moves backward, a person moves to the left.",來回行走+空間方位位移,4
+A person stays stationary -> rewritten by me <- .,其他,0
+Person standstill.,其他,0
+A person standstill .,其他,0
+A person stays stationery .,其他,0
+A person standstill.,其他,0
+Person stays stationery.,其他,0
+A person stay stationery.,其他,0
+A person stays stationary -> no action taken.,其他,0
+A person falls down.,其他,0
+A person stays stationary -> wrong answer!.,其他,0
+Person stay stationary.,其他,0
+A person stays stationery and maybe raises their hand.,其他,0
+A person stays stationary -> no! .,其他,0
+A person stays stationary →→→→.,其他,0
+Person stays stationary.,其他,0
+A person stays stationary -> no action found .,其他,0
+A person stays stationary -> no action here .,其他,0
+A person stays stationery → no action taken .,其他,0
+Person stays stationary .,其他,0
+A person stays stationary -> nope! .,其他,0
+Person stand still.,其他,0
+A person falls over.,其他,0
+A person stays stationary -> no action taken here so we can skip this part .,其他,0
+A person stays stationary → no action taken.,其他,0
+A person stays stationary -> walks backwards and forward .,其他,0
+A person stays stationary -> a person interacts with something.,其他,0
+A person stays stationary -> .,其他,0
+A person stay stationary.,其他,0
+A person stays stationary -> person stand still.,其他,0
+A person stand stationery.,其他,0
+A person stays stationary → no action taken .,其他,0
+A person stays stationary -> walks to the right then turns left -> moves hands.,其他,0
+A person stays stationary -> person walk forward and then stop -> person goes backwards -> person go forwards.,其他,0
+person stays stationary.,其他,0
+A person stays stationary -> no action taken .,其他,0
+A person stays stationary -> this doesn't make sense because crawling means moving so i will ignore this part .,其他,0
+"A person stays stationary, a person moves to his right.",其他,0
+A person stays stationary -> a person moves to his right.,其他,0
+A person stand still.,其他,0
+A person stays stationary -> person standstill.,其他,0
+A person stays stationary -> no action here!.,其他,0
+A person stays stationary -> person stay stationary.,其他,0
+Person stand stationery.,其他,0
+a person who is sitting.,其他,0
+A person stays stationary -> no action taken here since there's nothing about movement .,其他,0
+A person stays stationary -> a person stand still.,其他,0
+A person stays stationary → person stand still.,其他,0
+A person mvoes upwards.,其他,1
+A person moves downward then standstill.,其他,1
+A person stays stationery [1].,其他,1
+A person stays stationary -> no! the person actually moved!.,其他,1
+A person stays stationary -> nope! the person actually moved!.,其他,1
+A person stays stationary -> nope! person actually moved!.,其他,1
+A person stays stationary -> person moves upward then return to initial state.,其他,2
+A person moves upward then lower his upper body downwards.,其他,2
+A person stays stationary -> a person sit .,其他,2
+"A person stays stationary, passes object.",其他,2
+A person walkes forward then sit down then stand up then stays stationery .,其他,3
+A person walkes in a clockwisse circle.,其他,3
+A person walkes in a clockwose circl6.,其他,3
+(person stays stationery).,空間方位位移,0
+A person stays stationery [1]  # wait until next event .,空間方位位移,0
+A person moves backward.,空間方位位移,1
+"A person stays stationary, then a person moves upward.",空間方位位移,1
+A person stays stationary followed by a person moving forward.,空間方位位移,1
+A person stays stationary followed by a person moving backward.,空間方位位移,1
+A person stays stationary followed by a person moves forward.,空間方位位移,1
+"A person stays stationary, a person moves backward.",空間方位位移,1
+A person moves downward .,空間方位位移,1
+A person walk downward.,空間方位位移,1
+A person moves forward and then stop; a person stays stationery.,空間方位位移,1
+A person moves sideways .,空間方位位移,1
+A person standstill; a person moves to his left.,空間方位位移,1
+A person stays moves downward.,空間方位位移,1
+A person moves forward.,空間方位位移,1
+A person stumble backwards.,空間方位位移,1
+"A person stays stationary, then a person moves forward.",空間方位位移,1
+A person stays stationary followed by moving backward.,空間方位位移,1
+a person slowly walked forward.,空間方位位移,1
+A person walkes forward then stops.,空間方位位移,1
+A person moves downward.,空間方位位移,1
+A person walkes forward.,空間方位位移,1
+A person walk forward.,空間方位位移,1
+A person walks forward.,空間方位位移,1
+A person walkes forward .,空間方位位移,1
+the person walks to the left and stops.,空間方位位移,1
+A person moves to her left.,空間方位位移,1
+A person moves to his right.,空間方位位移,1
+A person moves forward and then stops.,空間方位位移,1
+A person moves to the right.,空間方位位移,1
+A person moves sideways.,空間方位位移,1
+A person stays stationary -> a person moves forward.,空間方位位移,1
+A person moves forward and then stop.,空間方位位移,1
+"A person stays stationary, a person moves forward, a person moves backward.",空間方位位移,1
+A person moves to the left.,空間方位位移,1
+A person opens a door; a person moves forward.,空間方位位移,1
+A guy moves to his right.,空間方位位移,1
+a person walked in right direction.,空間方位位移,1
+A person stays stationary -> a person standstill.,空間方位位移,1
+A person moves sideward.,空間方位位移,1
+A person moves to his left.,空間方位位移,1
+a person walks aimlessly and slowly in an imperfect circle around the room.,空間方位位移,1
+A person stays stationary followed by a person moving upward.,空間方位位移,1
+A person moves forward then stop.,空間方位位移,1
+a person walks backwards.,空間方位位移,1
+A person stays stationary followed by moving forward.,空間方位位移,1
+a person walks down stairs.,空間方位位移,1
+A person walkes downstairs.,空間方位位移,1
+A person walkes dowwnward .,空間方位位移,1
+A person walks forward and then stops.,空間方位位移,1
+A person walk forward then stop.,空間方位位移,1
+A person moves sideway.,空間方位位移,1
+Walking forward and then stopping.,空間方位位移,1
+A person walkes sideways.,空間方位位移,1
+A person walk upward.,空間方位位移,1
+A person stays moves up and down.,空間方位位移,1
+A person moves to her right .,空間方位位移,1
+A person moves upward.,空間方位位移,1
+Person moves laterally away.,空間方位位移,1
+A person walk sforward .,空間方位位移,1
+A person moves to her right.,空間方位位移,1
+A person moves forward then stops.,空間方位位移,1
+A person stays stationary -> a person moves backward.,空間方位位移,1
+A person moves upward then stays stationary.,空間方位位移,1
+A person walkes dowward.,空間方位位移,1
+a person moves upward.,空間方位位移,1
+A person walkes diagonally.,空間方位位移,1
+A person moves diagonally.,空間方位位移,1
+A person moves diagonal.,空間方位位移,1
+A person walk backwards.,空間方位位移,1
+A person stays stationary -> climb upward .,空間方位位移,1
+A person stays stationary -> person moves forward.,空間方位位移,1
+A person falls backward.,空間方位位移,1
+A person stays stationary followed by a person moves backward.,空間方位位移,1
+A person falls .,空間方位位移,1
+A person walks forward and then stopping.,空間方位位移,2
+"A person stays stationary, then moves to the left, then a person moves upward.",空間方位位移,2
+A person stays stationary -> person moves upward -> person moves downward.,空間方位位移,2
+A person moves upward then downward.,空間方位位移,2
+A person stays stationary -> knocks -> a person moves away.,空間方位位移,2
+A person moves forward then moves to his left.,空間方位位移,2
+A person moves backward then turns to the right.,空間方位位移,2
+A person moves to the right then back to right.,空間方位位移,2
+A person moves forward then he moves upward/downward .,空間方位位移,2
+A person stays stationary with hands motion and then move forward.,空間方位位移,2
+A person moves downward while bending; a person moves forward.,空間方位位移,2
+a person walks forward diagonally and then turns to the right.,空間方位位移,2
+"A person stays stationary, a person moves backward, a person moves upward .",空間方位位移,2
+"A person stays stationary, then a person moves downward while bending.",空間方位位移,2
+A person stays stationary -> person moves downward while bending -> person standstill .,空間方位位移,2
+A person stays stationary -> person crawls forward -> person moves upward.,空間方位位移,2
+A person moves backward then stand upright.,空間方位位移,2
+A person stays stationary -> crawling forward -> moving backward -> turning right -> staying stationary.,空間方位位移,2
+a peraon walks forward.,空間方位位移,2
+person walks forward and curves to the right.,空間方位位移,2
+A person moves forward then turn left.,空間方位位移,2
+A person moves forward then turn right .,空間方位位移,2
+A person moves forward then turn right.,空間方位位移,2
+a person move forwards from the left to the right.,空間方位位移,2
+A person walks forward in an curved line.,空間方位位移,2
+A person moves forward then turns to the right.,空間方位位移,2
+A person moves forward then moves to the left.,空間方位位移,2
+A person moves forward then turns to the left.,空間方位位移,2
+"A person stays stationary,a person moves backward,a person moves upward.",空間方位位移,2
+"A person moves backward, person stays stationary, a person moves forward.",空間方位位移,2
+A person moves sideways then moves backward.,空間方位位移,2
+A person steps back and turns.,空間方位位移,2
+A person moves to the right then he/she moves to the left.,空間方位位移,2
+A person moves forward then turns left.,空間方位位移,2
+A person moves forward then turns right.,空間方位位移,2
+A person moves to the right then back to the right.,空間方位位移,2
+A person moves forward then he moves to his right.,空間方位位移,2
+A person moves to the right then moves to the left then returns to its initial state.,空間方位位移,2
+A person walkes slightly sideways.,空間方位位移,2
+A person moves downward then moves to the right.,空間方位位移,2
+"A person stays stationery, a person moves forward, a person moves to her right, a person moves downward .",空間方位位移,2
+walking forward and then stopping.,空間方位位移,2
+A person moves forward and moves upward.,空間方位位移,2
+A person moves upward then moves backward.,空間方位位移,2
+A person runs to the right.,空間方位位移,2
+A person moves upward then a person moves downward.,空間方位位移,2
+A person stays stationary followed by a person moves forward and then stopped.,空間方位位移,2
+the man moves sideways and back.,空間方位位移,3
+A person stays stationary -> a person moves upward and downward.,空間方位位移,3
+A person moves sideways then moves to the right.,空間方位位移,3
+A person stays stationary -> person put things away -> a person moves forward.,空間方位位移,3
+"A person moves to the right, a person moves to the left, a person stays stationary.",空間方位位移,3
+A person dances to the right then to the left.,空間方位位移,3
+A person moves to his right then backs off.,空間方位位移,3
+A person moves forward then moving backward.,空間方位位移,3
+A person moves forward then moves back.,空間方位位移,3
+A person walk upward followed by moving downward.,空間方位位移,3
+A person moves backward then a person moves forward.,空間方位位移,3
+A person moves forward then a person moves backward.,空間方位位移,3
+A person moves to the right then moves to the left.,空間方位位移,3
+A person moves to his right then he moves to his left.,空間方位位移,3
+A person moves to her right then he moves to his right then she stays stationary.,空間方位位移,3
+A person moves upward then falls.,空間方位位移,3
+A person crawls downward then returns.,空間方位位移,3
+A person stays stationary -> hop -> a person moves forward.,空間方位位移,3
+A person stays stationary -> person moves upward -> a person moves backward -> a person moves upward -> a person moves backward.,空間方位位移,3
+A person moves downward while bending → a person moves to his right → a person moves to his left.,空間方位位移,3
+A person moves upward then a person moves backward then a person moves upward.,空間方位位移,3
+A person moves forward then walk backward then a person moves downward .,空間方位位移,3
+"A person stays stationary, a person moves upward, a person moves backward, a person moves upward.",空間方位位移,3
+"A person moves backward, a person moves forward, a person moves to his right, a person moves downward .",空間方位位移,3
+A person moves up and down.,空間方位位移,3
+A person moves forward and walk back.,空間方位位移,3
+A person walksin a clockwisecircle.,空間方位位移,3
+A person moves forward then moves downward then moves forward.,空間方位位移,3
+A person stays stationary -> person crawl -> person stand up.,空間方位位移,3
+A person moves forward then moves to the left and then goes back onto the same path they were on.,空間方位位移,3
+"A person moves to the left, a person moves to the right, a person moves to the left.",空間方位位移,3
+A person walk in a clock-wise circle.,空間方位位移,3
+A person moves forward then he moves to his right then he moves to his left.,空間方位位移,3
+"A person stays stationary, a person moves forward, a person moves to the left, a person moves forward, a person moves to the left, a person moves forward.",空間方位位移,3
+A person moves forward then walkes in a clock-wise circle.,空間方位位移,3
+A person stays stationary -> person moves backward -> a person moves forward -> a person moves backward.,空間方位位移,3
+A person walks in counterclockwise.,空間方位位移,3
+A person walkes in counter-clockwise path.,空間方位位移,3
+A person walkes in a clock-wise.,空間方位位移,3
+"A person moves upward, a person moves forward, a person moves backward.",空間方位位移,3
+A person moves downward then lies down.,空間方位位移,3
+A person moves downward while bending and then a person moves forward.,空間方位位移,3
+A person moves downward while bending followed by a person moves backward.,空間方位位移,3
+A person moves downward while bending followed by person stays stationary followed by a person moves forward then stops.,空間方位位移,3
+A person moves backward; a person moves downward while bending; a person moves forward; a person walkes in a clockwvise circle;.,空間方位位移,3
+A person walk forward then turn around then person stays stationary.,空間方位位移,3
+a person slowly walked forward and sat on something then walk backwards.,空間方位位移,3
+A person walk in a  circle.,空間方位位移,3
+A person stays stationary and gets up then begins walking in a circle.,空間方位位移,3
+A person moves forward then walk in a clock-wise circle then person moves downward .,空間方位位移,3
+A person moves forward then jerks back a step just to go forward a few steps again.,空間方位位移,3
+"A person stays stationary, a person moves to her/his left, a person moves backward, a person moves downward while sitting, a person standstill, a person stays stationary.",空間方位位移,3
+A person moves forward then runs backward.,空間方位位移,3
+A person moves to the left then a person moves to the right.,空間方位位移,3
+A person walk in a random path.,空間方位位移,3
+A person moves forward then moves upward.,空間方位位移,3
+A person stays stationary -> person stand up -> a person moves backward.,空間方位位移,3
+A person moves backward then he/she moves sideways then a person moves forward.,空間方位位移,3
+A person moves forward then moving in a clock-wise path.,空間方位位移,3
+A person walks in a clock-wise circle; a person moves sideways; a person avoids collision by moving around object.,空間方位位移,3
+A person walks diagonally.,空間方位位移,3
+A person moves downward then moves to the left.,空間方位位移,3
+A person moves backward then moving forward.,空間方位位移,3
+A person moves to the right then to the left then returns to starting point.,空間方位位移,3
+A person moves forward then he/she moves backward then she/he moves to her/his right.,空間方位位移,3
+A person stays stationary -> stuffs something -> moves forward -> moves downward -> picks up something else -> moves slightly to the left -> goes back to initial location.,空間方位位移,3
+A person moves forward then walk in a clock-wise circle.,空間方位位移,3
+A person walkes in counter-clockwise.,空間方位位移,3
+A person walk in clock wise.,空間方位位移,3
+A person stays stationary -> person moves to the right -> person moves upward -> person returns to stationarity.,空間方位位移,3
+A person moves diagonally to the right then he/she moves upward then she/he goes backwards.,空間方位位移,3
+A person walk in a clock wise circle.,空間方位位移,3
+A person dances forward then turns to the left.,空間方位位移,3
+A person walksin a clockwisepath.,空間方位位移,3
+A person moves forward then moves to his right.,空間方位位移,3
+A person stays stationary -> person moves to his right -> a person moves forward -> a person moves backward -> a person moves forward -> a person stoped .,空間方位位移,3
+A person walkes in a s-shape.,空間方位位移,3
+"A person moves forward, then stop, then a person moves to his left.",空間方位位移,3
+A person kick forward.,空間方位位移,3
+"A person moves upward, a person moves backward.",空間方位位移,3
+A person moves downward while bending followed by a person moves forward then moving in a clockwise circle.,空間方位位移,3
+A person moves backward then moves to the right then moves to the left then moves to the right.,空間方位位移,3
+"A person moves backward, a person moves to his left, a person moves forward, a person moves to his right, a person completes a circular movement, a person moves backward, a person moves sideways while rotating .",空間方位位移,4
+"A person moves forward, person stays stationary, person moves to his left, person moves slightly forward, person moves downward while bending, person moves to her/his left, person moves upward while unbending .",空間方位位移,4
+A person stays stationary -> person attemptes to lift object with right hand -> person walk forward -> person moves to the left.,空間方位位移,4
+"A person moves diagonally to the left, a person moves to the right, a person moves forward.",空間方位位移,4
+A person stays stationary -> a person pick something up -> a person moves forward -> a person moves backward -> a person pick something up.,空間方位位移,4
+A person crawls forward and back.,空間方位位移,4
+A person moves forward then moves downward then moves in a clockwise circle.,空間方位位移,4
+A person stays stationary -> person moves upward then falls to the left.,空間方位位移,4
+A person stays stationary -> person crawl downward -> person stand up -> person moves upward -> person moves sideways -> person touch own part .,空間方位位移,4
+A person moves backward runs forward and then runs backward.,空間方位位移,4
+a person is moving side to side while twirling in half circles.,空間方位位移,4
+"A person stays stationary -> a person hopps to the right 5 times, then a person moves forward .",空間方位位移,4
+A person moves downward while bending followed by a person moves forward then moving in counter-clockwise path followed by a person standstill.,空間方位位移,4
+the person was twirling around.,空間方位位移,4
+A person stays stationary -> person crawl forward -> person walk backwards -> person moves to her left.,空間方位位移,4
+A person hop on one foot.,單腳站立,3

@@ -1,0 +1,62 @@
+[
+    {
+        "Timestamp": "2025/03/14 08:00 AM",
+        "Motion": "A person drinks water from a cup.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/14 08:10 AM",
+        "Motion": "A person waves at the camera.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/14 08:20 AM",
+        "Motion": "A person reads a book while seated.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/14 08:30 AM",
+        "Motion": "A person scratches their head.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/14 08:40 AM",
+        "Motion": "A person claps three times.",
+        "Speed": "Normal"
+    },
+    {
+        "Timestamp": "2025/03/14 08:50 AM",
+        "Motion": "A person checks their watch.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/14 09:00 AM",
+        "Motion": "A person opens a door.",
+        "Speed": "Normal"
+    },
+    {
+        "Timestamp": "2025/03/14 09:10 AM",
+        "Motion": "A person folds a towel.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/14 09:20 AM",
+        "Motion": "A person touches their face.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/14 09:30 AM",
+        "Motion": "A person picks up a phone and looks at the screen.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/14 09:40 AM",
+        "Motion": "A person points toward the window.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/14 09:50 AM",
+        "Motion": "A person adjusts their glasses.",
+        "Speed": "Slow"
+    }
+]

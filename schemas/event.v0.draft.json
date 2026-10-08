@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Radar event (DRAFT v0, not confirmed)",
+  "type": "object",
+  "required": ["schema_version", "event_id", "device_id", "event_type", "timestamps"],
+  "properties": {
+    "schema_version": { "const": "0-draft" },
+    "event_id": { "type": "string", "description": "全域唯一，用於去重與追蹤" },
+    "device_id": { "type": "string" },
+    "subject_id": { "type": "string", "description": "長者代號，不含姓名等身分資料" },
+    "event_type": {
+      "type": "string",
+      "enum": ["fall", "posture", "activity", "heartbeat"],
+      "description": "實際可輸出的種類待雷達負責人確認"
+    },
+    "label": { "type": "string", "description": "姿態或活動名稱，例如 sit_to_stand、walking" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "measurements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "value", "unit"],
+        "properties": {
+          "name": { "type": "string" },
+          "value": { "type": "number" },
+          "unit": { "type": "string" }
+        }
+      }
+    },
+    "voice_confirmation": {
+      "type": "object",
+      "properties": {
+        "result": { "enum": ["confirmed_fall", "denied", "no_response", "not_asked"] },
+        "language": { "type": "string", "description": "例如 zh-TW、nan-TW" }
+      }
+    },
+    "timestamps": {
+      "type": "object",
+      "required": ["detected"],
+      "description": "ISO 8601，含時區",
+      "properties": {
+        "detected": { "type": "string", "format": "date-time" },
+        "pre_alert_sent": { "type": "string", "format": "date-time" },
+        "voice_asked": { "type": "string", "format": "date-time" },
+        "voice_answered": { "type": "string", "format": "date-time" },
+        "sent": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

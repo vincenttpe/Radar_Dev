@@ -1,0 +1,12 @@
+# 原型的直接依賴（版本取自 requirements-jetson-freeze.txt）。
+# torch 不在這裡：Jetson 請依 Dockerfile 從 jetson-ai-lab 的索引安裝，其他機器請依 PyTorch 官網安裝。
+beautifulsoup4==4.14.3
+ddgs==9.14.4
+duckduckgo_search==8.1.1
+huggingface_hub==0.36.2
+neo4j==6.2.0
+numpy==1.26.4
+pandas==1.3.5
+requests==2.34.2
+sentence-transformers==3.0.1
+transformers==4.44.2

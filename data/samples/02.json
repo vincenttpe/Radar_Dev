@@ -1,0 +1,62 @@
+[
+    {
+        "Timestamp": "2025/03/11 08:00 AM",
+        "Motion": "The person lifts both hands while remaining in place.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/11 08:10 AM",
+        "Motion": "The person leans down toward the floor.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/11 08:20 AM",
+        "Motion": "The individual lowers into a seated position.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/11 08:30 AM",
+        "Motion": "The person bends toward the ground and then rises upright again.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/11 08:40 AM",
+        "Motion": "The person performs several vertical jumps.",
+        "Speed": "Fast"
+    },
+    {
+        "Timestamp": "2025/03/11 08:50 AM",
+        "Motion": "The person jogs on the spot without traveling.",
+        "Speed": "Fast"
+    },
+    {
+        "Timestamp": "2025/03/11 09:00 AM",
+        "Motion": "The person walks at an ordinary pace.",
+        "Speed": "Normal"
+    },
+    {
+        "Timestamp": "2025/03/11 09:10 AM",
+        "Motion": "The person advances rapidly.",
+        "Speed": "Fast"
+    },
+    {
+        "Timestamp": "2025/03/11 09:20 AM",
+        "Motion": "The person goes forward and then returns backward.",
+        "Speed": "Normal"
+    },
+    {
+        "Timestamp": "2025/03/11 09:30 AM",
+        "Motion": "The person steps backward.",
+        "Speed": "Slow"
+    },
+    {
+        "Timestamp": "2025/03/11 09:40 AM",
+        "Motion": "The person shifts sideways and then goes right.",
+        "Speed": "Normal"
+    },
+    {
+        "Timestamp": "2025/03/11 09:50 AM",
+        "Motion": "The person balances while hopping on one leg.",
+        "Speed": "Slow"
+    }
+]
