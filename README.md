@@ -16,6 +16,8 @@
 | `kg/dumps/` | Neo4j 資料庫備份（2026-05-10） |
 | `data/labels/` | 舊雛形用的動作描述標註資料 |
 | `data/samples/` | 舊雛形的測試輸入（6 個 JSON，共 64 筆） |
+| `data/samples_fall/` | 2026-10-08 取得的動作描述 JSON 樣本，多 `fall` 欄位 |
+| `data/samples_device_event/` | 2026-10-08 取得的裝置簡易動作事件樣本 |
 | `schemas/` | 雷達事件格式草案（**未經確認**） |
 | `legacy/prototype/` | 舊雛形程式，僅供參考與比對，不再開發 |
 | `tests/` | 資料檔的一致性測試（知識圖譜、事件格式、標註、樣本），不載入模型、不連資料庫 |
