@@ -18,7 +18,7 @@ import sys
 from decimal import Decimal
 from itertools import pairwise
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
 
 REPO = Path(__file__).resolve().parents[2]
 VERSION = "v1"
@@ -29,7 +29,7 @@ THRESHOLDS_JSON = f"kg/{VERSION}/thresholds.json"
 # ── 人訂的欄位 ────────────────────────────────────────────
 # 單位與量測精度不在 graph.cypher 裡，由人依來源寫出的位數判斷（尚待審核人確認，
 # 見 docs/05_會議待詢問清單.md E5）。resolution 是量測值的最小間距，None 代表連續量。
-METRIC_CONFIG: dict[str, dict] = {
+METRIC_CONFIG: dict[str, dict[str, Any]] = {
     "下肢肌力": {"unit": "次/30 秒", "resolution": 1, "resolution_note": "次數，整數"},
     "單腳站立": {"unit": "秒", "resolution": 1, "resolution_note": "秒數，來源只寫整數秒（假設，來源未明說精度）"},
     "來回行走": {"unit": "秒（2.44 公尺）", "resolution": 0.1, "resolution_note": "秒數，來源寫到小數一位（假設，來源未明說量測精度與取整方式）"},
@@ -137,7 +137,7 @@ def parse_level_range(level_name: str) -> tuple[int | float, int | float | None]
     raise ValueError(f"無法從等級名稱解析門檻：{level_name!r}")
 
 
-def build_thresholds(metrics: list[Metric]) -> dict:
+def build_thresholds(metrics: list[Metric]) -> dict[str, Any]:
     out = []
     for metric in metrics:
         if metric["name"] not in METRIC_CONFIG:
@@ -153,13 +153,13 @@ def build_thresholds(metrics: list[Metric]) -> dict:
     return {**THRESHOLDS_HEADER, "metrics": out}
 
 
-def _overlaps(low: dict, high: dict) -> bool:
+def _overlaps(low: dict[str, Any], high: dict[str, Any]) -> bool:
     """較低等級的上界是否和較高等級的下界重疊（相等且兩邊都含也算重疊）。"""
     edge_low, edge_high = Decimal(str(low["max"])), Decimal(str(high["min"]))
     return edge_low > edge_high or (edge_low == edge_high and low["max_inclusive"] and high["min_inclusive"])
 
 
-def _has_gap(low: dict, high: dict, resolution: Decimal | None) -> bool:
+def _has_gap(low: dict[str, Any], high: dict[str, Any], resolution: Decimal | None) -> bool:
     """兩級之間是否有量得到、卻不屬於任何一級的值。resolution 為 None 代表連續量。"""
     edge_low, edge_high = Decimal(str(low["max"])), Decimal(str(high["min"]))
     if resolution is None:  # 連續量：邊界相等且至少一邊含才相接
@@ -170,7 +170,7 @@ def _has_gap(low: dict, high: dict, resolution: Decimal | None) -> bool:
     return first_uncovered < first_covered_by_high
 
 
-def find_threshold_issues(metric: dict) -> set[tuple]:
+def find_threshold_issues(metric: dict[str, Any]) -> set[tuple[Any, ...]]:
     """依指標的 resolution 檢查相鄰等級有沒有缺口或重疊，回傳 {(指標, 低分, 高分, 'gap'|'overlap')}。
 
     把等級依 min 排序，逐對比較「較低那級的上界」與「較高那級的下界」。
@@ -191,7 +191,7 @@ def find_threshold_issues(metric: dict) -> set[tuple]:
 
 # ── 產生檔案 ──────────────────────────────────────────────
 
-def _dump(obj: dict) -> str:
+def _dump(obj: dict[str, Any]) -> str:
     return json.dumps(obj, ensure_ascii=False, indent=2) + "\n"
 
 

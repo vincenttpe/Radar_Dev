@@ -16,6 +16,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 REPO = Path(__file__).resolve().parents[2]
 MANIFEST = REPO / "kg" / "releases.json"
@@ -31,7 +32,7 @@ def release_files(version: str) -> list[str]:
     return sorted(p.relative_to(REPO).as_posix() for p in base.rglob("*") if p.is_file())
 
 
-def compute(manifest: dict) -> dict:
+def compute(manifest: dict[str, Any]) -> dict[str, Any]:
     """依目前檔案內容重算雜湊，回傳新的清單（核准欄位與說明原樣保留）。"""
     for release in manifest["releases"]:
         release["files"] = {f: sha256_of(REPO / f) for f in release_files(release["version"])}
@@ -40,11 +41,12 @@ def compute(manifest: dict) -> dict:
     return manifest
 
 
-def load() -> dict:
-    return json.loads(MANIFEST.read_text(encoding="utf-8"))
+def load() -> dict[str, Any]:
+    manifest: dict[str, Any] = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    return manifest
 
 
-def dump(manifest: dict) -> None:
+def dump(manifest: dict[str, Any]) -> None:
     MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 

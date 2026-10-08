@@ -8,15 +8,24 @@ on:
 jobs:
   pytest:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false          # 一個版本失敗時，另一個版本仍跑完，方便比對
+      matrix:
+        python-version: ["3.11", "3.12"]   # requires-python 的下限與目前使用的版本
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: pyproject.toml
       - run: pip install -r requirements-dev.txt
-      - run: pytest
+      - name: ruff（風格與常見錯誤）
+        run: ruff check src tests
+      - name: mypy（型別，src 嚴格模式）
+        run: mypy
+      - name: pytest 與覆蓋率門檻
+        run: pytest --cov
       - name: 指令列工具能用（驗證 pyproject.toml 的 scripts）
         run: |
           radar-weekly-report --input data/samples_fall/2026-06-03.json | head -5

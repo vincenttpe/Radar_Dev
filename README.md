@@ -64,6 +64,18 @@ pytest
 
 改這些檔案時先跑一次。改了 `kg/v1/` 要先更新 `kg/releases.json`，指令見 `kg/README.md`。
 
+### 品質檢查
+
+CI 在每個 PR 與 push 到 `main` 時，用 Python 3.11 與 3.12 各跑一次下面三項，任何一項失敗 PR 就是紅的。本機先跑：
+
+```bash
+ruff check src tests     # 風格與常見錯誤（規則明確列在 pyproject.toml，不依賴 ruff 預設值）
+mypy                     # 型別檢查，src 用嚴格模式
+pytest --cov             # 測試；覆蓋率低於 95% 會失敗（含分支覆蓋）
+```
+
+設定都在 `pyproject.toml`。沒有時區的 `datetime` 與全形標點的規則是刻意關掉的，理由寫在設定旁邊；不要為了讓檢查通過而逐行加 `# noqa`。ruff 目前不做格式化檢查（`ruff format`），原因是現有程式有不少長行，要一次性重排再開。
+
 ## 設定
 
 密碼與金鑰一律用環境變數，不寫進程式碼。複製 `.env.example` 為 `.env` 後填入；`.env` 已列在 `.gitignore`。
