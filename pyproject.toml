@@ -19,9 +19,14 @@ dev = ["pytest>=8"]
 [project.scripts]
 radar-weekly-report = "radar_agent.weekly_report:main"
 radar-kg-manifest = "radar_agent.kg_manifest:main"
+radar-kg-build = "radar_agent.kg_source:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 # 注意：程式會讀 repo 裡的 schemas/、kg/，所以必須用可編輯安裝（pip install -e .），
 # 不能打包成一般的 wheel 再安裝到別處。
+
+# 資料的時間戳沒有時區（會議清單 A4），程式與測試刻意使用沒有時區的 datetime。
+[tool.ruff.lint]
+extend-ignore = ["DTZ001"]

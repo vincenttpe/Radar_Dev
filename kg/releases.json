@@ -13,9 +13,9 @@
       "files": {
         "kg/v1/bridge.cypher": "b3b06bd441f21d978c0a20e81fc229ec5b6820352e370934fe6d28c1ae0208f2",
         "kg/v1/graph.cypher": "4c16f42b11cdb982c8264aecc9e80fecea906af3ab7f08ac95d3994e761ac754",
-        "kg/v1/metrics.json": "7a7f4a42861742f63bfd32002f25eeca4cc832720ed745215bffd25b341da14d",
+        "kg/v1/metrics.json": "3892f4b03dc5f0ee819434732e6cce1a8aed63e56a99ee5b62b7976be32e9c08",
         "kg/v1/patch_wording.cypher": "c901ffbcae6397f79990a96ae6f6b641f6d5f8c4e3d7fb7443e75ee4bf1d1fef",
-        "kg/v1/thresholds.json": "32fad84c779b4f4393f8da9e66d5aee514c6095986047d7e8915da05ecb3e371"
+        "kg/v1/thresholds.json": "18db92f6f6b863e63e82b82716ec891a84a12c977a349efc540cde217447c38c"
       }
     }
   ],

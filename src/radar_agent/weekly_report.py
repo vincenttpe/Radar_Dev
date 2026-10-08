@@ -7,6 +7,12 @@
 裝置事件（{"mode","event","trigger","userReply"}）沒有時間戳，無法分到哪一天，
 等會議清單 A1、A3、A4 有答案再加；在那之前不猜。
 
+結構（要改統計口徑時看這裡）：
+    口徑只在兩個函式：counts_as_fall()、counts_as_activity()（會議清單 C1、C2）。
+    統計：summarize_falls / summarize_activity / summarize_quality，由 build_report 組合。
+    輸出：render_markdown 只負責排版，不做任何判斷。
+    報告的欄位定義在 WeeklyReport（TypedDict）；統計、Markdown、--json 與測試都以它為準。
+
 統計口徑（見 ASSUMPTIONS，也會印在報告裡，避免數字被誤讀）都是第 1 版的暫定值，
 等會議清單 C1、C2、C3 確認後調整。
 
@@ -22,6 +28,7 @@ import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import TypedDict
 
 SPEED_ORDER = ("Slow", "Normal", "Fast")
 OTHER_SPEED = "其他"
@@ -38,6 +45,8 @@ ASSUMPTIONS = [
 _TS = re.compile(r"^(\d{4})[/-](\d{1,2})[/-](\d{1,2}) (\d{1,2}):(\d{2})(?: ([AaPp][Mm]))?$")
 
 
+# ── 資料型別 ──────────────────────────────────────────────
+
 @dataclass(frozen=True)
 class Record:
     at: datetime          # 本地時間，無時區
@@ -45,6 +54,49 @@ class Record:
     speed: str | None
     fall: bool | None     # None＝這筆資料沒有 fall 欄位
 
+
+class FallEvent(TypedDict):
+    at: str               # ISO 8601，到分鐘
+    motion: str
+
+
+class FallSummary(TypedDict):
+    count: int
+    events: list[FallEvent]
+    judgeable: bool       # False＝資料沒有 fall 欄位，不能把「沒資料」當成「沒有跌倒」
+
+
+class DayCount(TypedDict):
+    date: str
+    count: int
+
+
+class ActivitySummary(TypedDict):
+    total: int
+    per_day: list[DayCount]
+    active_days: int
+    busiest_day: str | None
+    speed: dict[str, int]
+
+
+class DataQuality(TypedDict):
+    records_in_week: int
+    out_of_week: int
+    fall_field_missing: int
+    skipped: list[str]
+
+
+class WeeklyReport(TypedDict):
+    title: str | None
+    week_start: str
+    week_end: str
+    falls: FallSummary
+    activity: ActivitySummary
+    data_quality: DataQuality
+    assumptions: list[str]
+
+
+# ── 讀入 ─────────────────────────────────────────────────
 
 def parse_timestamp(text: str) -> datetime:
     """解析 '2026/06/03 08:18 AM'。
@@ -64,7 +116,7 @@ def parse_timestamp(text: str) -> datetime:
     return datetime(year, month, day, hour, minute)
 
 
-def _parse_fall(value) -> bool | None:
+def _parse_fall(value: object) -> bool | None:
     if value is None:
         return None
     text = str(value).strip().lower()
@@ -97,95 +149,146 @@ def from_description_records(rows: list) -> tuple[list[Record], list[str]]:
     return records, skipped
 
 
-def build_report(records: list[Record], week_start: date, skipped: list[str] | None = None, title: str | None = None) -> dict:
-    """統計 week_start 起連續 7 天（含起始日、不含第 8 天 00:00）。回傳可直接序列化的 dict。"""
+# ── 統計口徑（C1、C2 確認後只改這兩個函式與 ASSUMPTIONS）─────────
+
+def counts_as_fall(record: Record) -> bool:
+    """這一筆算不算一次跌倒。目前：fall 欄位明確為 yes。"""
+    return record.fall is True
+
+
+def counts_as_activity(record: Record) -> bool:
+    """這一筆算不算活動量。目前：動作紀錄，但跌倒那一筆不算。"""
+    return not counts_as_fall(record)
+
+
+# ── 統計 ─────────────────────────────────────────────────
+
+def records_in_week(records: list[Record], week_start: date) -> list[Record]:
+    """week_start 起連續 7 天（含起始日 00:00、不含第 8 天 00:00），依時間排序。"""
     start = datetime.combine(week_start, datetime.min.time())
     end = start + timedelta(days=7)
-    in_week = sorted((r for r in records if start <= r.at < end), key=lambda r: r.at)
+    return sorted((r for r in records if start <= r.at < end), key=lambda r: r.at)
 
-    falls = [r for r in in_week if r.fall is True]
-    activity = [r for r in in_week if r.fall is not True]
 
-    per_day = []
-    for offset in range(7):
-        day = week_start + timedelta(days=offset)
-        per_day.append({"date": day.isoformat(), "count": sum(1 for r in activity if r.at.date() == day)})
-    busiest = max(per_day, key=lambda d: d["count"]) if activity else None
+def summarize_falls(in_week: list[Record]) -> FallSummary:
+    falls = [r for r in in_week if counts_as_fall(r)]
+    return {
+        "count": len(falls),
+        "events": [{"at": r.at.isoformat(timespec="minutes"), "motion": r.motion} for r in falls],
+        "judgeable": any(r.fall is not None for r in in_week),
+    }
 
-    speed = {s: 0 for s in SPEED_ORDER} | {OTHER_SPEED: 0}
+
+def daily_counts(activity: list[Record], week_start: date) -> list[DayCount]:
+    """7 天各一筆，沒有紀錄的日子也列出（count 為 0）。"""
+    days = [week_start + timedelta(days=offset) for offset in range(7)]
+    return [{"date": day.isoformat(), "count": sum(1 for r in activity if r.at.date() == day)} for day in days]
+
+
+def speed_distribution(activity: list[Record]) -> dict[str, int]:
+    counts = dict.fromkeys(SPEED_ORDER, 0) | {OTHER_SPEED: 0}
     for r in activity:
-        speed[r.speed if r.speed in SPEED_ORDER else OTHER_SPEED] += 1
+        counts[r.speed if r.speed in SPEED_ORDER else OTHER_SPEED] += 1
+    return counts
 
+
+def summarize_activity(in_week: list[Record], week_start: date) -> ActivitySummary:
+    activity = [r for r in in_week if counts_as_activity(r)]
+    per_day = daily_counts(activity, week_start)
+    busiest = max(per_day, key=lambda d: d["count"]) if activity else None
+    return {
+        "total": len(activity),
+        "per_day": per_day,
+        "active_days": sum(1 for d in per_day if d["count"] > 0),
+        "busiest_day": busiest["date"] if busiest else None,
+        "speed": speed_distribution(activity),
+    }
+
+
+def summarize_quality(records: list[Record], in_week: list[Record], skipped: list[str]) -> DataQuality:
+    return {
+        "records_in_week": len(in_week),
+        "out_of_week": len(records) - len(in_week),
+        "fall_field_missing": sum(1 for r in in_week if r.fall is None),
+        "skipped": list(skipped),
+    }
+
+
+def build_report(records: list[Record], week_start: date, skipped: list[str] | None = None, title: str | None = None) -> WeeklyReport:
+    """統計 week_start 起連續 7 天。回傳可直接序列化的 dict（欄位見 WeeklyReport）。"""
+    in_week = records_in_week(records, week_start)
     return {
         "title": title,
         "week_start": week_start.isoformat(),
         "week_end": (week_start + timedelta(days=6)).isoformat(),
-        "falls": {
-            "count": len(falls),
-            "events": [{"at": r.at.isoformat(timespec="minutes"), "motion": r.motion} for r in falls],
-            "judgeable": any(r.fall is not None for r in in_week),
-        },
-        "activity": {
-            "total": len(activity),
-            "per_day": per_day,
-            "active_days": sum(1 for d in per_day if d["count"] > 0),
-            "busiest_day": busiest["date"] if busiest else None,
-            "speed": speed,
-        },
-        "data_quality": {
-            "records_in_week": len(in_week),
-            "out_of_week": len(records) - len(in_week),
-            "fall_field_missing": sum(1 for r in in_week if r.fall is None),
-            "skipped": list(skipped or []),
-        },
+        "falls": summarize_falls(in_week),
+        "activity": summarize_activity(in_week, week_start),
+        "data_quality": summarize_quality(records, in_week, skipped or []),
         "assumptions": list(ASSUMPTIONS),
     }
 
+
+# ── 輸出（只排版，不做判斷）──────────────────────────────────
 
 def _fmt_date(iso: str) -> str:
     d = date.fromisoformat(iso)
     return f"{d:%Y/%m/%d}（{WEEKDAYS[d.weekday()]}）"
 
 
-def render_markdown(report: dict) -> str:
-    falls, act, dq = report["falls"], report["activity"], report["data_quality"]
-    head = f'{report["title"]} ' if report["title"] else ""
-    out = [
-        f'# {head}週報　{_fmt_date(report["week_start"])} – {_fmt_date(report["week_end"])}',
-        "",
-        "## 跌倒",
-        "",
-    ]
-    if dq["records_in_week"] == 0:
-        out.append("本週沒有任何紀錄，**無法判斷是否發生跌倒**（也可能是裝置沒有傳資料）。")
-    elif not falls["judgeable"]:
-        out.append("本週的資料沒有跌倒欄位，**無法判斷是否發生跌倒**。")
-    else:
-        out.append(f'本週跌倒 **{falls["count"]}** 次。')
-        if dq["fall_field_missing"]:
-            out.append(f'（另有 {dq["fall_field_missing"]} 筆沒有跌倒欄位，未計入。）')
-        if falls["events"]:
-            out.append("")
-            for e in falls["events"]:
-                at = datetime.fromisoformat(e["at"])
-                out.append(f'- {at:%Y/%m/%d %H:%M}　原始描述：{e["motion"]}')
-    out += ["", "## 活動量", ""]
-    if act["total"] == 0:
-        out.append("本週沒有動作紀錄。")
-    else:
-        out.append(f'本週動作紀錄 **{act["total"]}** 筆（不含跌倒），有紀錄的天數 {act["active_days"]} / 7，最多的一天是 {_fmt_date(act["busiest_day"])}。')
-        sp = act["speed"]
-        parts = [f"{k} {sp[k]}" for k in SPEED_ORDER] + ([f"{OTHER_SPEED} {sp[OTHER_SPEED]}"] if sp[OTHER_SPEED] else [])
-        out.append(f'速度分布：{"、".join(parts)}。')
-    out += ["", "| 日期 | 動作紀錄筆數 |", "|---|---:|"]
-    out += [f'| {_fmt_date(d["date"])} | {d["count"]} |' for d in act["per_day"]]
-    out += ["", "## 統計口徑與資料品質", ""]
-    out += [f"- {a}" for a in report["assumptions"]]
-    out.append(f'- 本週納入 {dq["records_in_week"]} 筆；週外 {dq["out_of_week"]} 筆未計；無法解析 {len(dq["skipped"])} 筆。')
-    out += [f"  - {s}" for s in dq["skipped"]]
-    out += ["", "建議報告尚未包含在這一版。", ""]
-    return "\n".join(out)
+def _render_falls(falls: FallSummary, quality: DataQuality) -> list[str]:
+    if quality["records_in_week"] == 0:
+        return ["本週沒有任何紀錄，**無法判斷是否發生跌倒**（也可能是裝置沒有傳資料）。"]
+    if not falls["judgeable"]:
+        return ["本週的資料沒有跌倒欄位，**無法判斷是否發生跌倒**。"]
 
+    lines = [f'本週跌倒 **{falls["count"]}** 次。']
+    if quality["fall_field_missing"]:
+        lines.append(f'（另有 {quality["fall_field_missing"]} 筆沒有跌倒欄位，未計入。）')
+    if falls["events"]:
+        lines.append("")
+        lines += [f'- {datetime.fromisoformat(e["at"]):%Y/%m/%d %H:%M}　原始描述：{e["motion"]}' for e in falls["events"]]
+    return lines
+
+
+def _render_activity(activity: ActivitySummary) -> list[str]:
+    if activity["total"] == 0:
+        lines = ["本週沒有動作紀錄。"]
+    else:
+        speed = activity["speed"]
+        parts = [f"{k} {speed[k]}" for k in SPEED_ORDER] + ([f"{OTHER_SPEED} {speed[OTHER_SPEED]}"] if speed[OTHER_SPEED] else [])
+        summary = (
+            f'本週動作紀錄 **{activity["total"]}** 筆（不含跌倒），有紀錄的天數 {activity["active_days"]} / 7，'
+            f'最多的一天是 {_fmt_date(activity["busiest_day"] or "")}。'
+        )
+        lines = [summary, f'速度分布：{"、".join(parts)}。']
+    lines += ["", "| 日期 | 動作紀錄筆數 |", "|---|---:|"]
+    lines += [f'| {_fmt_date(d["date"])} | {d["count"]} |' for d in activity["per_day"]]
+    return lines
+
+
+def _render_quality(assumptions: list[str], quality: DataQuality) -> list[str]:
+    lines = [f"- {a}" for a in assumptions]
+    lines.append(
+        f'- 本週納入 {quality["records_in_week"]} 筆；週外 {quality["out_of_week"]} 筆未計；'
+        f'無法解析 {len(quality["skipped"])} 筆。'
+    )
+    lines += [f"  - {s}" for s in quality["skipped"]]
+    return lines
+
+
+def render_markdown(report: WeeklyReport) -> str:
+    head = f'{report["title"]} ' if report["title"] else ""
+    sections = [
+        [f'# {head}週報　{_fmt_date(report["week_start"])} – {_fmt_date(report["week_end"])}'],
+        ["## 跌倒", ""] + _render_falls(report["falls"], report["data_quality"]),
+        ["## 活動量", ""] + _render_activity(report["activity"]),
+        ["## 統計口徑與資料品質", ""] + _render_quality(report["assumptions"], report["data_quality"]),
+        ["建議報告尚未包含在這一版。", ""],
+    ]
+    return "\n".join(line for section in sections for line in section + [""]).rstrip("\n") + "\n"
+
+
+# ── 命令列 ───────────────────────────────────────────────
 
 def _monday_of(d: date) -> date:
     return d - timedelta(days=d.weekday())

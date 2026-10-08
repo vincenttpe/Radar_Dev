@@ -1,5 +1,5 @@
 """知識圖譜 v1：graph.cypher 是正本，metrics.json 與 patch_wording.cypher 都要和它一致。"""
-import re
+from radar_agent import kg_source
 
 EXPECTED_METRICS = {"下肢肌力", "單腳站立", "來回行走", "心肺耐力", "步行速度"}
 EXPECTED_SCORES = {
@@ -59,26 +59,8 @@ def test_wording_matches_rank_for_metrics_that_name_themselves(kg_levels_from_cy
 def test_patch_wording_matches_cypher(repo, graph_cypher):
     """patch_wording.cypher 寫進 Neo4j 的 content 必須和 graph.cypher 的對應節點逐字相同。"""
     patch = (repo / "kg" / "v1" / "patch_wording.cypher").read_text(encoding="utf-8")
-    statements = re.findall(
-        r'MATCH \(:Metric \{name: "([^"]*)"\}\)-\[:has_level\]->\(:Criteria \{score: (\d+)\}\)'
-        r'-\[:give_advice\]->\(s:Suggestion\)\s*SET s\.content = "((?:[^"\\]|\\.)*)";',
-        patch,
-    )
+    statements = kg_source.parse_patch(patch)
     assert len(statements) == 4
-
-    metric_names = dict(re.findall(r'\((m\d+):Metric \{name: "([^"]*)"\}\)', graph_cypher))
-    var_by_metric = {v: k for k, v in metric_names.items()}
+    raw = kg_source.raw_suggestions(graph_cypher)
     for metric, score, content in statements:
-        m = var_by_metric[metric]
-        # 找到 graph.cypher 裡同一 (指標, 分數) 的 Suggestion 變數，再比 content
-        c_var = next(
-            c
-            for c, _n, s, _r in re.findall(
-                r'CREATE \((c\d+_\d+):Criteria \{name: "([^"]*)", score: (\d+), rank: "([^"]*)"\}\)',
-                graph_cypher,
-            )
-            if c.startswith(f"c{m[1:]}_") and int(s) == int(score)
-        )
-        s_var = re.search(rf"\({m}\)-\[:has_level\]->\({c_var}\)-\[:give_advice\]->\((s\d+_\d+)\)", graph_cypher).group(1)
-        expected = re.search(rf'CREATE \({s_var}:Suggestion \{{content: "((?:[^"\\]|\\.)*)"\}}\)', graph_cypher).group(1)
-        assert content == expected, (metric, score)
+        assert content == raw[(metric, score)], (metric, score)

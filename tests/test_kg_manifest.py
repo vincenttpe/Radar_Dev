@@ -69,3 +69,94 @@ def test_check_mode_exit_codes(manifest, monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(kg_manifest, "MANIFEST", tmp_path / "releases.json")
     kg_manifest.dump(bad)
     assert kg_manifest.main(["--check"]) == 1
+
+
+# ── 寫檔模式（radar-kg-manifest 不加 --check）─────────────────
+# 用暫存目錄裡的小型 repo 測，不碰真正的 kg/，也不依賴真實資料的內容。
+
+@pytest.fixture
+def tmp_repo(tmp_path, monkeypatch):
+    (tmp_path / "kg" / "v1").mkdir(parents=True)
+    (tmp_path / "kg" / "v1" / "a.cypher").write_text("CREATE (a);\n", encoding="utf-8")
+    (tmp_path / "kg" / "v1" / "b.json").write_text('{"x": 1}\n', encoding="utf-8")
+    (tmp_path / "kg" / "source").mkdir()
+    (tmp_path / "kg" / "source" / "old.docx").write_bytes(b"old-source")
+    manifest = {
+        "note": "手寫的說明",
+        "releases": [{
+            "version": "v1",
+            "status": "working",
+            "approval": {"status": "approved", "approver": "王小明", "date": "2026-10-08"},
+            "note": "這段說明不能被覆蓋",
+            "files": {},
+        }],
+        "other_sources": [{
+            "path": "kg/source/old.docx", "status": "differs_from_v1", "reason": "用詞不同", "sha256": "",
+        }],
+    }
+    monkeypatch.setattr(kg_manifest, "REPO", tmp_path)
+    monkeypatch.setattr(kg_manifest, "MANIFEST", tmp_path / "kg" / "releases.json")
+    kg_manifest.dump(manifest)
+    return tmp_path
+
+
+def test_write_mode_fills_hashes_and_keeps_hand_written_fields(tmp_repo):
+    assert kg_manifest.main([]) == 0
+    manifest = kg_manifest.load()
+    release = manifest["releases"][0]
+    assert release["files"] == {
+        "kg/v1/a.cypher": kg_manifest.sha256_of(tmp_repo / "kg/v1/a.cypher"),
+        "kg/v1/b.json": kg_manifest.sha256_of(tmp_repo / "kg/v1/b.json"),
+    }
+    assert manifest["other_sources"][0]["sha256"] == kg_manifest.sha256_of(tmp_repo / "kg/source/old.docx")
+    # 手寫的欄位原樣保留
+    assert manifest["note"] == "手寫的說明"
+    assert release["approval"] == {"status": "approved", "approver": "王小明", "date": "2026-10-08"}
+    assert release["note"] == "這段說明不能被覆蓋" and release["status"] == "working"
+    assert manifest["other_sources"][0]["reason"] == "用詞不同"
+
+
+def test_check_fails_until_write_mode_is_run(tmp_repo, capsys):
+    assert kg_manifest.main(["--check"]) == 1  # 雜湊還是空的
+    assert "radar-kg-manifest" in capsys.readouterr().out
+    kg_manifest.main([])
+    assert kg_manifest.main(["--check"]) == 0
+
+
+def test_editing_a_file_changes_only_its_own_hash(tmp_repo):
+    kg_manifest.main([])
+    before = kg_manifest.load()["releases"][0]["files"]
+    (tmp_repo / "kg/v1/a.cypher").write_text("CREATE (a), (b);\n", encoding="utf-8")
+    assert kg_manifest.main(["--check"]) == 1
+    kg_manifest.main([])
+    after = kg_manifest.load()["releases"][0]["files"]
+    assert after["kg/v1/a.cypher"] != before["kg/v1/a.cypher"]
+    assert after["kg/v1/b.json"] == before["kg/v1/b.json"]
+    assert kg_manifest.main(["--check"]) == 0
+
+
+def test_new_file_is_registered_and_deleted_file_is_dropped(tmp_repo):
+    kg_manifest.main([])
+    (tmp_repo / "kg/v1/c.json").write_text("{}\n", encoding="utf-8")
+    (tmp_repo / "kg/v1/b.json").unlink()
+    assert kg_manifest.main(["--check"]) == 1
+    kg_manifest.main([])
+    assert sorted(kg_manifest.load()["releases"][0]["files"]) == ["kg/v1/a.cypher", "kg/v1/c.json"]
+
+
+def test_write_mode_is_idempotent_and_keeps_chinese_readable(tmp_repo, capsys):
+    kg_manifest.main([])
+    first = kg_manifest.MANIFEST.read_bytes()
+    capsys.readouterr()
+    assert kg_manifest.main([]) == 0
+    assert kg_manifest.MANIFEST.read_bytes() == first
+    text = first.decode("utf-8")
+    assert "王小明" in text and "\\u" not in text and text.endswith("\n")
+    assert "已更新 kg/releases.json" in capsys.readouterr().out
+
+
+def test_missing_registered_source_is_a_clear_error_not_a_traceback(tmp_repo, capsys):
+    (tmp_repo / "kg/source/old.docx").unlink()
+    assert kg_manifest.main([]) == 2
+    assert "清單登記的檔案不存在" in capsys.readouterr().err
+    assert kg_manifest.main(["--check"]) == 2

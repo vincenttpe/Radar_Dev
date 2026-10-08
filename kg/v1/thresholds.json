@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "source": "由 metrics.json 的等級名稱逐字轉出；只是結構化，沒有修正任何門檻",
+  "source": "由 graph.cypher 的等級名稱逐字轉出；只是結構化，沒有修正任何門檻",
   "note": "min／max 為來源寫出的數字，'~' 與 '以上' 一律照字面視為含邊界（min_inclusive、max_inclusive 皆 true）。來源沒有定義邊界歸屬與量測精度；已知的缺口與重疊見 tests/test_thresholds.py 的 KNOWN_ISSUES，待審核人決定（docs/05_會議待詢問清單.md E5）。",
   "metrics": [
     {

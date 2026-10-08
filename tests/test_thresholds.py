@@ -1,6 +1,6 @@
 """kg/v1/thresholds.json：結構化門檻與等級名稱一致，並固定目前已知的缺口與重疊。
 
-thresholds.json 只是把 metrics.json 的等級名稱轉成數字，沒有修正任何門檻。
+thresholds.json 是 radar-kg-build 從 graph.cypher 的等級名稱轉成數字，沒有修正任何門檻。
 來源（graph.cypher、graph.docx、standard_suggestion.xlsx）本身就有缺口與重疊，
 修正需要審核人決定（docs/05_會議待詢問清單.md E5）。
 
@@ -9,10 +9,10 @@ thresholds.json 只是把 metrics.json 的等級名稱轉成數字，沒有修�
 更新清單與文件。
 """
 import json
-import re
-from decimal import Decimal
 
 import pytest
+
+from radar_agent.kg_source import find_threshold_issues, parse_level_range
 
 # (指標, 低等級分數, 高等級分數, 種類)
 KNOWN_ISSUES = {
@@ -30,52 +30,6 @@ def thresholds(repo) -> dict:
     return json.loads((repo / "kg" / "v1" / "thresholds.json").read_text(encoding="utf-8"))
 
 
-def D(x):
-    return None if x is None else Decimal(str(x))
-
-
-def parse_name(name: str):
-    m = re.search(r"(\d+(?:\.\d+)?)\s*~\s*(\d+(?:\.\d+)?)", name)
-    if m:
-        return float(m.group(1)), float(m.group(2))
-    m = re.search(r"(\d+(?:\.\d+)?)\s*(?:秒|次|m/s)?\s*以上", name)
-    if m:
-        return float(m.group(1)), None
-    raise AssertionError(f"無法解析等級名稱：{name}")
-
-
-def find_issues(metric: dict) -> set[tuple]:
-    """依各指標標示的 resolution 檢查相鄰等級有沒有缺口或重疊。
-
-    把等級依 min 排序，逐對比較「較低那級的上界」與「較高那級的下界」。
-    resolution 是量測值的最小間距（整數次數為 1）；None 代表連續量。
-    """
-    res = D(metric["resolution"])
-    levels = sorted(metric["levels"], key=lambda l: D(l["min"]))
-    issues = set()
-    for low, high in zip(levels, levels[1:]):
-        edge_low, edge_high = D(low["max"]), D(high["min"])
-        assert edge_low is not None, f'{metric["name"]} 分數 {low["score"]} 是開放上界，卻不是最高那一級'
-        key = (metric["name"], low["score"], high["score"])
-
-        if edge_low > edge_high or (edge_low == edge_high and low["max_inclusive"] and high["min_inclusive"]):
-            issues.add(key + ("overlap",))
-            continue
-
-        if res is None:  # 連續量：邊界相等且至少一邊含才相接
-            touching = edge_low == edge_high and (low["max_inclusive"] or high["min_inclusive"])
-            if not touching:
-                issues.add(key + ("gap",))
-            continue
-
-        # 離散量：低等級之後第一個沒被涵蓋的值，必須被高等級涵蓋
-        first_uncovered = edge_low + res if low["max_inclusive"] else edge_low
-        first_covered_by_high = edge_high if high["min_inclusive"] else edge_high + res
-        if first_uncovered < first_covered_by_high:
-            issues.add(key + ("gap",))
-    return issues
-
-
 def test_five_metrics_and_24_levels(thresholds):
     assert [m["name"] for m in thresholds["metrics"]] == ["下肢肌力", "單腳站立", "來回行走", "心肺耐力", "步行速度"]
     assert sum(len(m["levels"]) for m in thresholds["metrics"]) == 24
@@ -89,7 +43,7 @@ def test_thresholds_match_level_names_in_metrics_json(thresholds, metrics_json):
             key = (m["name"], l["score"])
             seen.add(key)
             assert l["source_text"] == names[key], key
-            lo, hi = parse_name(names[key])
+            lo, hi = parse_level_range(names[key])
             assert (l["min"], l["max"]) == (lo, hi), key
             assert l["min_inclusive"] is True
             assert l["max_inclusive"] is (hi is not None)
@@ -109,7 +63,7 @@ def test_each_metric_has_exactly_one_open_ended_level_and_starts_at_zero(thresho
 def test_known_gaps_and_overlaps_are_exactly_the_documented_ones(thresholds):
     found = set()
     for m in thresholds["metrics"]:
-        found |= find_issues(m)
+        found |= find_threshold_issues(m)
     assert found == KNOWN_ISSUES
 
 
@@ -126,10 +80,64 @@ def test_find_issues_detects_synthetic_gap_and_overlap():
         return {"score": score, "min": lo, "max": hi, "min_inclusive": True, "max_inclusive": hi_incl}
 
     clean = {"name": "x", "resolution": 1, "levels": [lv(0, 0, 4), lv(1, 5, None, False)]}
-    assert find_issues(clean) == set()
+    assert find_threshold_issues(clean) == set()
     gap = {"name": "x", "resolution": 1, "levels": [lv(0, 0, 4), lv(1, 6, None, False)]}
-    assert find_issues(gap) == {("x", 0, 1, "gap")}
+    assert find_threshold_issues(gap) == {("x", 0, 1, "gap")}
     overlap = {"name": "x", "resolution": 1, "levels": [lv(0, 0, 5), lv(1, 5, None, False)]}
-    assert find_issues(overlap) == {("x", 0, 1, "overlap")}
+    assert find_threshold_issues(overlap) == {("x", 0, 1, "overlap")}
     continuous_touching = {"name": "x", "resolution": None, "levels": [lv(0, 0, 5, False), lv(1, 5, None, False)]}
-    assert find_issues(continuous_touching) == set()
+    assert find_threshold_issues(continuous_touching) == set()
+
+
+def test_open_ended_level_that_is_not_the_highest_is_an_error():
+    open_low = {"name": "x", "resolution": 1, "levels": [
+        {"score": 0, "min": 0, "max": None, "min_inclusive": True, "max_inclusive": False},
+        {"score": 1, "min": 5, "max": 9, "min_inclusive": True, "max_inclusive": True},
+    ]}
+    with pytest.raises(ValueError, match="開放上界"):
+        find_threshold_issues(open_low)
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("起站30秒 14~17次", (14, 17)),
+    ("起站30秒 18次以上", (18, None)),
+    ("2.44公尺行走 5.5~6.1秒", (5.5, 6.1)),
+    ("2.44公尺行走 7.6秒以上", (7.6, None)),
+    ("步行速度 0.8~1.0 m/s", (0.8, 1)),
+    ("步行速度 1.0 m/s以上", (1, None)),
+])
+def test_parse_level_range(name, expected):
+    assert parse_level_range(name) == expected
+
+
+def test_parse_level_range_rejects_unparseable_name():
+    with pytest.raises(ValueError, match="無法從等級名稱解析門檻"):
+        parse_level_range("沒有數字的名稱")
+
+
+def _lv(score, lo, hi, lo_incl=True, hi_incl=True):
+    return {"score": score, "min": lo, "max": hi, "min_inclusive": lo_incl, "max_inclusive": hi_incl}
+
+
+@pytest.mark.parametrize("name,resolution,low,high,expected", [
+    # 範圍交疊（不只是邊界相等）
+    ("交疊", 1, _lv(0, 0, 6), _lv(1, 5, None, hi_incl=False), "overlap"),
+    ("交疊，連續量", None, _lv(0, 0, 6.5), _lv(1, 5.5, None, hi_incl=False), "overlap"),
+    # 邊界相等
+    ("邊界相等且兩邊都含", None, _lv(0, 0, 5), _lv(1, 5, None, hi_incl=False), "overlap"),
+    ("邊界相等，上界不含", None, _lv(0, 0, 5, hi_incl=False), _lv(1, 5, None, hi_incl=False), None),
+    ("邊界相等，下界不含", None, _lv(0, 0, 5), _lv(1, 5, None, lo_incl=False, hi_incl=False), None),
+    ("邊界相等，兩邊都不含", None, _lv(0, 0, 5, hi_incl=False), _lv(1, 5, None, lo_incl=False, hi_incl=False), "gap"),
+    # 連續量的縫
+    ("連續量有縫", None, _lv(0, 0, 5), _lv(1, 6, None, hi_incl=False), "gap"),
+    # 離散量
+    ("整數剛好相接", 1, _lv(0, 0, 4), _lv(1, 5, None, hi_incl=False), None),
+    ("整數差一個值", 1, _lv(0, 0, 4), _lv(1, 6, None, hi_incl=False), "gap"),
+    ("整數，上界不含而下一級從上界起", 1, _lv(0, 0, 5, hi_incl=False), _lv(1, 5, None, hi_incl=False), None),
+    ("整數，上界不含，下一級從上界加一起", 1, _lv(0, 0, 5, hi_incl=False), _lv(1, 6, None, hi_incl=False), "gap"),
+    ("小數一位剛好相接", 0.1, _lv(0, 0, 5.4), _lv(1, 5.5, None, hi_incl=False), None),
+    ("小數一位差一格", 0.1, _lv(0, 0, 5.4), _lv(1, 5.6, None, hi_incl=False), "gap"),
+])
+def test_find_threshold_issues_cases(name, resolution, low, high, expected):
+    metric = {"name": "x", "resolution": resolution, "levels": [low, high]}
+    assert find_threshold_issues(metric) == (set() if expected is None else {("x", 0, 1, expected)}), name
