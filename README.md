@@ -43,6 +43,7 @@ pip install -e ".[dev]"          # 必須是可編輯安裝（-e），程式會�
 
 ```bash
 radar-weekly-report --input data/samples_fall/2026-06-03.json --title 機構名稱   # 甲方週報
+radar-kg-build --check                                                            # 檢查 metrics.json、thresholds.json 是否與 graph.cypher 一致
 radar-kg-manifest --check                                                         # 檢查知識圖譜發布清單
 ```
 

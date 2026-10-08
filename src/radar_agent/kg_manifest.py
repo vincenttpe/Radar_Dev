@@ -51,7 +51,11 @@ def dump(manifest: dict) -> None:
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     current = load()
-    fresh = compute(json.loads(json.dumps(current)))
+    try:
+        fresh = compute(json.loads(json.dumps(current)))
+    except FileNotFoundError as e:
+        print(f"清單登記的檔案不存在：{e.filename}", file=sys.stderr)
+        return 2
     if "--check" in argv:
         if fresh != current:
             print("kg/releases.json 與實際檔案不一致；請執行 radar-kg-manifest")

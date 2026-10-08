@@ -42,7 +42,6 @@ def validate_event(event: dict) -> list[str]:
 
     stamps = event.get("timestamps", {})
     for earlier, later in TIME_ORDER:
-        if earlier in stamps and later in stamps:
-            if datetime.fromisoformat(stamps[later]) < datetime.fromisoformat(stamps[earlier]):
-                errors.append(f"timestamps：{later} 不得早於 {earlier}")
+        if earlier in stamps and later in stamps and datetime.fromisoformat(stamps[later]) < datetime.fromisoformat(stamps[earlier]):
+            errors.append(f"timestamps：{later} 不得早於 {earlier}")
     return errors

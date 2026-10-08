@@ -1,5 +1,4 @@
 """radar_agent.event_validation.validate_event：Schema 加時間順序規則。"""
-import pytest
 
 from radar_agent.event_validation import validate_event
 

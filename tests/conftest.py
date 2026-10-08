@@ -5,10 +5,11 @@
 """
 import csv
 import json
-import re
 from pathlib import Path
 
 import pytest
+
+from radar_agent import kg_source
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -30,34 +31,13 @@ def metrics_json(repo) -> dict:
 
 @pytest.fixture(scope="session")
 def kg_levels_from_cypher(graph_cypher) -> dict[tuple[str, int], dict]:
-    """把 graph.cypher 解析成 {(指標, 分數): {name, rank, suggestion, recommended_dose}}。"""
-    metric_names = dict(re.findall(r'\((m\d+):Metric \{name: "([^"]*)"\}\)', graph_cypher))
-    criteria = {
-        var: (name, int(score), rank)
-        for var, name, score, rank in re.findall(
-            r'CREATE \((c\d+_\d+):Criteria \{name: "([^"]*)", score: (\d+), rank: "([^"]*)"\}\)',
-            graph_cypher,
-        )
+    """{(指標, 分數): {name, rank, suggestion, recommended_dose}}，解析交給 kg_source。"""
+    fields = ("name", "rank", "suggestion", "recommended_dose")
+    return {
+        (metric["name"], level["score"]): {f: level[f] for f in fields}
+        for metric in kg_source.parse_cypher(graph_cypher)
+        for level in metric["levels"]
     }
-    suggestions = dict(
-        re.findall(r'CREATE \((s\d+_\d+):Suggestion \{content: "((?:[^"\\]|\\.)*)"\}\)', graph_cypher)
-    )
-    links = re.findall(
-        r"\((m\d+)\)-\[:has_level\]->\((c\d+_\d+)\)-\[:give_advice\]->\((s\d+_\d+)\)", graph_cypher
-    )
-
-    levels = {}
-    for m, c, s in links:
-        name, score, rank = criteria[c]
-        body = suggestions[s].replace("\\n", "\n")
-        text, _, dose = body.partition("【建議數值】")
-        levels[(metric_names[m], score)] = {
-            "name": name,
-            "rank": rank,
-            "suggestion": text.strip(),
-            "recommended_dose": dose.strip() or None,
-        }
-    return levels
 
 
 @pytest.fixture(scope="session")

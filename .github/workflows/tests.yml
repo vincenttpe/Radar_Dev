@@ -20,4 +20,5 @@ jobs:
       - name: 指令列工具能用（驗證 pyproject.toml 的 scripts）
         run: |
           radar-weekly-report --input data/samples_fall/2026-06-03.json | head -5
+          radar-kg-build --check
           radar-kg-manifest --check

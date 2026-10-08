@@ -13,10 +13,10 @@
 | 步行速度 | 步行速度 m/s | 4（沒有 4 分等級） |
 
 - `v1/graph.cypher`：建圖腳本，從 `source/graph.docx` 抽出，僅修正下方列出的用詞。**這是 v1 的正本。**
-- `v1/metrics.json`：同一份內容的結構化版本，由 `graph.cypher` 解析產生，方便程式讀取。改內容時改 `graph.cypher`，再重新產生 JSON。
+- `v1/metrics.json`：同一份內容的結構化版本，方便程式讀取。**衍生檔，請勿手改**：由 `radar-kg-build` 從 `graph.cypher` 產生。
 - `v1/bridge.cypher`：把舊雛形的 Class 節點接到 Metric 的查詢。
 - `v1/patch_wording.cypher`：對已載入舊備份的資料庫套用下方的用詞修正，只改 4 個節點。
-- `v1/thresholds.json`：24 個等級的門檻轉成數字（下限、上限、含不含邊界、量測精度），由等級名稱逐字轉出，**沒有修正任何數字**。評分規則會讀它，不要再從等級名稱字串解析。
+- `v1/thresholds.json`：24 個等級的門檻轉成數字（下限、上限、含不含邊界、量測精度），由等級名稱逐字轉出，**沒有修正任何數字**。評分規則會讀它，不要再從等級名稱字串解析。**衍生檔，請勿手改**：由 `radar-kg-build` 產生；單位與量測精度不在 `graph.cypher` 裡，是人訂的，寫在 `src/radar_agent/kg_source.py` 的 `METRIC_CONFIG`（尚待審核人確認）。
 - `releases.json`：發布清單，記錄每個版本的檔案雜湊、核准狀態，以及 `source/`、`dumps/` 與 v1 的差異。雜湊由程式產生，見下方「更新規則」。
 - `dumps/`：2026-05-10 的 Neo4j 備份。依原 README 的查詢推測含舊雛形的 Sentence、Class、Score 節點，內容未逐一核對。
 
@@ -43,6 +43,13 @@
 
 更新來源有三：學術資料重新編碼、實際數據與現場回饋、現有 v1。因為內容與醫療行為相關，**不做全自動更新**，程式只能整理候選與比對差異，寫入一律由人審核後執行（見 `docs/02_目標架構.md`「知識圖譜的更新來源」）。
 
-改了 `kg/v1/` 裡的任何檔案後，執行 `radar-kg-manifest`（需先 `pip install -e .`）更新 `releases.json` 的雜湊；測試會檢查雜湊與實際檔案一致，也檢查 `kg/v1/` 的每個檔案都登記了，所以「同樣標 v1，內容卻不同」不會被默默帶過。核准後把該版的 `approval` 改為 `approved` 並填審核人與日期。
+**改知識圖譜內容的順序**（需先 `pip install -e .`）：
+
+1. 改 `v1/graph.cypher`（唯一該手改的檔案；`patch_wording.cypher` 若涉及同一段文字要一起改）。
+2. `radar-kg-build`：重新產生 `metrics.json`、`thresholds.json`。
+3. `radar-kg-manifest`：更新 `releases.json` 的雜湊。
+4. `pytest`：檢查三者一致、門檻的缺口與重疊有沒有變化。
+
+測試會檢查兩個 JSON 與 `graph.cypher` 逐字一致、雜湊與實際檔案相符，也檢查 `kg/v1/` 的每個檔案都登記了，所以「同樣標 v1，內容卻不同」或手改了衍生檔，都不會被默默帶過。核准後把該版的 `approval` 改為 `approved` 並填審核人與日期。
 
 知識圖譜只存知識，不存個人資料。內容修改需審核後才能進版（目前由公司審核，之後是否改由 PT 或醫師審核待定，見 `docs/03_待確認事項.md` 第 6 項），每次修改升一個版本（v2、v3…），舊版本保留。

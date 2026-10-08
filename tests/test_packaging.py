@@ -15,6 +15,7 @@ def test_declared_scripts(project):
     assert project["scripts"] == {
         "radar-weekly-report": "radar_agent.weekly_report:main",
         "radar-kg-manifest": "radar_agent.kg_manifest:main",
+        "radar-kg-build": "radar_agent.kg_source:main",
     }
 
 
@@ -54,3 +55,19 @@ def test_requirements_dev_installs_this_package_editable_with_dev_extra(repo):
 def test_python_version_floor_matches_ci(repo, project):
     assert project["requires-python"] == ">=3.11"
     assert 'python-version: "3.12"' in (repo / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("module,args", [
+    ("radar_agent.kg_manifest", ["--check"]),
+    ("radar_agent.kg_source", ["--check"]),
+    ("radar_agent.weekly_report", ["--input", "data/samples_fall/2026-06-03.json"]),
+])
+def test_modules_run_as_scripts(repo, module, args):
+    """python -m <模組> 的進入點（if __name__ == '__main__'）真的能跑，結束碼為 0。"""
+    import os
+    import subprocess
+
+    env = {**os.environ, "PYTHONPATH": str(repo / "src")}
+    result = subprocess.run([sys.executable, "-m", module, *args], cwd=repo, env=env, capture_output=True, text=True, encoding="utf-8", check=False)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip()

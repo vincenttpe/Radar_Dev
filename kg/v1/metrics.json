@@ -1,7 +1,7 @@
 {
   "version": "v1",
   "source": "kg/v1/graph.cypher（由 kg/source/graph.docx 抽出）",
-  "note": "機器由 graph.cypher 解析產生；修改請改 graph.cypher 再重新產生",
+  "note": "由 radar-kg-build 從 graph.cypher 產生，請勿手改；修改請改 graph.cypher 再執行 radar-kg-build",
   "metrics": [
     {
       "name": "下肢肌力",
