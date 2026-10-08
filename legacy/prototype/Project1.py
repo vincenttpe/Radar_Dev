@@ -5334,8 +5334,12 @@ if __name__ == "__main__":
 
         # 相對路徑：先以目前工作目錄為準（例如 data/samples/01.json），
         # 找不到再接在 data/samples/ 下面（例如 01.json）
-        if not input_file.is_absolute() and not input_file.exists():
+        if not input_file.is_absolute() and not input_file.is_file():
             input_file = DATA_DIR / input_file
+
+        if not input_file.is_file():
+            print(f"\n❌ 找不到 JSON 檔案：{input_file}")
+            raise SystemExit(1)
 
     elif args.start or args.end:
         use_data_dir_by_time = True
