@@ -52,8 +52,10 @@ radar-kg-manifest --check                                                       
 ## 測試
 
 ```bash
-pytest
+python -m pytest
 ```
+
+用 `python -m pytest` 而不是 `pytest`，可以確保用的是目前啟動的虛擬環境；機器上如果另有一份 `pytest`，直接打 `pytest` 可能抓到那一份而缺少 `pytest-cov` 等套件。
 
 測試涵蓋：
 
@@ -71,7 +73,7 @@ CI 在每個 PR 與 push 到 `main` 時，用 Python 3.11 與 3.12 各跑一次�
 ```bash
 ruff check src tests     # 風格與常見錯誤（規則明確列在 pyproject.toml，不依賴 ruff 預設值）
 mypy                     # 型別檢查，src 用嚴格模式
-pytest --cov             # 測試；覆蓋率低於 95% 會失敗（含分支覆蓋）
+python -m pytest --cov  # 測試；覆蓋率低於 95% 會失敗（含分支覆蓋）
 ```
 
 設定都在 `pyproject.toml`。沒有時區的 `datetime` 與全形標點的規則是刻意關掉的，理由寫在設定旁邊；不要為了讓檢查通過而逐行加 `# noqa`。ruff 目前不做格式化檢查（`ruff format`），原因是現有程式有不少長行，要一次性重排再開。

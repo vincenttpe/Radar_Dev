@@ -18,6 +18,7 @@ dev = [
     "pytest-cov>=5",
     "ruff>=0.16,<0.17",  # 限制版本範圍：ruff 更新預設規則時不會讓 CI 無故變紅，要升級時再手動改
     "mypy>=1.10,<2",
+    "pyyaml>=6",         # tests/test_packaging.py 解析 CI 的 YAML
 ]
 
 # 安裝後可在任何目錄使用這兩個指令
