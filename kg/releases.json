@@ -1,0 +1,42 @@
+{
+  "note": "知識圖譜的發布清單。files 與 other_sources 的雜湊由 PYTHONPATH=src python3 -m radar_agent.kg_manifest 產生，請勿手改；approval、status、說明可手改。規則見 kg/README.md。",
+  "releases": [
+    {
+      "version": "v1",
+      "status": "working",
+      "approval": {
+        "status": "pending",
+        "approver": null,
+        "date": null
+      },
+      "note": "2026-10-08 在 graph.cypher 與 metrics.json 直接互換了下肢肌力、心肺耐力 3／4 分建議的用詞，沒有升版也沒有經審核。thresholds.json 是同日新增的結構化門檻，未修正任何數字。待審核人確認後，把 approval 改為 approved 並補上審核人與日期。",
+      "files": {
+        "kg/v1/bridge.cypher": "b3b06bd441f21d978c0a20e81fc229ec5b6820352e370934fe6d28c1ae0208f2",
+        "kg/v1/graph.cypher": "4c16f42b11cdb982c8264aecc9e80fecea906af3ab7f08ac95d3994e761ac754",
+        "kg/v1/metrics.json": "7a7f4a42861742f63bfd32002f25eeca4cc832720ed745215bffd25b341da14d",
+        "kg/v1/patch_wording.cypher": "c901ffbcae6397f79990a96ae6f6b641f6d5f8c4e3d7fb7443e75ee4bf1d1fef",
+        "kg/v1/thresholds.json": "32fad84c779b4f4393f8da9e66d5aee514c6095986047d7e8915da05ecb3e371"
+      }
+    }
+  ],
+  "other_sources": [
+    {
+      "path": "kg/source/graph.docx",
+      "status": "differs_from_v1",
+      "reason": "仍是互換前的用詞（下肢肌力、心肺耐力 3／4 分）。是否標為已取代待決定（docs/05_會議待詢問清單.md E6）。",
+      "sha256": "d68058e62127f8d83c895dbd0865a051bc5ba4675dade8d0d8e93d30c9326ad1"
+    },
+    {
+      "path": "kg/source/standard_suggestion.xlsx",
+      "status": "differs_from_v1",
+      "reason": "仍是互換前的用詞；門檻的缺口與重疊（心肺耐力 100~111、步行速度邊界）與 v1 相同，是原始資料本來就有的。",
+      "sha256": "f65ac70dba367f88eb4e1c232a41edee663297ed2fd403f2c011ec219eef2b1a"
+    },
+    {
+      "path": "kg/dumps/neo4j-2026-05-10T15-50-58.dump",
+      "status": "differs_from_v1",
+      "reason": "Neo4j 備份，仍是互換前的用詞；可用 kg/v1/patch_wording.cypher 補上。",
+      "sha256": "fbe2be668fedb8bc3f673e7a8a9f0ddc2daeaf953e6333befe6f584bb3cd09b9"
+    }
+  ]
+}
