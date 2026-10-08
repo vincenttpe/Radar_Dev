@@ -12,16 +12,16 @@
 | 心肺耐力 | 原地抬腳 2 分鐘 | 5 |
 | 步行速度 | 步行速度 m/s | 4（沒有 4 分等級） |
 
-- `v1/graph.cypher`：建圖腳本，從 `source/graph.docx` 原樣抽出。**這是 v1 的正本。**
+- `v1/graph.cypher`：建圖腳本，從 `source/graph.docx` 抽出，僅修正下方列出的用詞。**這是 v1 的正本。**
 - `v1/metrics.json`：同一份內容的結構化版本，由 `graph.cypher` 解析產生，方便程式讀取。改內容時改 `graph.cypher`，再重新產生 JSON。
 - `v1/bridge.cypher`：把舊雛形的 Class 節點接到 Metric 的查詢。
 - `dumps/`：2026-05-10 的 Neo4j 備份。依原 README 的查詢推測含舊雛形的 Sentence、Class、Score 節點，內容未逐一核對。
 
-## 已知內容問題（待審核，v1 未修改）
+## 與原始文件的差異
 
-v1 是從 `source/graph.docx` 原樣抽出的正本，以下問題依更新規則交給審核人決定，修正後發布為 v2：
+`graph.cypher` 與 `metrics.json` 直接在 v1 修正了以下用詞，未走下方的審核流程，也未升版。`source/graph.docx` 與 `dumps/` 的備份仍是舊用詞，重新匯入 Neo4j 時請用 `graph.cypher`。
 
-- **下肢肌力**、**心肺耐力**的建議用詞與等級顛倒：3 分（尚好）的建議寫「…很好」，4 分（很好）的建議寫「…良好」。
+- **下肢肌力**、**心肺耐力**：原本 4 分（很好）的建議寫「…良好」、3 分（尚好）的寫「…很好」，用詞與等級顛倒；已互換為 4 分「…很好」、3 分「…良好」。
 
 ## 更新規則（提案）
 
