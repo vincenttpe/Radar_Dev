@@ -1,4 +1,5 @@
 """radar_agent.event_validation.validate_event：Schema 加時間順序規則。"""
+import pytest
 
 from radar_agent.event_validation import validate_event
 
@@ -63,3 +64,38 @@ def test_never_raises_on_garbage():
     for garbage in [{}, {"timestamps": 3}, {**BASE, "event_type": "fall", "timestamps": {"detected": 5}}]:
         assert isinstance(validate_event(garbage), list)
         assert validate_event(garbage) != []
+
+
+
+@pytest.mark.parametrize("started,ended", [
+    ("2026-10-08t10:00:00z", "2026-10-08T10:05:00Z"),   # RFC 3339 允許小寫 t／z
+    ("2026-10-08T10:00:00z", "2026-10-08t10:05:00+08:00"),
+])
+def test_lowercase_t_and_z_are_accepted_and_compared(started, ended):
+    """評估重現的情況：小寫通過 Schema，卻讓 datetime.fromisoformat 拋例外。"""
+    assert validate_event(activity(started=started, ended=ended)) in ([], ["timestamps：ended 不得早於 started"])
+
+
+def test_lowercase_order_is_still_checked():
+    assert validate_event(activity(started="2026-10-08t10:05:00z", ended="2026-10-08t10:00:00z")) == [
+        "timestamps：ended 不得早於 started"
+    ]
+
+
+@pytest.mark.parametrize("stamp", [
+    "2026-12-31T23:59:60Z",     # 閏秒：RFC 3339 允許，datetime 不支援
+    "2026-10-08t10:00:00.123456789z",
+])
+def test_unusual_but_valid_rfc3339_never_raises(stamp):
+    errors = validate_event(activity(started=stamp, ended="2027-01-01T00:00:00Z"))
+    assert isinstance(errors, list)
+
+
+def test_parse_failure_becomes_a_message_not_an_exception(monkeypatch):
+    from radar_agent import event_validation
+
+    def boom(text):
+        raise ValueError("解析失敗")
+
+    monkeypatch.setattr(event_validation, "parse_instant", boom)
+    assert validate_event(activity(started=T1, ended=T2)) == ["timestamps：無法比較 started 與 ended 的先後（解析失敗）"]

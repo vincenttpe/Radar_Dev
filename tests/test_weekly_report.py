@@ -76,10 +76,12 @@ def test_adapter_skips_and_explains_bad_rows():
         {"Motion": "no timestamp"},
     ]
     records, skipped = wr.from_description_records(rows)
-    assert len(records) == 1
-    assert len(skipped) == 4
+    # 時間解析不了的才略過；fall 值無法辨識的保留下來，標成無法判讀
+    assert len(records) == 2
+    assert len(skipped) == 3
     assert skipped[0].startswith("第 2 筆")
-    assert "fall" in skipped[2]
+    unreadable = records[1]
+    assert unreadable.fall is None and unreadable.fall_raw == "maybe"
 
 
 def test_adapter_does_not_mutate_input(fall_sample):
@@ -106,7 +108,8 @@ def test_fall_sample_week(fall_sample):
     assert [d["count"] for d in act["per_day"]] == [0, 0, 10, 0, 0, 0, 0]
     assert act["active_days"] == 1 and act["busiest_day"] == "2026-06-03"
     assert act["speed"] == {"Slow": 0, "Normal": 5, "Fast": 5, "其他": 0}
-    assert r["data_quality"] == {"records_in_week": 11, "out_of_week": 0, "fall_field_missing": 0, "skipped": []}
+    assert r["data_quality"] == {"records_in_week": 11, "out_of_week": 0, "fall_field_missing": 0, "fall_unreadable": 0, "skipped": []}
+    assert r["falls"]["completeness"] == "complete" and r["falls"]["unreadable"] == []
 
 
 def test_per_day_always_has_seven_entries_in_order(fall_sample):
@@ -164,7 +167,7 @@ def test_mixed_fall_field_is_counted_and_flagged():
 
 def test_empty_input():
     r = report_of([])
-    assert r["falls"] == {"count": 0, "events": [], "judgeable": False}
+    assert r["falls"] == {"count": 0, "events": [], "judgeable": False, "completeness": "none", "unreadable": []}
     assert r["activity"]["total"] == 0 and r["activity"]["busiest_day"] is None
     assert r["activity"]["active_days"] == 0
 
@@ -250,3 +253,71 @@ def test_cli_rejects_non_array_and_empty(tmp_path, capsys):
     empty.write_text("[]", encoding="utf-8")
     assert wr.main(["--input", str(empty)]) == 2
     assert wr.main(["--input", str(empty), "--week-start", "2026-06-01"]) == 0
+
+
+
+# ── 資料不完整時，不能把下限寫成全週總數 ──────────────────
+
+def test_unreadable_fall_value_is_listed_not_dropped():
+    """評估重現的情況：一筆 no、一筆 unknown。原本主文寫「跌倒 0 次」，unknown 那筆只在文末出現。"""
+    rows = [
+        row("2026/06/03 08:00 AM", fall="no", motion="walk"),
+        row("2026/06/03 09:00 AM", fall="unknown", motion="A person slumped from the chair onto the floor."),
+    ]
+    r = report_of(rows)
+    assert r["falls"]["count"] == 0
+    assert r["falls"]["completeness"] == "partial"
+    assert r["falls"]["unreadable"] == [{"at": "2026-06-03T09:00", "motion": "A person slumped from the chair onto the floor.", "raw": "unknown"}]
+    assert r["data_quality"]["fall_unreadable"] == 1 and r["data_quality"]["skipped"] == []
+
+    md = wr.render_markdown(r)
+    assert "本週跌倒" not in md
+    assert "可判讀的紀錄中偵測到 **0** 次跌倒；另有 1 筆無法判讀，**全週總數無法確認**。" in md
+    assert "（1 筆跌倒欄位值無法辨識。）" in md
+    assert "2026/06/03 09:00　fall 值 'unknown'；原始描述：A person slumped from the chair onto the floor." in md
+
+
+def test_some_records_missing_the_fall_field_make_the_count_partial():
+    rows = [row("2026/06/03 08:00 AM", fall="yes"), {"Timestamp": "2026/06/03 09:00 AM", "Motion": "x", "Speed": "Slow"}]
+    r = report_of(rows)
+    assert r["falls"]["count"] == 1 and r["falls"]["completeness"] == "partial"
+    md = wr.render_markdown(r)
+    assert "可判讀的紀錄中偵測到 **1** 次跌倒；另有 1 筆無法判讀，**全週總數無法確認**。" in md
+    assert "（1 筆沒有跌倒欄位。）" in md
+
+
+def test_unparseable_timestamps_make_the_count_partial_because_they_may_be_this_week():
+    r = report_of([row("2026/06/03 08:00 AM"), row("garbage")])
+    assert r["falls"]["completeness"] == "partial"
+    assert "（1 筆時間無法解析，可能屬於本週。）" in wr.render_markdown(r)
+
+
+def test_all_reasons_are_listed_separately():
+    rows = [
+        row("2026/06/03 08:00 AM", fall="no"),
+        {"Timestamp": "2026/06/03 09:00 AM", "Motion": "x"},
+        row("2026/06/03 10:00 AM", fall="maybe"),
+        row("garbage"),
+    ]
+    md = wr.render_markdown(report_of(rows))
+    assert "另有 3 筆無法判讀" in md
+    assert "（1 筆沒有跌倒欄位、1 筆跌倒欄位值無法辨識、1 筆時間無法解析，可能屬於本週。）" in md
+
+
+def test_complete_week_keeps_the_plain_headline(fall_sample):
+    md = wr.render_markdown(report_of(fall_sample))
+    assert "本週跌倒 **1** 次。" in md and "**全週總數無法確認**" not in md  # 口徑說明裡有同樣字樣，所以比對主文才有的粗體
+
+
+def test_only_unreadable_values_means_none_and_still_lists_them():
+    r = report_of([row("2026/06/03 09:00 AM", fall="??", motion="slumped")])
+    assert r["falls"]["completeness"] == "none" and r["falls"]["judgeable"] is False
+    md = wr.render_markdown(r)
+    assert "本週的資料沒有可判讀的跌倒欄位，**無法判斷是否發生跌倒**。" in md
+    assert "fall 值 '??'；原始描述：slumped" in md
+
+
+def test_empty_week_with_unparseable_rows_says_they_may_belong_here():
+    md = wr.render_markdown(report_of([row("garbage")]))
+    assert "本週沒有任何紀錄，**無法判斷是否發生跌倒**" in md
+    assert "（另有 1 筆時間無法解析，可能屬於本週。）" in md

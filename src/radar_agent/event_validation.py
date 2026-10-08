@@ -33,7 +33,7 @@ _VALIDATOR = _load_validator()
 
 
 def validate_event(event: dict[str, Any]) -> list[str]:
-    """回傳錯誤訊息清單；空清單代表通過。不丟例外。"""
+    """回傳錯誤訊息清單；空清單代表通過。不丟例外：任何解析失敗都轉成錯誤訊息。"""
     errors = sorted(
         f'{".".join(str(p) for p in e.absolute_path) or "(根)"}：{e.message}'
         for e in _VALIDATOR.iter_errors(event)
@@ -43,6 +43,22 @@ def validate_event(event: dict[str, Any]) -> list[str]:
 
     stamps = event.get("timestamps", {})
     for earlier, later in TIME_ORDER:
-        if earlier in stamps and later in stamps and datetime.fromisoformat(stamps[later]) < datetime.fromisoformat(stamps[earlier]):
+        if earlier not in stamps or later not in stamps:
+            continue
+        try:
+            out_of_order = parse_instant(stamps[later]) < parse_instant(stamps[earlier])
+        except ValueError as e:
+            errors.append(f"timestamps：無法比較 {earlier} 與 {later} 的先後（{e}）")
+            continue
+        if out_of_order:
             errors.append(f"timestamps：{later} 不得早於 {earlier}")
     return errors
+
+
+def parse_instant(text: str) -> datetime:
+    """RFC 3339 的時間 → 有時區的 datetime。
+
+    RFC 3339 允許小寫的 t 與 z（Schema 的格式檢查也接受），但 datetime.fromisoformat 不接受，
+    所以先轉大寫。仍解析不了（例如 RFC 3339 允許的閏秒 :60）就丟 ValueError，由呼叫端轉成錯誤訊息。
+    """
+    return datetime.fromisoformat(text.upper())
