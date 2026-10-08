@@ -55,7 +55,7 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "event_type": { "enum": ["posture", "activity"] } } },
+      "if": { "required": ["event_type"], "properties": { "event_type": { "enum": ["posture", "activity"] } } },
       "then": { "properties": { "timestamps": { "required": ["detected", "started", "ended"] } } }
     }
   ]
