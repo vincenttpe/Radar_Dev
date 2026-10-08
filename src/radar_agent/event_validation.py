@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from jsonschema import Draft202012Validator
 
@@ -31,7 +32,7 @@ def _load_validator() -> Draft202012Validator:
 _VALIDATOR = _load_validator()
 
 
-def validate_event(event: dict) -> list[str]:
+def validate_event(event: dict[str, Any]) -> list[str]:
     """回傳錯誤訊息清單；空清單代表通過。不丟例外。"""
     errors = sorted(
         f'{".".join(str(p) for p in e.absolute_path) or "(根)"}：{e.message}'

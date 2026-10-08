@@ -36,17 +36,17 @@ def test_five_metrics_and_24_levels(thresholds):
 
 
 def test_thresholds_match_level_names_in_metrics_json(thresholds, metrics_json):
-    names = {(m["name"], l["score"]): l["name"] for m in metrics_json["metrics"] for l in m["levels"]}
+    names = {(m["name"], lv["score"]): lv["name"] for m in metrics_json["metrics"] for lv in m["levels"]}
     seen = set()
     for m in thresholds["metrics"]:
-        for l in m["levels"]:
-            key = (m["name"], l["score"])
+        for lv in m["levels"]:
+            key = (m["name"], lv["score"])
             seen.add(key)
-            assert l["source_text"] == names[key], key
+            assert lv["source_text"] == names[key], key
             lo, hi = parse_level_range(names[key])
-            assert (l["min"], l["max"]) == (lo, hi), key
-            assert l["min_inclusive"] is True
-            assert l["max_inclusive"] is (hi is not None)
+            assert (lv["min"], lv["max"]) == (lo, hi), key
+            assert lv["min_inclusive"] is True
+            assert lv["max_inclusive"] is (hi is not None)
     assert seen == set(names)
 
 
@@ -56,8 +56,8 @@ def test_each_metric_has_exactly_one_open_ended_level_and_starts_at_zero(thresho
     來回行走是時間越短越好，開放上界的是 0 分；其他指標是 4 分（步行速度是 3 分）。
     """
     for m in thresholds["metrics"]:
-        assert sum(1 for l in m["levels"] if l["max"] is None) == 1, m["name"]
-        assert min(l["min"] for l in m["levels"]) == 0, m["name"]
+        assert sum(1 for lv in m["levels"] if lv["max"] is None) == 1, m["name"]
+        assert min(lv["min"] for lv in m["levels"]) == 0, m["name"]
 
 
 def test_known_gaps_and_overlaps_are_exactly_the_documented_ones(thresholds):

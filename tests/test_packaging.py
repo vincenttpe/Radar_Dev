@@ -1,5 +1,6 @@
 """pyproject.toml：指令入口指向真的存在、可無參數呼叫的函式，依賴與 requirements-dev.txt 一致。"""
 import importlib
+import re
 import sys
 import tomllib
 
@@ -48,13 +49,42 @@ def test_runtime_dependencies_cover_what_the_package_imports(project):
 
 
 def test_requirements_dev_installs_this_package_editable_with_dev_extra(repo):
-    lines = [l.strip() for l in (repo / "requirements-dev.txt").read_text(encoding="utf-8").splitlines()]
+    lines = [line.strip() for line in (repo / "requirements-dev.txt").read_text(encoding="utf-8").splitlines()]
     assert "-e .[dev]" in lines
 
 
-def test_python_version_floor_matches_ci(repo, project):
-    assert project["requires-python"] == ">=3.11"
-    assert 'python-version: "3.12"' in (repo / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+def test_ci_matrix_covers_the_declared_python_floor(repo, project):
+    floor = project["requires-python"].removeprefix(">=")
+    workflow = (repo / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    match = re.search(r"python-version: \[([^\]]*)\]", workflow)
+    assert match, "CI 應該用矩陣測多個 Python 版本"
+    versions = re.findall(r'"([\d.]+)"', match.group(1))
+    assert floor in versions, f"CI 沒有測到宣告的下限 {floor}，只測了 {versions}"
+
+
+def test_lint_and_type_targets_follow_the_python_floor(repo, project):
+    floor = project["requires-python"].removeprefix(">=")
+    tools = tomllib.loads((repo / "pyproject.toml").read_text(encoding="utf-8"))["tool"]
+    assert tools["mypy"]["python_version"] == floor
+    assert tools["ruff"]["target-version"] == "py" + floor.replace(".", "")
+
+
+def test_ci_runs_every_quality_gate(repo):
+    workflow = (repo / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    for command in ("ruff check src tests", "mypy", "pytest --cov"):
+        assert f"run: {command}" in workflow, command
+
+
+def test_dev_extra_has_the_tools_ci_uses(project):
+    dev = " ".join(project["optional-dependencies"]["dev"])
+    for tool in ("pytest", "pytest-cov", "ruff", "mypy"):
+        assert tool in dev, tool
+
+
+def test_coverage_gate_is_configured(repo):
+    coverage = tomllib.loads((repo / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["coverage"]
+    assert coverage["report"]["fail_under"] >= 90
+    assert coverage["run"]["branch"] is True
 
 
 @pytest.mark.parametrize("module,args", [
