@@ -1,0 +1,68 @@
+[
+    {
+        "Timestamp": "2026/06/03 08:18 AM",
+        "Motion": "A person hops on one foot.",
+        "Speed": "Fast",
+        "fall": "no"
+    },
+    {
+        "Timestamp": "2026/06/03 10:34 AM",
+        "Motion": "A person reads a book while seated.",
+        "Speed": "Normal",
+        "fall": "no"
+    },
+    {
+        "Timestamp": "2026/06/03 11:06 AM",
+        "Motion": "A person stays stationary -> person runs in place.",
+        "Speed": "Normal",
+        "fall": "no"
+    },
+    {
+        "Timestamp": "2026/06/03 04:44 PM",
+        "Motion": "A person raises one arm -> moves backward -> returns forward.",
+        "Speed": "Normal",
+        "fall": "no"
+    },
+    {
+        "Timestamp": "2026/06/03 05:51 PM",
+        "Motion": "A person waves at the camera.",
+        "Speed": "Normal",
+        "fall": "no"
+    },
+    {
+        "Timestamp": "2026/06/03 05:52 PM",
+        "Motion": "A person scratches their head.",
+        "Speed": "Fast",
+        "fall": "no"
+    },
+    {
+        "Timestamp": "2026/06/03 06:01 PM",
+        "Motion": "A person waves at the camera.",
+        "Speed": "Fast",
+        "fall": "no"
+    },
+    {
+        "Timestamp": "2026/06/03 07:16 PM",
+        "Motion": "A person hops on one foot.",
+        "Speed": "Fast",
+        "fall": "no"
+    },
+    {
+        "Timestamp": "2026/06/03 08:35 PM",
+        "Motion": "A person bends down and then stands back up.",
+        "Speed": "Normal",
+        "fall": "no"
+    },
+    {
+        "Timestamp": "2026/06/03 09:11 PM",
+        "Motion": "A person reads a book while seated.",
+        "Speed": "Fast",
+        "fall": "no"
+    },
+    {
+        "Timestamp": "2026/06/03 09:25 PM",
+        "Motion": "A person slumped from the chair onto the floor.",
+        "Speed": "Normal",
+        "fall": "yes"
+    }
+]

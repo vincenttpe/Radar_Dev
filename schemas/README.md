@@ -4,6 +4,21 @@
 
 **2026-10-08 與雷達端對照**：雷達負責人說明邊緣裝置的動作狀態 JSON 目前有 moving、longstay、vacant、fall 等狀態。草案的 `event_type`（fall、posture、activity、heartbeat）與 `label` 要重新對齊：`fall` 相同；moving／longstay／vacant 比較像 `label`，不是 `event_type`；vacant（無人）在草案裡沒有對應。拿到實際 JSON 樣本後再改草案。
 
+**2026-10-08 取得兩種樣本**（見 `data/samples_fall/`、`data/samples_device_event/` 的 README）：
+
+| 草案欄位 | 動作描述 JSON (a) | 裝置事件 (b) |
+|---|---|---|
+| `event_type` | 只能由 `fall` 欄位分出 fall／非 fall | `event`（absence 等）較接近 |
+| `label` | `Motion` 是英文句子，不是固定標籤 | `event` |
+| `confidence` | 無 | 無 |
+| `measurements` | 無；只有 `Speed` 三級 | 無 |
+| `voice_confirmation` | 無 | `userReply` 布林值，推測對應 |
+| `timestamps.detected` | `Timestamp`，本地時間無時區 | 無，待確認由誰補 |
+| `started`／`ended` | 無 | 無 |
+| `event_id`／`device_id`／`subject_id` | 無 | 無 |
+
+兩種格式都沒有持續時間，所以草案要求 posture／activity 必填 `started`／`ended` 這一點，目前的來源給不出來；活動量統計暫時只能用事件數與 `Speed` 分布。等確認 (a)(b) 的關係與 7 天資料的實際格式後，草案改為 v1。
+
 ## 草案目前的取捨
 
 - **不接受未定義欄位**（各層都設 `additionalProperties: false`）。事件接收要做格式檢查，未知欄位直接拒收，比默默忽略容易發現雷達端改版沒通知。雷達端若需要新增欄位，就是一次格式改版。
