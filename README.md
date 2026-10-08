@@ -20,7 +20,7 @@
 | `data/samples_device_event/` | 2026-10-08 取得的裝置簡易動作事件樣本 |
 | `schemas/` | 雷達事件格式草案（**未經確認**） |
 | `legacy/prototype/` | 舊雛形程式，僅供參考與比對，不再開發 |
-| `src/radar_agent/` | 新系統的程式。目前只有事件驗證（`event_validation.py`）與知識圖譜發布清單工具（`kg_manifest.py`） |
+| `src/radar_agent/` | 新系統的程式。目前有事件驗證（`event_validation.py`）、知識圖譜發布清單工具（`kg_manifest.py`）與甲方週報第 1 版（`weekly_report.py`） |
 | `tests/` | 資料檔的一致性測試與上述程式的測試，不載入模型、不連資料庫 |
 
 ## 從哪裡開始讀
@@ -40,6 +40,7 @@ pytest
 
 - 知識圖譜：`kg/v1/` 各檔案彼此一致；門檻沒有未登記的缺口或重疊；`kg/releases.json` 的雜湊與實際檔案相符。
 - 事件格式：`schemas/event.v0.draft.json` 的必填與拒收行為、日期格式、時間先後（`radar_agent.event_validation`）。
+- 甲方週報：時間解析、一週的邊界、跌倒與活動量的統計、「沒有資料不等於沒有跌倒」、輸出內容（`radar_agent.weekly_report`）。
 - 資料：`data/` 的格式，以及文件引用的數字；舊雛形 `--input` 的路徑解析。
 
 改這些檔案時先跑一次。改了 `kg/v1/` 要先更新 `kg/releases.json`，指令見 `kg/README.md`。
