@@ -10,7 +10,7 @@
 
 | 路徑 | 內容 |
 |---|---|
-| `docs/` | 現況架構、目標架構、待確認事項、遷移紀錄 |
+| `docs/` | 現況架構、目標架構、待確認事項、遷移紀錄、會議待詢問清單 |
 | `kg/v1/` | 知識圖譜第 1 版：`graph.cypher`（建圖腳本）、`metrics.json`（同內容的結構化版本）、`bridge.cypher` |
 | `kg/source/` | 知識圖譜原始文件（`graph.docx`、`standard_suggestion.xlsx`） |
 | `kg/dumps/` | Neo4j 資料庫備份（2026-05-10） |
