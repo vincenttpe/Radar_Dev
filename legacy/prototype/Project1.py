@@ -5333,10 +5333,10 @@ if __name__ == "__main__":
     if args.input:
         input_file = Path(args.input)
 
-        # 如果輸入的是相對路徑，例如 test_jsons/case_01.json
-        # 就自動接在 Project1.py 所在資料夾下面
-        if not input_file.is_absolute():
-            input_file = BASE_DIR / input_file
+        # 相對路徑：先以目前工作目錄為準（例如 data/samples/01.json），
+        # 找不到再接在 data/samples/ 下面（例如 01.json）
+        if not input_file.is_absolute() and not input_file.exists():
+            input_file = DATA_DIR / input_file
 
     elif args.start or args.end:
         use_data_dir_by_time = True
