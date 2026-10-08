@@ -25,6 +25,7 @@ import argparse
 import json
 import re
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -127,7 +128,7 @@ def _parse_fall(value: object) -> bool | None:
     raise ValueError(f"無法判讀 fall 欄位：{value!r}")
 
 
-def from_description_records(rows: list[object]) -> tuple[list[Record], list[str]]:
+def from_description_records(rows: Sequence[object]) -> tuple[list[Record], list[str]]:
     """動作描述 JSON → Record。無法解析的筆數不丟棄，回傳原因讓報告列出。
 
     fall 欄位值無法判讀時整筆略過並列出，不猜：漏算一次跌倒比多算更需要被看見。

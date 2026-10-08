@@ -1,10 +1,11 @@
 """pyproject.toml：指令入口指向真的存在、可無參數呼叫的函式，依賴與 requirements-dev.txt 一致。"""
 import importlib
-import re
 import sys
 import tomllib
 
 import pytest
+import yaml
+from packaging.requirements import Requirement
 
 
 @pytest.fixture(scope="module")
@@ -43,9 +44,13 @@ def test_weekly_report_main_reads_sys_argv_when_called_without_arguments(repo, m
     assert "本週跌倒 **1** 次。" in capsys.readouterr().out
 
 
-def test_runtime_dependencies_cover_what_the_package_imports(project):
-    deps = " ".join(project["dependencies"])
-    assert "jsonschema" in deps and "rfc3339-validator" in deps
+def _names(requirements: list[str]) -> set[str]:
+    """['ruff>=0.16,<0.17', 'pytest-cov>=5'] → {'ruff', 'pytest-cov'}。逐一解析，不用子字串。"""
+    return {Requirement(r).name for r in requirements}
+
+
+def test_runtime_dependencies_are_exactly_what_the_package_imports(project):
+    assert _names(project["dependencies"]) == {"jsonschema", "rfc3339-validator"}
 
 
 def test_requirements_dev_installs_this_package_editable_with_dev_extra(repo):
@@ -53,12 +58,17 @@ def test_requirements_dev_installs_this_package_editable_with_dev_extra(repo):
     assert "-e .[dev]" in lines
 
 
-def test_ci_matrix_covers_the_declared_python_floor(repo, project):
+@pytest.fixture(scope="module")
+def ci_job(repo):
+    workflow = yaml.safe_load((repo / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8"))
+    return workflow["jobs"]["pytest"]
+
+
+def test_ci_matrix_covers_the_declared_python_floor(ci_job, project):
     floor = project["requires-python"].removeprefix(">=")
-    workflow = (repo / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
-    match = re.search(r"python-version: \[([^\]]*)\]", workflow)
-    assert match, "CI 應該用矩陣測多個 Python 版本"
-    versions = re.findall(r'"([\d.]+)"', match.group(1))
+    versions = ci_job["strategy"]["matrix"]["python-version"]
+    # YAML 裡沒加引號的 3.10 會變成浮點數 3.1，所以要求每個版本都是字串
+    assert all(isinstance(v, str) for v in versions), versions
     assert floor in versions, f"CI 沒有測到宣告的下限 {floor}，只測了 {versions}"
 
 
@@ -69,22 +79,29 @@ def test_lint_and_type_targets_follow_the_python_floor(repo, project):
     assert tools["ruff"]["target-version"] == "py" + floor.replace(".", "")
 
 
-def test_ci_runs_every_quality_gate(repo):
-    workflow = (repo / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
-    for command in ("ruff check src tests", "mypy", "pytest --cov"):
-        assert f"run: {command}" in workflow, command
+def _gate_steps(ci_job: dict) -> dict[str, dict]:
+    """{指令: 步驟}，只算「無條件執行」的步驟；被註解掉的步驟不在 YAML 裡，有 if 條件的不算。"""
+    return {step["run"].strip(): step for step in ci_job["steps"] if "run" in step and "if" not in step}
+
+
+@pytest.mark.parametrize("command", ["ruff check src tests", "mypy", "pytest --cov"])
+def test_ci_runs_every_quality_gate_unconditionally_and_without_swallowing_failures(ci_job, command):
+    steps = _gate_steps(ci_job)
+    assert command in steps, f"CI 沒有無條件執行 {command!r}"
+    assert not steps[command].get("continue-on-error"), f"{command!r} 失敗時不應該被忽略"
 
 
 def test_dev_extra_has_the_tools_ci_uses(project):
-    dev = " ".join(project["optional-dependencies"]["dev"])
-    for tool in ("pytest", "pytest-cov", "ruff", "mypy"):
-        assert tool in dev, tool
+    """逐一比對套件名稱：pytest 不會被 pytest-cov 蓋過，也不會被註解或別的套件名稱湊數。"""
+    assert {"pytest", "pytest-cov", "ruff", "mypy", "pyyaml"} <= _names(project["optional-dependencies"]["dev"])
 
 
-def test_coverage_gate_is_configured(repo):
+def test_coverage_gate_is_configured_and_matches_the_readme(repo):
     coverage = tomllib.loads((repo / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["coverage"]
-    assert coverage["report"]["fail_under"] >= 90
+    threshold = coverage["report"]["fail_under"]
+    assert threshold == 95, "要改門檻時，請連 README 的說明一起改，並更新這個測試"
     assert coverage["run"]["branch"] is True
+    assert f"低於 {threshold}%" in (repo / "README.md").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("module,args", [
