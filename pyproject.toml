@@ -21,11 +21,12 @@ dev = [
     "pyyaml>=6",         # tests/test_packaging.py 解析 CI 的 YAML
 ]
 
-# 安裝後可在任何目錄使用這兩個指令
+# 安裝後可在任何目錄使用這些指令
 [project.scripts]
 radar-weekly-report = "radar_agent.weekly_report:main"
 radar-kg-manifest = "radar_agent.kg_manifest:main"
 radar-kg-build = "radar_agent.kg_source:main"
+radar-kg-level = "radar_agent.kg_rules:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -18,6 +18,7 @@ def test_declared_scripts(project):
         "radar-weekly-report": "radar_agent.weekly_report:main",
         "radar-kg-manifest": "radar_agent.kg_manifest:main",
         "radar-kg-build": "radar_agent.kg_source:main",
+        "radar-kg-level": "radar_agent.kg_rules:main",
     }
 
 
@@ -108,6 +109,7 @@ def test_coverage_gate_is_configured_and_matches_the_readme(repo):
     ("radar_agent.kg_manifest", ["--check"]),
     ("radar_agent.kg_source", ["--check"]),
     ("radar_agent.weekly_report", ["--input", "data/samples_fall/2026-06-03.json"]),
+    ("radar_agent.kg_rules", ["來回行走", "5.4"]),
 ])
 def test_modules_run_as_scripts(repo, module, args):
     """python -m <模組> 的進入點（if __name__ == '__main__'）真的能跑，結束碼為 0。"""

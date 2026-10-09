@@ -39,12 +39,13 @@ source .venv/bin/activate        # Windows：.venv\Scripts\activate
 pip install -e ".[dev]"          # 必須是可編輯安裝（-e），程式會讀 repo 裡的 schemas/、kg/
 ```
 
-安裝後，在任何目錄都有這兩個指令：
+安裝後，在任何目錄都有這些指令：
 
 ```bash
 radar-weekly-report --input data/samples_fall/2026-06-03.json --title 機構名稱   # 甲方週報
 radar-kg-build --check                                                            # 檢查 metrics.json、thresholds.json 是否與 graph.cypher 一致
 radar-kg-manifest --check                                                         # 檢查知識圖譜發布清單
+radar-kg-level 來回行走 5.4                                                       # 量測值 → 知識圖譜等級與建議（--list 列出門檻）
 ```
 
 `git pull` 之後如果 `pyproject.toml` 有變動，再執行一次 `pip install -e ".[dev]"`。

@@ -31,3 +31,4 @@ jobs:
           radar-weekly-report --input data/samples_fall/2026-06-03.json | head -5
           radar-kg-build --check
           radar-kg-manifest --check
+          radar-kg-level 來回行走 5.4
