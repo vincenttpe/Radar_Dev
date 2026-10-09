@@ -37,7 +37,7 @@ WEEKDAYS = "一二三四五六日"
 
 ASSUMPTIONS = [
     "跌倒次數 ＝ 動作紀錄中 fall 欄位為 yes 的筆數；裝置事件的 fall 與語音確認結果尚未納入（會議清單 C2）。只要本週有任何一筆無法判讀（沒有 fall 欄位、值無法辨識、時間無法解析），這個數字只是下限，報告會註明「全週總數無法確認」。",
-    "活動量 ＝ 動作紀錄筆數，**不含**跌倒那一筆；沒有動作持續時間，無法算「動了多久」（會議清單 A6、C1）。",
+    "活動量 ＝ fall 欄位為 no 的動作紀錄筆數；跌倒那一筆不算，無法判讀是否為跌倒的紀錄也不算（另列筆數，不當成一般活動）。沒有動作持續時間，無法算「動了多久」（會議清單 A6、C1）。",
     "時間戳是本地時間、沒有時區，照原樣分到日曆日；跨日以 00:00 為界（會議清單 A4）。",
     "一週為從指定起始日起的連續 7 天；週起始日與週報層級（每位長者或每個機構）待甲方確認（會議清單 C3）。",
     "資料沒有長者或裝置代號，整份輸入視為同一個對象（會議清單 A5）。",
@@ -57,6 +57,27 @@ class Record:
     fall_raw: str | None = None  # fall 值無法辨識時保留原值，報告逐筆列出；其他情況為 None
 
 
+@dataclass(frozen=True)
+class Skipped:
+    """讀不進統計的一筆。時間無法解析時仍保留 Motion 與 fall，報告才能指出被略過的是不是跌倒。"""
+    row: int              # 輸入陣列中的第幾筆（從 1 起算）
+    kind: Literal["not_object", "bad_timestamp"]
+    reason: str
+    timestamp: str = ""
+    motion: str = ""
+    fall: bool | None = None
+    fall_raw: str | None = None   # fall 值無法辨識時的原值
+
+    @property
+    def message(self) -> str:
+        return f"第 {self.row} 筆：{self.reason}"
+
+    @property
+    def possible_fall(self) -> bool:
+        """標記為跌倒，或 fall 值無法辨識（可能就是跌倒）。"""
+        return self.fall is True or self.fall_raw is not None
+
+
 class FallEvent(TypedDict):
     at: str               # ISO 8601，到分鐘
     motion: str
@@ -68,6 +89,13 @@ class UnreadableFall(TypedDict):
     raw: str              # 無法辨識的 fall 原值
 
 
+class UndatedFall(TypedDict):
+    row: int              # 輸入陣列中的第幾筆
+    timestamp: str        # 無法解析的時間原文
+    motion: str
+    fall: str             # fall 原值（yes 或無法辨識的值）
+
+
 Completeness = Literal["complete", "partial", "none"]
 
 
@@ -77,6 +105,8 @@ class FallSummary(TypedDict):
     judgeable: bool       # 至少有一筆可判讀；False＝不能把「沒資料」當成「沒有跌倒」
     completeness: Completeness  # complete＝本週每筆都可判讀；partial＝有些不行；none＝完全無法判斷
     unreadable: list[UnreadableFall]  # fall 值無法辨識的本週紀錄，逐筆列出（可能就是跌倒）
+    undated: list[UndatedFall]  # 時間無法解析、但標記為跌倒或 fall 值無法辨識的紀錄（可能屬於本週）
+    outside_week: list[FallEvent]  # 本週之外的跌倒紀錄，未計入本週，但逐筆列出避免週起始日選錯時被埋掉
 
 
 class DayCount(TypedDict):
@@ -85,7 +115,9 @@ class DayCount(TypedDict):
 
 
 class ActivitySummary(TypedDict):
-    total: int
+    total: int            # 可判讀且不是跌倒的紀錄；complete 為 False 時只是下限
+    complete: bool        # 本週每筆都能判讀是否為跌倒，且沒有時間無法解析的紀錄
+    unjudged: int         # 本週無法判讀是否為跌倒、因此未計入 total 的筆數
     per_day: list[DayCount]
     active_days: int
     busiest_day: str | None
@@ -97,7 +129,9 @@ class DataQuality(TypedDict):
     out_of_week: int
     fall_field_missing: int
     fall_unreadable: int
-    skipped: list[str]
+    bad_timestamp: int    # 時間無法解析，可能屬於本週
+    not_object: int       # 不是 JSON 物件，內容完全無法判讀
+    skipped: list[str]    # 上面兩類逐筆的說明
 
 
 class WeeklyReport(TypedDict):
@@ -141,31 +175,40 @@ def _parse_fall(value: object) -> bool | None:
     raise ValueError(f"無法判讀 fall 欄位：{value!r}")
 
 
-def from_description_records(rows: Sequence[object]) -> tuple[list[Record], list[str]]:
-    """動作描述 JSON → Record。時間無法解析的筆數不丟棄，回傳原因讓報告列出。
+def _read_fall(row: dict[str, object]) -> tuple[bool | None, str | None]:
+    """(fall, fall_raw)：值無法辨識時 fall=None、fall_raw=原值；沒有欄位時兩者皆 None。"""
+    try:
+        return _parse_fall(row.get("fall")), None
+    except ValueError:
+        return None, str(row.get("fall"))
+
+
+def from_description_records(rows: Sequence[object]) -> tuple[list[Record], list[Skipped]]:
+    """動作描述 JSON → Record。時間無法解析的筆數不丟棄，回傳 Skipped 讓報告列出。
 
     fall 值無法辨識時不猜，也不整筆丟掉：保留這筆（fall=None、fall_raw=原值），
     報告在跌倒一節逐筆列出，並把全週跌倒數標成「無法確認」。漏算一次跌倒比多算更需要被看見。
+    時間無法解析的那筆仍讀 Motion 與 fall，標記為跌倒時報告會指出來。
     """
     records: list[Record] = []
-    skipped: list[str] = []
+    skipped: list[Skipped] = []
     for i, row in enumerate(rows, start=1):
         if not isinstance(row, dict):
-            skipped.append(f"第 {i} 筆：不是物件")
+            skipped.append(Skipped(row=i, kind="not_object", reason="不是物件"))
             continue
+        fall, fall_raw = _read_fall(row)
+        motion = str(row.get("Motion", ""))
         try:
             at = parse_timestamp(row.get("Timestamp", ""))
         except ValueError as e:
-            skipped.append(f"第 {i} 筆：{e}")
+            skipped.append(Skipped(
+                row=i, kind="bad_timestamp", reason=str(e), timestamp=str(row.get("Timestamp", "")),
+                motion=motion, fall=fall, fall_raw=fall_raw,
+            ))
             continue
-        try:
-            fall, fall_raw = _parse_fall(row.get("fall")), None
-        except ValueError:
-            fall, fall_raw = None, str(row.get("fall"))
         speed = row.get("Speed")
         records.append(Record(
-            at=at, motion=str(row.get("Motion", "")), speed=None if speed is None else str(speed),
-            fall=fall, fall_raw=fall_raw,
+            at=at, motion=motion, speed=None if speed is None else str(speed), fall=fall, fall_raw=fall_raw,
         ))
     return records, skipped
 
@@ -178,20 +221,27 @@ def counts_as_fall(record: Record) -> bool:
 
 
 def counts_as_activity(record: Record) -> bool:
-    """這一筆算不算活動量。目前：動作紀錄，但跌倒那一筆不算。"""
-    return not counts_as_fall(record)
+    """這一筆算不算活動量。目前：fall 明確為 no 的動作紀錄。
+
+    無法判讀是否為跌倒的紀錄不算：跌倒一節把它列為「可能就是跌倒」，這裡就不能當成一般活動。
+    """
+    return record.fall is False
 
 
 # ── 統計 ─────────────────────────────────────────────────
 
-def records_in_week(records: list[Record], week_start: date) -> list[Record]:
-    """week_start 起連續 7 天（含起始日 00:00、不含第 8 天 00:00），依時間排序。"""
+def _in_week(record: Record, week_start: date) -> bool:
+    """week_start 起連續 7 天：含起始日 00:00、不含第 8 天 00:00。"""
     start = datetime.combine(week_start, datetime.min.time())
-    end = start + timedelta(days=7)
-    return sorted((r for r in records if start <= r.at < end), key=lambda r: r.at)
+    return start <= record.at < start + timedelta(days=7)
 
 
-def fall_completeness(in_week: list[Record], skipped: list[str]) -> Completeness:
+def records_in_week(records: list[Record], week_start: date) -> list[Record]:
+    """本週的紀錄，依時間排序。"""
+    return sorted((r for r in records if _in_week(r, week_start)), key=lambda r: r.at)
+
+
+def fall_completeness(in_week: list[Record], skipped: Sequence[Skipped]) -> Completeness:
     """本週的跌倒數能不能當成全週總數。
 
     時間無法解析的筆數不知道屬不屬於本週，保守地當成「可能屬於」。
@@ -203,18 +253,29 @@ def fall_completeness(in_week: list[Record], skipped: list[str]) -> Completeness
     return "complete"
 
 
-def summarize_falls(in_week: list[Record], skipped: list[str] | None = None) -> FallSummary:
+def _event(r: Record) -> FallEvent:
+    return {"at": r.at.isoformat(timespec="minutes"), "motion": r.motion}
+
+
+def summarize_falls(
+    in_week: list[Record], skipped: Sequence[Skipped] = (), out_of_week: Sequence[Record] = (),
+) -> FallSummary:
     falls = [r for r in in_week if counts_as_fall(r)]
-    completeness = fall_completeness(in_week, skipped or [])
+    completeness = fall_completeness(in_week, skipped)
     return {
         "count": len(falls),
-        "events": [{"at": r.at.isoformat(timespec="minutes"), "motion": r.motion} for r in falls],
+        "events": [_event(r) for r in falls],
         "judgeable": completeness != "none",
         "completeness": completeness,
         "unreadable": [
             {"at": r.at.isoformat(timespec="minutes"), "motion": r.motion, "raw": r.fall_raw}
             for r in in_week if r.fall_raw is not None
         ],
+        "undated": [
+            {"row": s.row, "timestamp": s.timestamp, "motion": s.motion, "fall": "yes" if s.fall else str(s.fall_raw)}
+            for s in skipped if s.possible_fall
+        ],
+        "outside_week": [_event(r) for r in sorted(out_of_week, key=lambda r: r.at) if counts_as_fall(r)],
     }
 
 
@@ -231,12 +292,15 @@ def speed_distribution(activity: list[Record]) -> dict[str, int]:
     return counts
 
 
-def summarize_activity(in_week: list[Record], week_start: date) -> ActivitySummary:
+def summarize_activity(in_week: list[Record], week_start: date, skipped: Sequence[Skipped] = ()) -> ActivitySummary:
     activity = [r for r in in_week if counts_as_activity(r)]
+    unjudged = sum(1 for r in in_week if r.fall is None)
     per_day = daily_counts(activity, week_start)
     busiest = max(per_day, key=lambda d: d["count"]) if activity else None
     return {
         "total": len(activity),
+        "complete": not unjudged and not skipped,
+        "unjudged": unjudged,
         "per_day": per_day,
         "active_days": sum(1 for d in per_day if d["count"] > 0),
         "busiest_day": busiest["date"] if busiest else None,
@@ -244,26 +308,31 @@ def summarize_activity(in_week: list[Record], week_start: date) -> ActivitySumma
     }
 
 
-def summarize_quality(records: list[Record], in_week: list[Record], skipped: list[str]) -> DataQuality:
+def summarize_quality(records: list[Record], in_week: list[Record], skipped: Sequence[Skipped]) -> DataQuality:
     return {
         "records_in_week": len(in_week),
         "out_of_week": len(records) - len(in_week),
         "fall_field_missing": sum(1 for r in in_week if r.fall is None and r.fall_raw is None),
         "fall_unreadable": sum(1 for r in in_week if r.fall_raw is not None),
-        "skipped": list(skipped),
+        "bad_timestamp": sum(1 for s in skipped if s.kind == "bad_timestamp"),
+        "not_object": sum(1 for s in skipped if s.kind == "not_object"),
+        "skipped": [s.message for s in skipped],
     }
 
 
-def build_report(records: list[Record], week_start: date, skipped: list[str] | None = None, title: str | None = None) -> WeeklyReport:
+def build_report(
+    records: list[Record], week_start: date, skipped: Sequence[Skipped] = (), title: str | None = None,
+) -> WeeklyReport:
     """統計 week_start 起連續 7 天。回傳可直接序列化的 dict（欄位見 WeeklyReport）。"""
     in_week = records_in_week(records, week_start)
+    out_of_week = [r for r in records if not _in_week(r, week_start)]
     return {
         "title": title,
         "week_start": week_start.isoformat(),
         "week_end": (week_start + timedelta(days=6)).isoformat(),
-        "falls": summarize_falls(in_week, skipped or []),
-        "activity": summarize_activity(in_week, week_start),
-        "data_quality": summarize_quality(records, in_week, skipped or []),
+        "falls": summarize_falls(in_week, skipped, out_of_week),
+        "activity": summarize_activity(in_week, week_start, skipped),
+        "data_quality": summarize_quality(records, in_week, skipped),
         "assumptions": list(ASSUMPTIONS),
     }
 
@@ -275,29 +344,41 @@ def _fmt_date(iso: str) -> str:
     return f"{d:%Y/%m/%d}（{WEEKDAYS[d.weekday()]}）"
 
 
-def _unjudged_parts(quality: DataQuality) -> list[str]:
-    """無法判讀的筆數，依原因分開；只列出非零的。"""
+def _unjudged_total(quality: DataQuality) -> int:
+    return quality["fall_field_missing"] + quality["fall_unreadable"] + quality["bad_timestamp"] + quality["not_object"]
+
+
+def _unjudged_parts(quality: DataQuality, falls: FallSummary, lead: str = "") -> str:
+    """無法判讀的筆數，依原因分開；只列出非零的。跌倒與活動量兩節共用，兩邊說法一致。"""
+    marked = sum(1 for u in falls["undated"] if u["fall"] == "yes")
+    bad_ts = "筆時間無法解析" + (f"（其中 {marked} 筆標記為跌倒）" if marked else "") + "，可能屬於本週"
     parts = [
         (quality["fall_field_missing"], "筆沒有跌倒欄位"),
         (quality["fall_unreadable"], "筆跌倒欄位值無法辨識"),
-        (len(quality["skipped"]), "筆時間無法解析，可能屬於本週"),
+        (quality["bad_timestamp"], bad_ts),
+        (quality["not_object"], "筆不是物件（內容無法判讀），可能屬於本週"),
     ]
-    return [f"{n} {what}" for n, what in parts if n]
+    return f'（{lead}{"、".join(f"{n} {what}" for n, what in parts if n)}。）'
 
 
 def _fall_headline(falls: FallSummary, quality: DataQuality) -> list[str]:
     if quality["records_in_week"] == 0:
-        lines = ["本週沒有任何紀錄，**無法判斷是否發生跌倒**（也可能是裝置沒有傳資料）。"]
-        return lines + ([f'（另有 {len(quality["skipped"])} 筆時間無法解析，可能屬於本週。）'] if quality["skipped"] else [])
+        if quality["out_of_week"]:
+            lines = [(
+                f'本週沒有任何紀錄，**無法判斷是否發生跌倒**；輸入資料有 {quality["out_of_week"]} 筆在本週之外，'
+                "請確認週起始日是否正確。"
+            )]
+        else:
+            lines = ["本週沒有任何紀錄，**無法判斷是否發生跌倒**（也可能是裝置沒有傳資料）。"]
+        skipped = quality["bad_timestamp"] + quality["not_object"]
+        return lines + ([_unjudged_parts(quality, falls, lead="另有 ")] if skipped else [])
     if falls["completeness"] == "none":
-        return ["本週的資料沒有可判讀的跌倒欄位，**無法判斷是否發生跌倒**。"]
+        return ["本週的資料沒有可判讀的跌倒欄位，**無法判斷是否發生跌倒**。", _unjudged_parts(quality, falls)]
     if falls["completeness"] == "complete":
         return [f'本週跌倒 **{falls["count"]}** 次。']
-    parts = _unjudged_parts(quality)
-    unjudged = quality["fall_field_missing"] + quality["fall_unreadable"] + len(quality["skipped"])
     return [
-        f'可判讀的紀錄中偵測到 **{falls["count"]}** 次跌倒；另有 {unjudged} 筆無法判讀，**全週總數無法確認**。',
-        f'（{"、".join(parts)}。）',
+        f'可判讀的紀錄中偵測到 **{falls["count"]}** 次跌倒；另有 {_unjudged_total(quality)} 筆無法判讀，**全週總數無法確認**。',
+        _unjudged_parts(quality, falls),
     ]
 
 
@@ -312,20 +393,39 @@ def _render_falls(falls: FallSummary, quality: DataQuality) -> list[str]:
             f'- {datetime.fromisoformat(u["at"]):%Y/%m/%d %H:%M}　fall 值 {u["raw"]!r}；原始描述：{u["motion"]}'
             for u in falls["unreadable"]
         ]
+    if falls["undated"]:
+        lines += ["", "時間無法解析、可能屬於本週的跌倒相關紀錄（請人工確認）："]
+        lines += [
+            f'- 第 {u["row"]} 筆　時間 {u["timestamp"]!r}；fall 值 {u["fall"]!r}；原始描述：{u["motion"]}'
+            for u in falls["undated"]
+        ]
+    if falls["outside_week"]:
+        lines += ["", f'本週之外的跌倒紀錄 {len(falls["outside_week"])} 筆（未計入本週）：']
+        lines += [f'- {datetime.fromisoformat(e["at"]):%Y/%m/%d %H:%M}　原始描述：{e["motion"]}' for e in falls["outside_week"]]
     return lines
 
 
-def _render_activity(activity: ActivitySummary) -> list[str]:
-    if activity["total"] == 0:
-        lines = ["本週沒有動作紀錄。"]
-    else:
+def _activity_headline(activity: ActivitySummary, quality: DataQuality, falls: FallSummary) -> list[str]:
+    if activity["complete"]:
+        return ["本週沒有動作紀錄。" if activity["total"] == 0 else f'本週動作紀錄 **{activity["total"]}** 筆（不含跌倒）。']
+    return [
+        (
+            f'可判讀的紀錄中有動作紀錄 **{activity["total"]}** 筆（不含跌倒）；'
+            f"另有 {_unjudged_total(quality)} 筆無法判讀、未計入，**全週總數無法確認**。"
+        ),
+        _unjudged_parts(quality, falls),
+    ]
+
+
+def _render_activity(activity: ActivitySummary, quality: DataQuality, falls: FallSummary) -> list[str]:
+    lines = _activity_headline(activity, quality, falls)
+    if activity["total"]:
         speed = activity["speed"]
         parts = [f"{k} {speed[k]}" for k in SPEED_ORDER] + ([f"{OTHER_SPEED} {speed[OTHER_SPEED]}"] if speed[OTHER_SPEED] else [])
-        summary = (
-            f'本週動作紀錄 **{activity["total"]}** 筆（不含跌倒），有紀錄的天數 {activity["active_days"]} / 7，'
-            f'最多的一天是 {_fmt_date(activity["busiest_day"] or "")}。'
-        )
-        lines = [summary, f'速度分布：{"、".join(parts)}。']
+        lines += [
+            f'有紀錄的天數 {activity["active_days"]} / 7，最多的一天是 {_fmt_date(activity["busiest_day"] or "")}。',
+            f'速度分布：{"、".join(parts)}。',
+        ]
     lines += ["", "| 日期 | 動作紀錄筆數 |", "|---|---:|"]
     lines += [f'| {_fmt_date(d["date"])} | {d["count"]} |' for d in activity["per_day"]]
     return lines
@@ -346,7 +446,7 @@ def render_markdown(report: WeeklyReport) -> str:
     sections = [
         [f'# {head}週報　{_fmt_date(report["week_start"])} – {_fmt_date(report["week_end"])}'],
         ["## 跌倒", "", *_render_falls(report["falls"], report["data_quality"])],
-        ["## 活動量", "", *_render_activity(report["activity"])],
+        ["## 活動量", "", *_render_activity(report["activity"], report["data_quality"], report["falls"])],
         ["## 統計口徑與資料品質", "", *_render_quality(report["assumptions"], report["data_quality"])],
         ["建議報告尚未包含在這一版。", ""],
     ]

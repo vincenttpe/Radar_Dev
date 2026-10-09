@@ -79,7 +79,8 @@ def test_adapter_skips_and_explains_bad_rows():
     # 時間解析不了的才略過；fall 值無法辨識的保留下來，標成無法判讀
     assert len(records) == 2
     assert len(skipped) == 3
-    assert skipped[0].startswith("第 2 筆")
+    assert [(x.row, x.kind) for x in skipped] == [(2, "not_object"), (3, "bad_timestamp"), (5, "bad_timestamp")]
+    assert skipped[0].message == "第 2 筆：不是物件"
     unreadable = records[1]
     assert unreadable.fall is None and unreadable.fall_raw == "maybe"
 
@@ -108,8 +109,13 @@ def test_fall_sample_week(fall_sample):
     assert [d["count"] for d in act["per_day"]] == [0, 0, 10, 0, 0, 0, 0]
     assert act["active_days"] == 1 and act["busiest_day"] == "2026-06-03"
     assert act["speed"] == {"Slow": 0, "Normal": 5, "Fast": 5, "其他": 0}
-    assert r["data_quality"] == {"records_in_week": 11, "out_of_week": 0, "fall_field_missing": 0, "fall_unreadable": 0, "skipped": []}
+    assert r["data_quality"] == {
+        "records_in_week": 11, "out_of_week": 0, "fall_field_missing": 0, "fall_unreadable": 0,
+        "bad_timestamp": 0, "not_object": 0, "skipped": [],
+    }
     assert r["falls"]["completeness"] == "complete" and r["falls"]["unreadable"] == []
+    assert r["falls"]["undated"] == [] and r["falls"]["outside_week"] == []
+    assert act["complete"] is True and act["unjudged"] == 0
 
 
 def test_per_day_always_has_seven_entries_in_order(fall_sample):
@@ -146,7 +152,7 @@ def test_multiple_falls_listed_in_time_order():
 
 
 def test_unknown_speed_goes_to_other_bucket():
-    r = report_of([row("2026/06/02 09:00 AM", speed="Sprint"), {"Timestamp": "2026/06/02 10:00 AM", "Motion": "x"}])
+    r = report_of([row("2026/06/02 09:00 AM", speed="Sprint"), {"Timestamp": "2026/06/02 10:00 AM", "Motion": "x", "fall": "no"}])
     assert r["activity"]["speed"] == {"Slow": 0, "Normal": 0, "Fast": 0, "其他": 2}
 
 
@@ -155,7 +161,8 @@ def test_data_without_fall_field_is_not_reported_as_zero_falls(repo):
     assert r["falls"]["count"] == 0
     assert r["falls"]["judgeable"] is False  # 不能把「沒資料」當成「沒有跌倒」
     assert r["data_quality"]["fall_field_missing"] == 4
-    assert r["activity"]["total"] == 4
+    # 無法判讀是否為跌倒，也不能當成一般活動
+    assert r["activity"]["total"] == 0 and r["activity"]["unjudged"] == 4 and r["activity"]["complete"] is False
 
 
 def test_mixed_fall_field_is_counted_and_flagged():
@@ -167,7 +174,9 @@ def test_mixed_fall_field_is_counted_and_flagged():
 
 def test_empty_input():
     r = report_of([])
-    assert r["falls"] == {"count": 0, "events": [], "judgeable": False, "completeness": "none", "unreadable": []}
+    assert r["falls"] == {
+        "count": 0, "events": [], "judgeable": False, "completeness": "none", "unreadable": [], "undated": [], "outside_week": [],
+    }
     assert r["activity"]["total"] == 0 and r["activity"]["busiest_day"] is None
     assert r["activity"]["active_days"] == 0
 
@@ -321,3 +330,76 @@ def test_empty_week_with_unparseable_rows_says_they_may_belong_here():
     md = wr.render_markdown(report_of([row("garbage")]))
     assert "本週沒有任何紀錄，**無法判斷是否發生跌倒**" in md
     assert "（另有 1 筆時間無法解析，可能屬於本週。）" in md
+
+
+# ── 評估三：數字不能比資料更確定 ───────────────────────────
+
+def test_possible_fall_is_not_counted_as_activity():
+    """跌倒一節列為「可能就是跌倒」的那筆，活動量不能再當成一般動作。"""
+    rows = [
+        row("2026/06/03 08:00 AM", fall="no", motion="walk"),
+        row("2026/06/03 09:00 AM", fall="unknown", motion="A person slumped from the chair onto the floor."),
+    ]
+    r = report_of(rows)
+    assert r["activity"]["total"] == 1 and r["activity"]["unjudged"] == 1 and r["activity"]["complete"] is False
+    md = wr.render_markdown(r)
+    assert "本週動作紀錄" not in md
+    assert "可判讀的紀錄中有動作紀錄 **1** 筆（不含跌倒）；另有 1 筆無法判讀、未計入，**全週總數無法確認**。" in md
+
+
+def test_activity_headline_is_partial_when_timestamps_are_unparseable():
+    md = wr.render_markdown(report_of([row("2026/06/03 08:00 AM"), row("garbage")]))
+    assert "可判讀的紀錄中有動作紀錄 **1** 筆（不含跌倒）；另有 1 筆無法判讀、未計入" in md
+    assert "本週動作紀錄" not in md
+
+
+def test_complete_week_keeps_the_plain_activity_headline(fall_sample):
+    md = wr.render_markdown(report_of(fall_sample))
+    assert "本週動作紀錄 **10** 筆（不含跌倒）。" in md
+    assert "有紀錄的天數 1 / 7，最多的一天是 2026/06/03（三）。" in md
+
+
+def test_fall_with_bad_timestamp_is_named():
+    rows = [
+        row("2026/06/03 08:00 AM"),
+        row("not-a-date", fall="yes", motion="slumped"),
+        row("also-bad", fall="??", motion="lying"),
+        row("bad-and-no", fall="no"),
+    ]
+    records, skipped = wr.from_description_records(rows)
+    assert skipped[0].fall is True and skipped[0].motion == "slumped" and skipped[0].timestamp == "not-a-date"
+    r = wr.build_report(records, WEEK, skipped)
+    assert r["falls"]["undated"] == [
+        {"row": 2, "timestamp": "not-a-date", "motion": "slumped", "fall": "yes"},
+        {"row": 3, "timestamp": "also-bad", "motion": "lying", "fall": "??"},
+    ]
+    md = wr.render_markdown(r)
+    assert "（3 筆時間無法解析（其中 1 筆標記為跌倒），可能屬於本週。）" in md
+    assert "- 第 2 筆　時間 'not-a-date'；fall 值 'yes'；原始描述：slumped" in md
+    assert "- 第 3 筆　時間 'also-bad'；fall 值 '??'；原始描述：lying" in md
+
+
+def test_non_object_rows_are_not_called_timestamp_problems():
+    r = report_of([row("2026/06/03 08:00 AM"), "stray string"])
+    assert r["data_quality"]["not_object"] == 1 and r["data_quality"]["bad_timestamp"] == 0
+    md = wr.render_markdown(r)
+    assert "（1 筆不是物件（內容無法判讀），可能屬於本週。）" in md
+    assert "時間無法解析，可能屬於本週" not in md
+
+
+def test_fall_outside_the_chosen_week_is_named():
+    """預設週是最新一筆所在週；更早的跌倒不計入本週，但要點名。"""
+    rows = [row("2026/06/02 09:00 AM", fall="yes", motion="slumped"), row("2026/06/10 09:00 AM")]
+    r = report_of(rows, week=date(2026, 6, 8))
+    assert r["falls"]["count"] == 0 and r["falls"]["completeness"] == "complete"
+    assert r["falls"]["outside_week"] == [{"at": "2026-06-02T09:00", "motion": "slumped"}]
+    md = wr.render_markdown(r)
+    assert "本週之外的跌倒紀錄 1 筆（未計入本週）：" in md
+    assert "- 2026/06/02 09:00　原始描述：slumped" in md
+
+
+def test_empty_week_with_out_of_week_records_points_at_the_week_start(fall_sample):
+    md = wr.render_markdown(report_of(fall_sample, week=date(2026, 6, 8)))
+    assert "本週沒有任何紀錄，**無法判斷是否發生跌倒**；輸入資料有 11 筆在本週之外，請確認週起始日是否正確。" in md
+    assert "裝置沒有傳資料" not in md
+    assert "本週之外的跌倒紀錄 1 筆（未計入本週）：" in md

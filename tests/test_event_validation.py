@@ -67,13 +67,14 @@ def test_never_raises_on_garbage():
 
 
 
-@pytest.mark.parametrize("started,ended", [
-    ("2026-10-08t10:00:00z", "2026-10-08T10:05:00Z"),   # RFC 3339 允許小寫 t／z
-    ("2026-10-08T10:00:00z", "2026-10-08t10:05:00+08:00"),
+@pytest.mark.parametrize("started,ended,expected", [
+    ("2026-10-08t10:00:00z", "2026-10-08T10:05:00Z", []),   # RFC 3339 允許小寫 t／z
+    # 10:05+08:00 是 02:05 UTC，早於 10:00 UTC：要依實際時刻比較，而不是比字面
+    ("2026-10-08T10:00:00z", "2026-10-08t10:05:00+08:00", ["timestamps：ended 不得早於 started"]),
 ])
-def test_lowercase_t_and_z_are_accepted_and_compared(started, ended):
+def test_lowercase_t_and_z_are_accepted_and_compared(started, ended, expected):
     """評估重現的情況：小寫通過 Schema，卻讓 datetime.fromisoformat 拋例外。"""
-    assert validate_event(activity(started=started, ended=ended)) in ([], ["timestamps：ended 不得早於 started"])
+    assert validate_event(activity(started=started, ended=ended)) == expected
 
 
 def test_lowercase_order_is_still_checked():
