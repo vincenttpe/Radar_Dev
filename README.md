@@ -30,6 +30,7 @@
 1. `docs/01_現況架構.md`：舊雛形怎麼運作、有哪些問題。
 2. `docs/02_目標架構.md`：新系統的方向。
 3. `docs/03_待確認事項.md`：開始寫程式前要先確認的事。
+4. `REVIEW.md`：送 PR 前要知道的審查規範，特別是第 2 節的單向門。
 
 ## 安裝與使用
 
@@ -51,6 +52,13 @@ radar-kg-level 來回行走 5.4                                                 
 ```
 
 `git pull` 之後如果 `pyproject.toml` 有變動，再執行一次 `pip install -e ".[dev]"`。
+
+送 PR 前，可以先在本機檢查 PR 說明的單向門與驗證證據勾選（CI 的 pr-gate 跑的是同一支程式）：
+
+```bash
+git diff --name-only main...HEAD > changed.txt
+python -m radar_agent.pr_gate --body PR說明.md --changed changed.txt
+```
 
 ## 測試
 

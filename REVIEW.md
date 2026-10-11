@@ -17,7 +17,7 @@
 - `pytest --cov`：覆蓋率低於 95% 就失敗。
 - 指令列工具冒煙測試，包含 `radar-kg-build --check`、`radar-kg-manifest --check`。
 
-`.github/workflows/pr-gate.yml` 檢查 PR 說明的單向門勾選與變更的檔案是否一致（第 2 節）。
+`.github/workflows/pr-gate.yml` 檢查 PR 說明的勾選與變更的檔案是否一致：單向門（第 2 節）與驗證證據（改到知識圖譜或指令列工具時，對應的驗證項目必須勾選）。
 
 這些通過就不用再逐項看。審查重點放在工具抓不到的事：數字對不對、該不該這樣改、是不是做了需求以外的事。
 
@@ -61,7 +61,7 @@
 ### 3.3 週報
 
 - 「算不算一次跌倒、算不算活動量」只在 `counts_as_fall()`、`counts_as_activity()`。但會改變甲方看到的數字的不只這兩個函式，以下任何一處改了都是改口徑：
-  - 輸入判讀：`parse_timestamp()`（時間怎麼解析）、`_parse_fall()`（哪些值算 yes、no，例如 `"1"`、`"true"`）；
+  - 輸入判讀：`parse_timestamp()`（時間怎麼解析）、`_parse_fall()`（哪些值算 yes、no，例如 `"1"`、`"true"`）、`_read_fall()`（無法辨識的值怎麼保留）、`from_description_records()`（哪些紀錄被跳過、列為無法解析）；
   - 週的邊界：`_in_week()`（含起始日 00:00、不含第 8 天 00:00）；
   - 完整性與未判讀：`fall_completeness()`、`summarize_activity()` 的 `unjudged`（fall 無法判讀的紀錄怎麼算）；
   - 統計說明：`ASSUMPTIONS`。

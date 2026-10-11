@@ -1,15 +1,16 @@
-"""PR 的單向門檢查：依變更的檔案，確認 PR 說明勾了對應的單向門。
+"""PR 說明的檢查：依變更的檔案，確認 PR 說明勾了對應的單向門與驗證證據。
 
 單向門的定義見 REVIEW.md 第 2 節；PR 範本（.github/pull_request_template.md）讓作者勾選。
 只靠作者自律，改了 kg/ 卻勾「以上皆無」也看不出來，所以由 CI（.github/workflows/pr-gate.yml）
 依變更路徑檢查：
 
-- 至少勾一項；「以上皆無」不能和單向門同時勾。
-- 變更碰到某個單向門的路徑，就必須勾那一項。
-- 勾了任何單向門，「可逆性與回復方式」必須填寫。
+- 單向門：至少勾一項；「以上皆無」不能和單向門同時勾；變更碰到某個單向門的路徑，就必須勾那一項；
+  勾了任何單向門，「可逆性與回復方式」必須填寫。
+- 驗證證據：變更碰到知識圖譜或指令列工具時，對應的驗證項目必須勾選。ruff、mypy、pytest
+  三項 CI 本來就會跑，不另外要求勾選。
 
-路徑對應只寫在 DOORS；REVIEW.md 的表格與 PR 範本的勾選項由 tests/test_pr_gate.py 檢查是否一致。
-路徑對應只能擋下已知的檔案；沒有對應路徑的單向門（例如給讀者的輸出）仍靠作者勾選與人工審查。
+路徑對應只寫在 DOORS 與 EVIDENCE；REVIEW.md 的表格與 PR 範本的勾選項由 tests/test_pr_gate.py
+檢查是否一致。路徑對應只能擋下已知的檔案；沒有對應路徑的單向門（例如給讀者的輸出）仍靠作者勾選與人工審查。
 
 執行：
     python -m radar_agent.pr_gate --body PR說明.md --changed 變更檔案清單.txt
@@ -41,41 +42,52 @@ DOORS: dict[str, tuple[str, ...]] = {
     ),
 }
 NONE_LABEL = "以上皆無"
-SECTION = "## 單向門檢查"
-REVERSIBILITY = "**可逆性與回復方式**"
+DOORS_SECTION = "## 單向門檢查"
+REVERSIBILITY_HEADING = "**可逆性與回復方式**"
+
+# 驗證證據項目 → 路徑前綴。名稱要與 PR 範本「驗證證據」勾選項的開頭一致。
+EVIDENCE: dict[str, tuple[str, ...]] = {
+    "改到知識圖譜": (
+        "kg/v", "kg/releases.json", "kg/source/",
+        "src/radar_agent/kg_source.py", "src/radar_agent/kg_manifest.py",
+    ),
+    "改到指令或報告": (  # pyproject.toml 的 [project.scripts] 指向的模組
+        "src/radar_agent/weekly_report.py", "src/radar_agent/kg_rules.py",
+        "src/radar_agent/kg_source.py", "src/radar_agent/kg_manifest.py",
+    ),
+}
+EVIDENCE_SECTION = "## 驗證證據"
 
 _CHECKBOX = re.compile(r"^\s*[-*]\s*\[([ xX])\]\s*(.+?)\s*$")
 _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _HINT = re.compile(r"^（[^）]*）")
 
 
-def _section(body: str) -> str | None:
-    """「## 單向門檢查」到下一個「## 」之間的內容（已去掉 HTML 註解）；沒有這一節回傳 None。"""
+def _section(body: str, heading: str) -> str | None:
+    """heading 到下一個「## 」之間的內容（已去掉 HTML 註解）；沒有這一節回傳 None。"""
     lines = _COMMENT.sub("", body).splitlines()
     for i, line in enumerate(lines):
-        if line.strip() == SECTION:
+        if line.strip() == heading:
             rest = lines[i + 1:]
             end = next((j for j, s in enumerate(rest) if s.startswith("## ")), len(rest))
             return "\n".join(rest[:end])
     return None
 
 
-def _label(text: str) -> str | None:
-    if text.startswith(NONE_LABEL):
-        return NONE_LABEL
-    return next((door for door in DOORS if text.startswith(door)), None)
+def _label(text: str, labels: list[str]) -> str | None:
+    return next((label for label in labels if text.startswith(label)), None)
 
 
-def checked_labels(section: str) -> set[str]:
-    """勾選的項目名稱（單向門名稱或「以上皆無」）；認不出的勾選項不算。"""
-    labels = set()
+def checked_labels(section: str, labels: list[str]) -> set[str]:
+    """section 裡勾選的項目中，開頭符合 labels 的名稱；認不出的勾選項不算。"""
+    found = set()
     for line in section.splitlines():
         m = _CHECKBOX.match(line)
         if m and m.group(1) in "xX":
-            label = _label(m.group(2))
+            label = _label(m.group(2), labels)
             if label:
-                labels.add(label)
-    return labels
+                found.add(label)
+    return found
 
 
 def reversibility(section: str) -> str:
@@ -83,35 +95,41 @@ def reversibility(section: str) -> str:
 
     範本在標題後附了「（有勾選單向門時必填）」這類提示，提示不算填寫。
     """
-    _, found, after = section.partition(REVERSIBILITY)
+    _, found, after = section.partition(REVERSIBILITY_HEADING)
     if not found:
         return ""
     return _HINT.sub("", after.lstrip()).lstrip("：:").strip()
 
 
-def required_doors(changed: list[str]) -> dict[str, list[str]]:
-    """{單向門: 碰到它的變更檔案}，只列有碰到的。"""
+def _hits(changed: list[str], mapping: dict[str, tuple[str, ...]]) -> dict[str, list[str]]:
+    """{項目: 碰到它的變更檔案}，只列有碰到的。"""
     hits: dict[str, list[str]] = {}
     for path in changed:
-        for door, prefixes in DOORS.items():
+        for name, prefixes in mapping.items():
             if any(path.startswith(p) for p in prefixes):
-                hits.setdefault(door, []).append(path)
+                hits.setdefault(name, []).append(path)
     return hits
 
 
-def check(body: str, changed: list[str]) -> list[str]:
-    """回傳錯誤訊息清單；空清單代表通過。"""
-    section = _section(body)
-    if section is None:
-        return [f"PR 說明缺少「{SECTION.removeprefix('## ')}」一節，請使用 .github/pull_request_template.md"]
-    checked = checked_labels(section)
+def required_doors(changed: list[str]) -> dict[str, list[str]]:
+    """{單向門: 碰到它的變更檔案}，只列有碰到的。"""
+    return _hits(changed, DOORS)
+
+
+def required_evidence(changed: list[str]) -> dict[str, list[str]]:
+    """{驗證證據項目: 需要它的變更檔案}，只列有碰到的。"""
+    return _hits(changed, EVIDENCE)
+
+
+def _door_errors(section: str, doors_hit: dict[str, list[str]]) -> list[str]:
+    checked = checked_labels(section, [NONE_LABEL, *DOORS])
     doors = checked - {NONE_LABEL}
     errors = []
     if not checked:
         errors.append("單向門檢查沒有勾選任何項目；沒有碰到單向門請勾「以上皆無」")
     if NONE_LABEL in checked and doors:
         errors.append(f"「以上皆無」不能和單向門同時勾選：{'、'.join(sorted(doors))}")
-    for door, paths in required_doors(changed).items():
+    for door, paths in doors_hit.items():
         if door not in checked:
             errors.append(f"變更碰到單向門「{door}」但沒有勾選：{'、'.join(paths)}")
     if doors and not reversibility(section):
@@ -119,22 +137,47 @@ def check(body: str, changed: list[str]) -> list[str]:
     return errors
 
 
+def _evidence_errors(body: str, evidence_hit: dict[str, list[str]]) -> list[str]:
+    if not evidence_hit:
+        return []
+    section = _section(body, EVIDENCE_SECTION)
+    if section is None:
+        return [f"PR 說明缺少「{EVIDENCE_SECTION.removeprefix('## ')}」一節，請使用 .github/pull_request_template.md"]
+    checked = checked_labels(section, list(EVIDENCE))
+    return [
+        f"變更需要驗證證據「{item}」但沒有勾選：{'、'.join(paths)}"
+        for item, paths in evidence_hit.items() if item not in checked
+    ]
+
+
+def _errors(body: str, doors_hit: dict[str, list[str]], evidence_hit: dict[str, list[str]]) -> list[str]:
+    section = _section(body, DOORS_SECTION)
+    if section is None:
+        return [f"PR 說明缺少「{DOORS_SECTION.removeprefix('## ')}」一節，請使用 .github/pull_request_template.md"]
+    return _door_errors(section, doors_hit) + _evidence_errors(body, evidence_hit)
+
+
+def check(body: str, changed: list[str]) -> list[str]:
+    """回傳錯誤訊息清單；空清單代表通過。"""
+    return _errors(body, required_doors(changed), required_evidence(changed))
+
+
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="檢查 PR 說明的單向門勾選是否與變更的檔案一致")
+    ap = argparse.ArgumentParser(description="檢查 PR 說明的單向門與驗證證據勾選是否與變更的檔案一致")
     ap.add_argument("--body", required=True, help="PR 說明的檔案")
     ap.add_argument("--changed", required=True, help="變更檔案清單，一行一個 repo 相對路徑")
     args = ap.parse_args(argv)
 
     body = Path(args.body).read_text(encoding="utf-8")
     changed = [s.strip() for s in Path(args.changed).read_text(encoding="utf-8").splitlines() if s.strip()]
-    errors = check(body, changed)
+    doors_hit = required_doors(changed)
+    errors = _errors(body, doors_hit, required_evidence(changed))
     if errors:
-        print("單向門檢查未通過（定義見 REVIEW.md 第 2 節）：", file=sys.stderr)
+        print("PR 說明檢查未通過（定義見 REVIEW.md 第 2 節）：", file=sys.stderr)
         for e in errors:
             print(f"- {e}", file=sys.stderr)
         return 1
-    hits = required_doors(changed)
-    print("單向門檢查通過" + (f"；需要人工深入審查：{'、'.join(hits)}" if hits else "；沒有碰到單向門"))
+    print("單向門檢查通過" + (f"；需要人工深入審查：{'、'.join(doors_hit)}" if doors_hit else "；沒有碰到單向門"))
     return 0
 
 
