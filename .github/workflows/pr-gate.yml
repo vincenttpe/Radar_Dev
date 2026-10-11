@@ -1,0 +1,28 @@
+name: pr-gate
+
+# PR 說明的單向門勾選要與變更的檔案一致（REVIEW.md 第 2 節、src/radar_agent/pr_gate.py）。
+# 編輯 PR 說明（edited）也會重跑，補勾之後不必再推 commit。
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  one-way-doors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # 要比對 base 與 head 兩個 commit
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 單向門勾選與變更檔案一致
+        env:
+          # PR 說明經環境變數傳入，不直接嵌進指令，避免說明內容被當成 shell 指令執行
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/body.md"
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/changed.txt"
+          PYTHONPATH=src python -m radar_agent.pr_gate --body "$RUNNER_TEMP/body.md" --changed "$RUNNER_TEMP/changed.txt"
