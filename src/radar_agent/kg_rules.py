@@ -107,17 +107,33 @@ def _contains(level: dict[str, Any], value: Decimal) -> bool:
     return value < high or (value == high and level["max_inclusive"])
 
 
-def _gap_reason(metric: dict[str, Any], value: Decimal) -> str:
-    """數值不屬於任何等級時的說明：比來源精度更細、低於最低門檻，或落在兩級之間。"""
-    lowest = min(Decimal(str(lv["min"])) for lv in metric["levels"])
-    if value < lowest:  # 先判斷：極端的負值做餘數運算會超出 Decimal 精度
-        return f"數值 {value} 低於所有等級的下限 {lowest}"
+def _lowest(metric: dict[str, Any]) -> Decimal:
+    return min(Decimal(str(lv["min"])) for lv in metric["levels"])
+
+
+def _is_multiple(value: Decimal, step: Decimal) -> bool:
+    """value 是否為 step 的整數倍。用分數做整數運算，不受 Decimal 精度限制（1e100 也算得出來）。"""
+    p, q = value.as_integer_ratio()
+    r, s = step.as_integer_ratio()
+    return (p * s) % (q * r) == 0
+
+
+def _precision_reason(metric: dict[str, Any], value: Decimal) -> str | None:
+    """數值比來源寫出的精度更細時的說明；不論是否落在某個等級的區間內，都不評分。
+
+    低於所有等級下限的數值交給 _gap_reason，維持「低於下限」優先回報。
+    """
     resolution = metric["resolution"]
-    if resolution is not None and value % Decimal(str(resolution)) != 0:
-        return (
-            f"數值 {value} 比來源寫出的精度（{resolution}）更細，落在等級之間；來源沒有定義取整方式，"
-            "不由程式代決定（會議清單 E5）"
-        )
+    if resolution is None or value < _lowest(metric) or _is_multiple(value, Decimal(str(resolution))):
+        return None
+    return f"數值 {value} 比來源寫出的精度（{resolution}）更細；來源沒有定義取整方式，不由程式代決定（會議清單 E5）"
+
+
+def _gap_reason(metric: dict[str, Any], value: Decimal) -> str:
+    """數值不屬於任何等級時的說明：低於最低門檻，或落在兩級之間（精度已先檢查過）。"""
+    lowest = _lowest(metric)
+    if value < lowest:
+        return f"數值 {value} 低於所有等級的下限 {lowest}"
     return f"數值 {value} 不屬於任何等級（門檻缺口，待審核人決定，會議清單 E5）"
 
 
@@ -141,6 +157,9 @@ def assess(kg: KnowledgeGraph, metric: str, value: object) -> Assessment:
         return _result(metric, text, kg, "unassessable", reason=f"數值 {text!r} 不是有效的數字")
 
     spec = kg.thresholds[metric]
+    precision = _precision_reason(spec, number)
+    if precision is not None:
+        return _result(metric, text, kg, "unassessable", reason=precision)
     matches = [lv for lv in spec["levels"] if _contains(lv, number)]
     if not matches:
         return _result(metric, text, kg, "unassessable", reason=_gap_reason(spec, number))
