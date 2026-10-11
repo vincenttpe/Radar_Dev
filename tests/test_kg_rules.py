@@ -112,12 +112,20 @@ def test_walking_speed_shared_edges_are_unassessable_and_list_both_levels(kg, va
     assert "門檻重疊" in a["reason"] and "E5" in a["reason"]
 
 
-# 已知問題（記錄的是目前的行為，不是期望的行為；修正時要連測試一起改）：
-# 精度只在「找不到等級」時檢查，比精度更細但落在區間內的數值會直接給分。
-@pytest.mark.parametrize("metric,value,score", [("下肢肌力", "14.5", 3), ("來回行走", "5.55", 3)])
-def test_finer_than_resolution_inside_a_level_is_currently_scored(kg, metric, value, score):
+# 精度在比對區間之前檢查：比精度更細就不評分，不論它落在區間內（14.5、5.55）還是縫隙（5.45）。
+@pytest.mark.parametrize("metric,value,resolution", [
+    ("下肢肌力", "14.5", "1"), ("來回行走", "5.55", "0.1"), ("來回行走", "1e-100", "0.1"),
+])
+def test_finer_than_resolution_inside_a_level_is_not_scored(kg, metric, value, resolution):
     a = kg_rules.assess(kg, metric, value)
-    assert a["status"] == "assessed" and a["score"] == score
+    assert a["status"] == "unassessable" and a["score"] is None
+    assert a["reason"] == f"數值 {Decimal(value)} 比來源寫出的精度（{resolution}）更細；來源沒有定義取整方式，不由程式代決定（會議清單 E5）"
+
+
+@pytest.mark.parametrize("metric,value,score", [("下肢肌力", "14.0", 3), ("來回行走", "5.50", 3), ("來回行走", "1e100", 0)])
+def test_values_on_the_resolution_grid_are_still_scored(kg, metric, value, score):
+    """寫法帶多餘的 0 或用科學記號，只要是精度的整數倍，照常評分。"""
+    assert kg_rules.assess(kg, metric, value)["score"] == score
 
 
 @pytest.mark.parametrize("metric,value,resolution", [("來回行走", "5.45", "0.1"), ("下肢肌力", "13.5", "1")])
