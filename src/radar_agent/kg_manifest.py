@@ -9,6 +9,9 @@
 需要先 pip install -e .（見 pyproject.toml）。
 
 雜湊是檔案位元組的 SHA-256；請確保換行沒被轉換（本 repo 以 LF 提交）。
+
+讀寫哪個 repo 由各函式的 repo 參數決定（預設是本 repo），清單路徑一律由它推出，
+和 kg_source、kg_rules 的寫法一致；測試傳入暫存目錄即可，不必替換模組變數。
 """
 from __future__ import annotations
 
@@ -19,28 +22,31 @@ from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[2]
-MANIFEST = REPO / "kg" / "releases.json"
+
+
+def _manifest_path(repo: Path) -> Path:
+    return repo / "kg" / "releases.json"
 
 
 def sha256_of(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def release_files(version: str) -> list[str]:
+def release_files(version: str, repo: Path = REPO) -> list[str]:
     """kg/<version>/ 底下所有檔案，repo 相對路徑、排序。"""
-    base = REPO / "kg" / version
-    return sorted(p.relative_to(REPO).as_posix() for p in base.rglob("*") if p.is_file())
+    base = repo / "kg" / version
+    return sorted(p.relative_to(repo).as_posix() for p in base.rglob("*") if p.is_file())
 
 
-def compute(manifest: dict[str, Any]) -> dict[str, Any]:
+def compute(manifest: dict[str, Any], repo: Path = REPO) -> dict[str, Any]:
     """依目前檔案內容重算雜湊，回傳新的清單（核准欄位與說明原樣保留）。
 
     已核准版本的內容若有變動，由 main 拒絕寫入（見 changed_approved_releases）。
     """
     for release in manifest["releases"]:
-        release["files"] = {f: sha256_of(REPO / f) for f in release_files(release["version"])}
+        release["files"] = {f: sha256_of(repo / f) for f in release_files(release["version"], repo)}
     for source in manifest["other_sources"]:
-        source["sha256"] = sha256_of(REPO / source["path"])
+        source["sha256"] = sha256_of(repo / source["path"])
     return manifest
 
 
@@ -56,20 +62,20 @@ def changed_approved_releases(current: dict[str, Any], fresh: dict[str, Any]) ->
     ]
 
 
-def load() -> dict[str, Any]:
-    manifest: dict[str, Any] = json.loads(MANIFEST.read_text(encoding="utf-8"))
+def load(repo: Path = REPO) -> dict[str, Any]:
+    manifest: dict[str, Any] = json.loads(_manifest_path(repo).read_text(encoding="utf-8"))
     return manifest
 
 
-def dump(manifest: dict[str, Any]) -> None:
-    MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+def dump(manifest: dict[str, Any], repo: Path = REPO) -> None:
+    _manifest_path(repo).write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, repo: Path = REPO) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    current = load()
+    current = load(repo)
     try:
-        fresh = compute(json.loads(json.dumps(current)))
+        fresh = compute(json.loads(json.dumps(current)), repo)
     except FileNotFoundError as e:
         print(f"清單登記的檔案不存在：{e.filename}", file=sys.stderr)
         return 2
@@ -90,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    dump(fresh)
+    dump(fresh, repo)
     print("已更新 kg/releases.json")
     return 0
 

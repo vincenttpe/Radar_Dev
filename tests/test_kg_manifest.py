@@ -74,27 +74,25 @@ class TmpRepo:
     測試主體只透過這些方法操作；kg_manifest 指定 repo 的方式改變時，只需要改這個類別。
     """
 
-    def __init__(self, root, monkeypatch):
+    def __init__(self, root):
         self.root = root
         self.manifest_path = root / "kg" / "releases.json"
-        monkeypatch.setattr(kg_manifest, "REPO", root)
-        monkeypatch.setattr(kg_manifest, "MANIFEST", self.manifest_path)
 
     def run(self, args):
-        return kg_manifest.main(args)
+        return kg_manifest.main(args, repo=self.root)
 
     def load(self):
-        return kg_manifest.load()
+        return kg_manifest.load(self.root)
 
     def dump(self, manifest):
-        kg_manifest.dump(manifest)
+        kg_manifest.dump(manifest, self.root)
 
     def release_files(self, version):
-        return kg_manifest.release_files(version)
+        return kg_manifest.release_files(version, self.root)
 
 
 @pytest.fixture
-def tmp_repo(tmp_path, monkeypatch):
+def tmp_repo(tmp_path):
     (tmp_path / "kg" / "v1").mkdir(parents=True)
     (tmp_path / "kg" / "v1" / "a.cypher").write_text("CREATE (a);\n", encoding="utf-8")
     (tmp_path / "kg" / "v1" / "b.json").write_text('{"x": 1}\n', encoding="utf-8")
@@ -113,7 +111,7 @@ def tmp_repo(tmp_path, monkeypatch):
             "path": "kg/source/old.docx", "status": "differs_from_v1", "reason": "用詞不同", "sha256": "",
         }],
     }
-    repo = TmpRepo(tmp_path, monkeypatch)
+    repo = TmpRepo(tmp_path)
     repo.dump(manifest)
     return repo
 
