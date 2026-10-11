@@ -213,7 +213,7 @@ def from_description_records(rows: Sequence[object]) -> tuple[list[Record], list
     return records, skipped
 
 
-# ── 統計口徑（C1、C2 確認後只改這兩個函式與 ASSUMPTIONS）─────────
+# ── 統計口徑：算不算跌倒、算不算活動量（其他會改變數字的地方見 REVIEW.md 3.3）─────────
 
 def counts_as_fall(record: Record) -> bool:
     """這一筆算不算一次跌倒。目前：fall 欄位明確為 yes。"""

@@ -31,6 +31,8 @@
 
 ## 驗證證據
 
+<!-- CI（pr-gate）會檢查：改到知識圖譜或指令列工具時，對應的項目必須勾選。 -->
+
 - [ ] `ruff check src tests`
 - [ ] `mypy`
 - [ ] `python -m pytest --cov`

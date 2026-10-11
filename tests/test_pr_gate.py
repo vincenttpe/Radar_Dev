@@ -4,7 +4,7 @@ import re
 import pytest
 
 from radar_agent import pr_gate
-from radar_agent.pr_gate import DOORS, NONE_LABEL, check, required_doors
+from radar_agent.pr_gate import DOORS, EVIDENCE, NONE_LABEL, check, required_doors, required_evidence
 
 
 @pytest.fixture(scope="module")
@@ -20,7 +20,7 @@ def _body(template: str, checked: list[str], reversibility: str = "") -> str:
         m = re.match(r"^- \[ \] (.+)$", line)
         if m and any(m.group(1).startswith(label) for label in checked):
             out = f"- [x] {m.group(1)}"
-        if line.startswith(pr_gate.REVERSIBILITY) and reversibility:
+        if line.startswith(pr_gate.REVERSIBILITY_HEADING) and reversibility:
             out = f"{line}{reversibility}"
         lines.append(out)
     return "\n".join(lines)
@@ -29,10 +29,26 @@ def _body(template: str, checked: list[str], reversibility: str = "") -> str:
 # ── 範本、REVIEW.md 與 DOORS 一致 ─────────────────────────
 
 def test_template_checkboxes_are_exactly_the_doors_plus_none(template):
-    section = pr_gate._section(template)
+    section = pr_gate._section(template, pr_gate.DOORS_SECTION)
     assert section is not None
     labels = [m.group(1) for m in re.finditer(r"^- \[ \] (.+)$", section, re.MULTILINE)]
-    assert [pr_gate._label(text) for text in labels] == [*DOORS, NONE_LABEL]
+    assert [pr_gate._label(text, [*DOORS, NONE_LABEL]) for text in labels] == [*DOORS, NONE_LABEL]
+
+
+def test_template_has_a_checkbox_for_every_evidence_item(template):
+    section = pr_gate._section(template, pr_gate.EVIDENCE_SECTION)
+    assert section is not None
+    labels = [m.group(1) for m in re.finditer(r"^- \[ \] (.+)$", section, re.MULTILINE)]
+    assert [label for label in EVIDENCE if any(text.startswith(label) for text in labels)] == list(EVIDENCE)
+
+
+def test_evidence_items_cover_every_console_script_module(repo):
+    """指令列工具改了就要附實際執行的輸出；新增指令時 EVIDENCE 要跟著補。"""
+    import tomllib
+
+    scripts = tomllib.loads((repo / "pyproject.toml").read_text(encoding="utf-8"))["project"]["scripts"]
+    modules = {"src/" + target.partition(":")[0].replace(".", "/") + ".py" for target in scripts.values()}
+    assert modules == set(EVIDENCE["改到指令或報告"])
 
 
 def test_review_md_door_table_lists_every_door(repo):
@@ -79,7 +95,7 @@ def test_touching_a_door_without_checking_it_is_rejected(template, path, door):
 
 
 def test_checking_the_touched_door_with_reversibility_passes(template):
-    body = _body(template, ["週報統計口徑"], reversibility="只改排版；revert 後重新產生本週週報即可")
+    body = _body(template, ["週報統計口徑", "改到指令或報告"], reversibility="只改排版；revert 後重新產生本週週報即可")
     assert check(body, ["src/radar_agent/weekly_report.py"]) == []
 
 
@@ -90,7 +106,7 @@ def test_door_checked_without_reversibility_is_rejected(template):
 
 
 def test_reversibility_written_on_the_following_line_counts(template):
-    line = next(s for s in template.splitlines() if s.startswith(pr_gate.REVERSIBILITY))
+    line = next(s for s in template.splitlines() if s.startswith(pr_gate.REVERSIBILITY_HEADING))
     body = _body(template, ["事件格式"]).replace(line, f"{line}\n\n草案階段，雙方尚未照此格式送資料", 1)
     assert check(body, ["schemas/event.v0.draft.json"]) == []
 
@@ -129,6 +145,36 @@ def test_door_checked_but_reversibility_line_deleted_is_rejected():
     assert check(body, ["schemas/event.v0.draft.json"]) == ["勾選了單向門，但「可逆性與回復方式」沒有填寫"]
 
 
+# ── 驗證證據 ─────────────────────────────────────────
+
+@pytest.mark.parametrize("path,item", [
+    ("kg/v1/graph.cypher", "改到知識圖譜"),
+    ("kg/releases.json", "改到知識圖譜"),
+    ("src/radar_agent/kg_source.py", "改到知識圖譜"),
+    ("src/radar_agent/weekly_report.py", "改到指令或報告"),
+    ("src/radar_agent/kg_rules.py", "改到指令或報告"),
+])
+def test_touching_kg_or_a_command_without_evidence_is_rejected(template, path, item):
+    body = _body(template, list(DOORS), reversibility="可還原")
+    assert f"變更需要驗證證據「{item}」但沒有勾選：{path}" in check(body, [path])
+
+
+def test_kg_change_with_both_evidence_items_passes(template):
+    body = _body(template, ["知識圖譜內容", "數字與等級的判定", "改到知識圖譜", "改到指令或報告"], reversibility="可還原")
+    assert check(body, ["kg/v1/graph.cypher", "src/radar_agent/kg_source.py"]) == []
+
+
+def test_evidence_is_not_required_for_docs_only_change(template):
+    assert required_evidence(["docs/02_目標架構.md", "src/radar_agent/event_validation.py"]) == {}
+
+
+def test_missing_evidence_section_is_rejected_when_evidence_is_needed():
+    body = "## 單向門檢查\n\n- [x] 週報統計口徑\n\n**可逆性與回復方式**：可還原\n"
+    assert check(body, ["src/radar_agent/weekly_report.py"]) == [
+        "PR 說明缺少「驗證證據」一節，請使用 .github/pull_request_template.md",
+    ]
+
+
 def test_required_doors_groups_files_by_door():
     assert required_doors(["kg/v1/graph.cypher", "README.md", "kg/releases.json"]) == {
         "知識圖譜內容": ["kg/v1/graph.cypher", "kg/releases.json"],
@@ -139,7 +185,7 @@ def test_required_doors_groups_files_by_door():
 
 def test_main_passes_and_names_doors_needing_review(template, tmp_path, capsys):
     body, changed = tmp_path / "body.md", tmp_path / "changed.txt"
-    body.write_text(_body(template, ["週報統計口徑"], reversibility="可還原"), encoding="utf-8")
+    body.write_text(_body(template, ["週報統計口徑", "改到指令或報告"], reversibility="可還原"), encoding="utf-8")
     changed.write_text("src/radar_agent/weekly_report.py\n\nREADME.md\n", encoding="utf-8")
     assert pr_gate.main(["--body", str(body), "--changed", str(changed)]) == 0
     assert capsys.readouterr().out == "單向門檢查通過；需要人工深入審查：週報統計口徑\n"
@@ -159,5 +205,5 @@ def test_main_fails_with_reasons_on_stderr(template, tmp_path, capsys):
     changed.write_text("kg/v1/graph.cypher\n", encoding="utf-8")
     assert pr_gate.main(["--body", str(body), "--changed", str(changed)]) == 1
     err = capsys.readouterr().err
-    assert "單向門檢查未通過" in err
+    assert "PR 說明檢查未通過" in err
     assert "變更碰到單向門「知識圖譜內容」但沒有勾選：kg/v1/graph.cypher" in err
