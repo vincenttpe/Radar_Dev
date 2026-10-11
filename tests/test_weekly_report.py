@@ -113,7 +113,7 @@ def test_fall_sample_week(fall_sample):
         "records_in_week": 11, "out_of_week": 0, "fall_field_missing": 0, "fall_unreadable": 0,
         "bad_timestamp": 0, "not_object": 0, "skipped": [],
     }
-    assert r["falls"]["completeness"] == "complete" and r["falls"]["unreadable"] == []
+    assert r["falls"]["completeness"] == "all_readable" and r["falls"]["unreadable"] == []
     assert r["falls"]["undated"] == [] and r["falls"]["outside_week"] == []
     assert act["complete"] is True and act["unjudged"] == 0
 
@@ -204,9 +204,9 @@ def test_assumptions_are_always_included_and_reference_open_questions(fall_sampl
 def test_markdown_for_fall_sample(fall_sample):
     md = wr.render_markdown(report_of(fall_sample, title="示範機構"))
     assert md.startswith("# 示範機構 週報　2026/06/01（一） – 2026/06/07（日）")
-    assert "本週跌倒 **1** 次。" in md
+    assert "本次輸入的紀錄中，跌倒標記共 **1** 筆。" in md
     assert "2026/06/03 21:25　原始描述：A person slumped from the chair onto the floor." in md
-    assert "本週動作紀錄 **10** 筆（不含跌倒）" in md
+    assert "本次輸入的紀錄中，動作紀錄共 **10** 筆（不含跌倒）" in md
     assert "速度分布：Slow 0、Normal 5、Fast 5。" in md
     assert "| 2026/06/03（三） | 10 |" in md
     assert "## 統計口徑與資料品質" in md
@@ -222,7 +222,7 @@ def test_markdown_says_undeterminable_when_no_fall_field(repo):
 def test_markdown_for_empty_week_does_not_claim_zero_falls():
     """沒有任何紀錄可能是裝置沒傳資料，不能寫成「跌倒 0 次」。"""
     md = wr.render_markdown(report_of([]))
-    assert "本週沒有動作紀錄。" in md
+    assert "本次輸入的紀錄中，沒有動作紀錄（不含跌倒）。" in md
     assert "無法判斷是否發生跌倒" in md and "也可能是裝置沒有傳資料" in md
     assert "本週跌倒" not in md
 
@@ -238,7 +238,7 @@ def test_cli_markdown(repo, capsys):
     path = repo / "data" / "samples_fall" / "2026-06-03.json"
     assert wr.main(["--input", str(path), "--title", "示範機構"]) == 0
     out = capsys.readouterr().out
-    assert "本週跌倒 **1** 次。" in out and out.startswith("# 示範機構 週報")
+    assert "本次輸入的紀錄中，跌倒標記共 **1** 筆。" in out and out.startswith("# 示範機構 週報")
 
 
 def test_cli_defaults_to_monday_of_latest_record(repo, capsys):
@@ -315,7 +315,7 @@ def test_all_reasons_are_listed_separately():
 
 def test_complete_week_keeps_the_plain_headline(fall_sample):
     md = wr.render_markdown(report_of(fall_sample))
-    assert "本週跌倒 **1** 次。" in md and "**全週總數無法確認**" not in md  # 口徑說明裡有同樣字樣，所以比對主文才有的粗體
+    assert "本次輸入的紀錄中，跌倒標記共 **1** 筆。" in md and "**全週總數無法確認**" not in md  # 口徑說明裡有同樣字樣，所以比對主文才有的粗體
 
 
 def test_only_unreadable_values_means_none_and_still_lists_them():
@@ -355,7 +355,7 @@ def test_activity_headline_is_partial_when_timestamps_are_unparseable():
 
 def test_complete_week_keeps_the_plain_activity_headline(fall_sample):
     md = wr.render_markdown(report_of(fall_sample))
-    assert "本週動作紀錄 **10** 筆（不含跌倒）。" in md
+    assert "本次輸入的紀錄中，動作紀錄共 **10** 筆（不含跌倒）。" in md
     assert "有紀錄的天數 1 / 7，最多的一天是 2026/06/03（三）。" in md
 
 
@@ -391,7 +391,7 @@ def test_fall_outside_the_chosen_week_is_named():
     """預設週是最新一筆所在週；更早的跌倒不計入本週，但要點名。"""
     rows = [row("2026/06/02 09:00 AM", fall="yes", motion="slumped"), row("2026/06/10 09:00 AM")]
     r = report_of(rows, week=date(2026, 6, 8))
-    assert r["falls"]["count"] == 0 and r["falls"]["completeness"] == "complete"
+    assert r["falls"]["count"] == 0 and r["falls"]["completeness"] == "all_readable"
     assert r["falls"]["outside_week"] == [{"at": "2026-06-02T09:00", "motion": "slumped"}]
     md = wr.render_markdown(r)
     assert "本週之外的跌倒紀錄 1 筆（未計入本週）：" in md
@@ -403,3 +403,15 @@ def test_empty_week_with_out_of_week_records_points_at_the_week_start(fall_sampl
     assert "本週沒有任何紀錄，**無法判斷是否發生跌倒**；輸入資料有 11 筆在本週之外，請確認週起始日是否正確。" in md
     assert "裝置沒有傳資料" not in md
     assert "本週之外的跌倒紀錄 1 筆（未計入本週）：" in md
+
+
+# 沒有裝置在線時段的資料（會議清單 D3），輸入的紀錄都可判讀也不能寫成全週結論。
+def test_a_single_readable_record_is_not_reported_as_the_whole_week():
+    r = report_of([row("2026/06/03 10:00 AM")], week=date(2026, 6, 1))
+    assert r["falls"]["completeness"] == "all_readable"
+    md = wr.render_markdown(r)
+    assert "本次輸入的紀錄中，跌倒標記共 **0** 筆。" in md
+    assert "本次輸入的紀錄中，動作紀錄共 **1** 筆（不含跌倒）。" in md
+    assert "本週跌倒" not in md and "本週動作紀錄" not in md
+    assert "| 2026/06/01（一） | 0 |\n" in md
+    assert "0 表示該日沒有收到紀錄，不代表沒有活動（尚無裝置在線資料，會議清單 D3）。" in md

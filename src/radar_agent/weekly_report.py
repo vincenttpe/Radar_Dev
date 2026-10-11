@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Literal, TypedDict
 
 SPEED_ORDER = ("Slow", "Normal", "Fast")
+DAILY_ZERO_NOTE = "0 表示該日沒有收到紀錄，不代表沒有活動（尚無裝置在線資料，會議清單 D3）。"
 OTHER_SPEED = "其他"
 WEEKDAYS = "一二三四五六日"
 
@@ -96,14 +97,16 @@ class UndatedFall(TypedDict):
     fall: str             # fall 原值（yes 或無法辨識的值）
 
 
-Completeness = Literal["complete", "partial", "none"]
+Completeness = Literal["all_readable", "partial", "none"]
 
 
 class FallSummary(TypedDict):
-    count: int            # 可判讀的紀錄中偵測到的跌倒；completeness 不是 complete 時只是下限
+    count: int            # 輸入的紀錄中標記為跌倒的筆數；completeness 不是 all_readable 時只是下限
     events: list[FallEvent]
     judgeable: bool       # 至少有一筆可判讀；False＝不能把「沒資料」當成「沒有跌倒」
-    completeness: Completeness  # complete＝本週每筆都可判讀；partial＝有些不行；none＝完全無法判斷
+    # all_readable＝輸入的本週紀錄每筆都可判讀（不代表裝置整週在線，資料可能有缺漏）；
+    # partial＝有些不行；none＝完全無法判斷
+    completeness: Completeness
     unreadable: list[UnreadableFall]  # fall 值無法辨識的本週紀錄，逐筆列出（可能就是跌倒）
     undated: list[UndatedFall]  # 時間無法解析、但標記為跌倒或 fall 值無法辨識的紀錄（可能屬於本週）
     outside_week: list[FallEvent]  # 本週之外的跌倒紀錄，未計入本週，但逐筆列出避免週起始日選錯時被埋掉
@@ -250,7 +253,7 @@ def fall_completeness(in_week: list[Record], skipped: Sequence[Skipped]) -> Comp
         return "none"
     if skipped or any(r.fall is None for r in in_week):
         return "partial"
-    return "complete"
+    return "all_readable"
 
 
 def _event(r: Record) -> FallEvent:
@@ -374,8 +377,9 @@ def _fall_headline(falls: FallSummary, quality: DataQuality) -> list[str]:
         return lines + ([_unjudged_parts(quality, falls, lead="另有 ")] if skipped else [])
     if falls["completeness"] == "none":
         return ["本週的資料沒有可判讀的跌倒欄位，**無法判斷是否發生跌倒**。", _unjudged_parts(quality, falls)]
-    if falls["completeness"] == "complete":
-        return [f'本週跌倒 **{falls["count"]}** 次。']
+    if falls["completeness"] == "all_readable":
+        # 沒有裝置在線時段的資料（會議清單 D3），只能說「輸入的紀錄中」，不能寫成全週總數
+        return [f'本次輸入的紀錄中，跌倒標記共 **{falls["count"]}** 筆。']
     return [
         f'可判讀的紀錄中偵測到 **{falls["count"]}** 次跌倒；另有 {_unjudged_total(quality)} 筆無法判讀，**全週總數無法確認**。',
         _unjudged_parts(quality, falls),
@@ -407,7 +411,9 @@ def _render_falls(falls: FallSummary, quality: DataQuality) -> list[str]:
 
 def _activity_headline(activity: ActivitySummary, quality: DataQuality, falls: FallSummary) -> list[str]:
     if activity["complete"]:
-        return ["本週沒有動作紀錄。" if activity["total"] == 0 else f'本週動作紀錄 **{activity["total"]}** 筆（不含跌倒）。']
+        if activity["total"] == 0:
+            return ["本次輸入的紀錄中，沒有動作紀錄（不含跌倒）。"]
+        return [f'本次輸入的紀錄中，動作紀錄共 **{activity["total"]}** 筆（不含跌倒）。']
     return [
         (
             f'可判讀的紀錄中有動作紀錄 **{activity["total"]}** 筆（不含跌倒）；'
@@ -428,6 +434,7 @@ def _render_activity(activity: ActivitySummary, quality: DataQuality, falls: Fal
         ]
     lines += ["", "| 日期 | 動作紀錄筆數 |", "|---|---:|"]
     lines += [f'| {_fmt_date(d["date"])} | {d["count"]} |' for d in activity["per_day"]]
+    lines += ["", DAILY_ZERO_NOTE]
     return lines
 
 

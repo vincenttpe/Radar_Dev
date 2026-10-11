@@ -42,7 +42,7 @@ def test_weekly_report_main_reads_sys_argv_when_called_without_arguments(repo, m
     path = repo / "data" / "samples_fall" / "2026-06-03.json"
     monkeypatch.setattr(sys, "argv", ["radar-weekly-report", "--input", str(path)])
     assert weekly_report.main() == 0
-    assert "本週跌倒 **1** 次。" in capsys.readouterr().out
+    assert "本次輸入的紀錄中，跌倒標記共 **1** 筆。" in capsys.readouterr().out
 
 
 def _names(requirements: list[str]) -> set[str]:
