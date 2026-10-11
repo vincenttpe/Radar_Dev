@@ -205,6 +205,28 @@ def test_cli_reports_integrity_errors(repo_copy, monkeypatch, capsys):
     assert "metrics.json 與 kg/releases.json 登記的雜湊不同" in capsys.readouterr().err
 
 
+# 檔案不存在也是「知識圖譜檔案有誤」：結束碼 2，不是 traceback，也不和「無法評估」的 1 混在一起。
+
+def test_missing_manifest_is_an_integrity_error_with_exit_code_2(repo_copy, monkeypatch, capsys):
+    (repo_copy / "kg" / "releases.json").unlink()
+    with pytest.raises(kg_rules.KgIntegrityError, match=re.escape("找不到清單：kg/releases.json")):
+        kg_rules.load("v1", repo_copy)
+    monkeypatch.setattr(kg_rules, "REPO", repo_copy)
+    assert kg_rules.main(["來回行走", "5.4"]) == 2
+    assert capsys.readouterr().err == "錯誤：找不到清單：kg/releases.json\n"
+
+
+@pytest.mark.parametrize("name", ["thresholds.json", "metrics.json"])
+def test_missing_kg_file_is_an_integrity_error_with_exit_code_2(repo_copy, monkeypatch, capsys, name):
+    (repo_copy / "kg" / "v1" / name).unlink()
+    message = f"kg/v1/{name} 不存在，請先執行 radar-kg-build 與 radar-kg-manifest"
+    with pytest.raises(kg_rules.KgIntegrityError, match=re.escape(message)):
+        kg_rules.load("v1", repo_copy)
+    monkeypatch.setattr(kg_rules, "REPO", repo_copy)
+    assert kg_rules.main(["來回行走", "5.4"]) == 2
+    assert capsys.readouterr().err == f"錯誤：{message}\n"
+
+
 def test_main_reads_sys_argv_when_called_without_arguments(monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["radar-kg-level", "來回行走", "5.4"])
     assert kg_rules.main() == 0
