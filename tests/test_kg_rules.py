@@ -205,6 +205,27 @@ def test_cli_reports_integrity_errors(repo_copy, monkeypatch, capsys):
     assert "metrics.json 與 kg/releases.json 登記的雜湊不同" in capsys.readouterr().err
 
 
+# 下面兩個測試記錄的是目前的行為，不是期望的行為（已知問題）：修正時要連測試一起改。
+
+def test_missing_manifest_currently_raises_instead_of_an_integrity_error(repo_copy):
+    """已知問題：releases.json 不存在時丟出 FileNotFoundError，不是 KgIntegrityError。"""
+    (repo_copy / "kg" / "releases.json").unlink()
+    with pytest.raises(FileNotFoundError):
+        kg_rules.load("v1", repo_copy)
+
+
+@pytest.mark.parametrize("name", ["thresholds.json", "metrics.json"])
+def test_missing_kg_file_currently_raises_and_the_cli_does_not_catch_it(repo_copy, monkeypatch, name):
+    """已知問題：檔案不存在時丟出 FileNotFoundError；main 沒有接住，指令列印出 traceback、結束碼 1，
+    和「無法評估」的 1 相同，不符合檔頭的「2＝知識圖譜檔案有誤」。"""
+    (repo_copy / "kg" / "v1" / name).unlink()
+    with pytest.raises(FileNotFoundError):
+        kg_rules.load("v1", repo_copy)
+    monkeypatch.setattr(kg_rules, "REPO", repo_copy)
+    with pytest.raises(FileNotFoundError):
+        kg_rules.main(["來回行走", "5.4"])
+
+
 def test_main_reads_sys_argv_when_called_without_arguments(monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["radar-kg-level", "來回行走", "5.4"])
     assert kg_rules.main() == 0
