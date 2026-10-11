@@ -20,8 +20,8 @@
 | `data/samples_device_event/` | 2026-10-08 取得的裝置簡易動作事件樣本 |
 | `schemas/` | 雷達事件格式草案（**未經確認**） |
 | `legacy/prototype/` | 舊雛形程式，僅供參考與比對，不再開發 |
-| `src/radar_agent/` | 新系統的程式。目前有事件驗證（`event_validation.py`）、知識圖譜發布清單工具（`kg_manifest.py`）與甲方週報第 1 版（`weekly_report.py`） |
-| `REVIEW.md` | 審查規範：單向門清單、規範與需求兩軸的檢查重點；PR 範本在 `.github/pull_request_template.md` |
+| `src/radar_agent/` | 新系統的程式。目前有事件驗證（`event_validation.py`）、知識圖譜發布清單工具（`kg_manifest.py`）、甲方週報第 1 版（`weekly_report.py`）與 PR 單向門檢查（`pr_gate.py`） |
+| `REVIEW.md` | 審查規範：單向門清單、規範與需求兩軸的檢查重點；PR 範本在 `.github/pull_request_template.md`，CI（`pr-gate.yml`）依變更的檔案檢查單向門勾選 |
 | `.claude/skills/` | Claude 用的專案 skill：`weekly-report`（產生甲方週報）、`kg-check`（知識圖譜一致性檢查） |
 | `tests/` | 資料檔的一致性測試與上述程式的測試，不載入模型、不連資料庫 |
 

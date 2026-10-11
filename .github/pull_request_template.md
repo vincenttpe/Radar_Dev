@@ -10,14 +10,15 @@
 
 ## 單向門檢查
 
-<!-- 勾選這個 PR 碰到的項目（定義見 REVIEW.md 第 2 節）。有勾選就需要人工深入審查，並在下方說明可逆性。 -->
+<!-- 勾選這個 PR 碰到的項目（定義見 REVIEW.md 第 2 節）。有勾選就需要人工深入審查，並在下方說明可逆性。CI（pr-gate）會依變更的檔案檢查勾選是否一致。 -->
 
-- [ ] 知識圖譜內容（`kg/` 的門檻、等級、建議用詞，或 `releases.json` 的 `approval`）
-- [ ] 數字與等級的判定（換算規則、`kg_rules.py`、`METRIC_CONFIG`）
-- [ ] 週報統計口徑（`counts_as_fall()`、`counts_as_activity()`、`ASSUMPTIONS`）
+- [ ] 知識圖譜內容（`kg/` 的版本目錄、`source/`、`dumps/`、`releases.json`；`kg_manifest.py`）
+- [ ] 數字與等級的判定（換算規則、`kg_rules.py`、`kg_source.py`）
+- [ ] 週報統計口徑（`weekly_report.py` 任何部分，含輸入判讀、週的邊界、排版文字）
 - [ ] 給讀者的輸出與用語（Profile 範本、在地模型 prompt、輸出檢查）
-- [ ] 個人資料的流向（讀取、保存、傳送長者資料；`data/` 新增資料檔）
-- [ ] 事件格式（`schemas/`）
+- [ ] 個人資料的流向（讀取、保存、傳送長者資料；`data/` 底下的資料檔）
+- [ ] 事件格式（`schemas/`、`event_validation.py`）
+- [ ] 檢查與審查機制（`.github/`、`REVIEW.md`、`pr_gate.py`）
 - [ ] 以上皆無（雙向門：文件、測試、內部重構、開發工具）
 
 **可逆性與回復方式**（有勾選單向門時必填）：

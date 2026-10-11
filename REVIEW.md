@@ -17,20 +17,25 @@
 - `pytest --cov`：覆蓋率低於 95% 就失敗。
 - 指令列工具冒煙測試，包含 `radar-kg-build --check`、`radar-kg-manifest --check`。
 
+`.github/workflows/pr-gate.yml` 檢查 PR 說明的單向門勾選與變更的檔案是否一致（第 2 節）。
+
 這些通過就不用再逐項看。審查重點放在工具抓不到的事：數字對不對、該不該這樣改、是不是做了需求以外的事。
 
 ## 2. 單向門：碰到就要人工深入審查
 
-以下變更做錯了，revert 程式也收不回後果（建議已經送到長者與家屬手上、甲方已經看過數字、個人資料已經流出）。PR 範本要勾選，勾到的請人逐項確認。
+以下變更做錯了，revert 程式也收不回後果（建議已經送到長者與家屬手上、甲方已經看過數字、個人資料已經流出），或會讓保護這些內容的檢查失效。PR 範本要勾選，勾到的請人逐項確認。
 
 | 單向門 | 範圍 | 為什麼收不回 |
 |---|---|---|
-| 知識圖譜內容 | `kg/` 底下的門檻、等級、建議用詞；`kg/releases.json` 的 `approval` | 會變成給長者、家屬、醫師的建議；內容與醫療行為相關，須審核人核准（`kg/README.md`） |
-| 數字與等級的判定 | 換算規則、`src/radar_agent/kg_rules.py`、`kg_source.py` 的 `METRIC_CONFIG` | 等級判錯，下游五種 Profile 都跟著錯 |
-| 週報統計口徑 | `weekly_report.py` 的 `counts_as_fall()`、`counts_as_activity()`、`ASSUMPTIONS` | 甲方看過的數字，事後改口徑會失去信任 |
-| 給讀者的輸出與用語 | Profile 範本、在地模型的 prompt、輸出檢查 | 已送出的文字收不回；產品定位為非醫療器材，用語不能越界 |
-| 個人資料的流向 | 讀取、保存、傳送長者資料的程式；`data/` 新增的資料檔 | 個人資料一旦流出（進模型、快取、log、commit）就無法撤回 |
-| 事件格式 | `schemas/` | 現有系統與雷達端照著格式送資料，改了要雙方一起升版 |
+| 知識圖譜內容 | `kg/` 的版本目錄（`kg/v1/` 等）、`kg/source/`、`kg/dumps/`、`kg/releases.json`（含 `approval`）；保護核准的 `src/radar_agent/kg_manifest.py` | 會變成給長者、家屬、醫師的建議；內容與醫療行為相關，須審核人核准（`kg/README.md`）。放寬 `kg_manifest.py` 的檢查，等於讓已核准版本可以被悄悄改掉 |
+| 數字與等級的判定 | 換算規則、`src/radar_agent/kg_rules.py`、`src/radar_agent/kg_source.py`（解析門檻、產生 `thresholds.json`、`METRIC_CONFIG`） | 等級判錯，下游五種 Profile 都跟著錯 |
+| 週報統計口徑 | 整個 `src/radar_agent/weekly_report.py`（會改變數字的地方見 3.3 節；排版文字也會被甲方讀到） | 甲方看過的數字與說法，事後改口徑會失去信任 |
+| 給讀者的輸出與用語 | Profile 範本、在地模型的 prompt、輸出檢查（尚未實作） | 已送出的文字收不回；產品定位為非醫療器材，用語不能越界 |
+| 個人資料的流向 | 讀取、保存、傳送長者資料的程式；`data/` 底下的資料檔 | 個人資料一旦流出（進模型、快取、log、commit）就無法撤回 |
+| 事件格式 | `schemas/`；實際執行格式檢查的 `src/radar_agent/event_validation.py` | 現有系統與雷達端照著格式送資料，改了要雙方一起升版；放寬驗證等於默默接受格式改版 |
+| 檢查與審查機制 | `.github/`（CI、PR 範本）、`REVIEW.md`、`src/radar_agent/pr_gate.py` | 放寬檢查或規範，上面各項的保護就跟著失效，而且不會有人發現 |
+
+檔案路徑與單向門的對應寫在 `src/radar_agent/pr_gate.py` 的 `DOORS`，CI 依此檢查：變更碰到哪一項，PR 就必須勾哪一項，並填寫可逆性。沒有對應檔案的項目（目前是「給讀者的輸出與用語」）仍靠作者勾選與審查者判斷。
 
 其他都是雙向門（文件、測試補強、內部重構、開發工具），可以 revert，人工審查可以看摘要與驗證證據就好。**小不等於雙向門**：改一個門檻數字只有一行，仍是單向門。
 
@@ -39,7 +44,8 @@
 ### 3.1 事實與數字
 
 - 數值、等級、建議由**規則與知識圖譜**決定；在地模型只改寫說法，不能新增或改動事實（`docs/02_目標架構.md` 原則 2）。
-- **沒有資料不等於 0。** 沒有紀錄或無法判讀時寫「無法判斷」或「無法評估」，不寫 0 次。
+- **沒有資料不等於 0。** 整週沒有紀錄或沒有可判讀的紀錄時，主文寫「無法判斷」或「無法評估」，不寫 0 次。
+  - **已知缺口**：週報的逐日表格，在沒有收到紀錄的日子印出 0（`daily_counts()`）。這個 0 是「該日沒有收到紀錄」，在拿到裝置在線時段之前（會議清單 D3），分不出是長者沒活動還是裝置沒傳資料。改善前，不得把逐日的 0 解讀或改寫成「沒有活動」；新的程式也不要沿用這種寫法。改表格本身屬於單向門「週報統計口徑」，要另開 PR 由人決定。
 - **無法判讀的資料不丟棄也不猜。** 解析不了的那筆要列出來，不默默略過，也不推估補值。
 - 數值落在門檻缺口、重疊，或比來源精度更細時，輸出「無法評估」與原因，**不取整、不挑一級**。
 - 知識圖譜沒有的指標回傳 `no_rule`，進審核佇列，不輸出等級。
@@ -47,15 +53,20 @@
 
 ### 3.2 知識圖譜
 
-- `kg/v1/graph.cypher` 是正本，唯一該手改的檔案。`metrics.json`、`thresholds.json` 是衍生檔，由 `radar-kg-build` 產生，**不手改**。
+- `kg/v1/graph.cypher` 是知識圖譜內容的正本。`patch_wording.cypher`（給已載入舊備份的資料庫套用用詞修正）與 `bridge.cypher`（接舊雛形的 Class 節點）也是手寫的；改 `graph.cypher` 的用詞時，`patch_wording.cypher` 若涉及同一段文字要一起改（`kg/README.md`「更新規則」第 1 步）。
+- `metrics.json`、`thresholds.json` 是衍生檔，由 `radar-kg-build` 產生，**不手改**。
 - `kg/releases.json` 的雜湊由 `radar-kg-manifest` 產生，不手改；`approval` 只由審核人改，PR 作者與程式都不改。
 - 已核准版本的檔案一有變動，就要建立新版本（例如 `kg/v1.1/`）重新送審，不能沿用原核准。
 
 ### 3.3 週報
 
-- 統計口徑只在 `counts_as_fall()`、`counts_as_activity()` 兩個函式；別處不另做判斷。
+- 「算不算一次跌倒、算不算活動量」只在 `counts_as_fall()`、`counts_as_activity()`。但會改變甲方看到的數字的不只這兩個函式，以下任何一處改了都是改口徑：
+  - 輸入判讀：`parse_timestamp()`（時間怎麼解析）、`_parse_fall()`（哪些值算 yes、no，例如 `"1"`、`"true"`）；
+  - 週的邊界：`_in_week()`（含起始日 00:00、不含第 8 天 00:00）；
+  - 完整性與未判讀：`fall_completeness()`、`summarize_activity()` 的 `unjudged`（fall 無法判讀的紀錄怎麼算）；
+  - 統計說明：`ASSUMPTIONS`。
 - 改口徑時，`ASSUMPTIONS` 與報告的「統計口徑與資料品質」一節要同步，並在 PR 引用依據（會議清單 C1、C2 的答案）。
-- `render_markdown` 只排版，不做判斷；報告欄位以 `WeeklyReport`（TypedDict）為準。
+- `render_markdown` 與各 `_render_*` 只排版，不做統計判斷；報告欄位以 `WeeklyReport`（TypedDict）為準。排版文字一樣會被甲方讀到，所以整個 `weekly_report.py` 都列在單向門。
 
 ### 3.4 個人資料與機密
 
@@ -68,7 +79,7 @@
 
 - 註解、文件、commit 訊息用繁體中文（台灣用語）；程式碼、指令、檔名維持原文。
 - ruff 規則明列在 `pyproject.toml`；要忽略規則時寫明理由（例如 `DTZ001`：資料的時間戳沒有時區，刻意使用沒有時區的 datetime）。
-- 新增執行期依賴要同步 `pyproject.toml` 的 `dependencies`，`tests/test_packaging.py` 會檢查是否剛好是程式匯入的套件。
+- 新增或移除執行期依賴，要同步 `pyproject.toml` 的 `dependencies` 與 `tests/test_packaging.py` 寫死的套件清單。這個測試只比對兩份清單，**不會掃描程式的 import**，所以審查時要人工確認依賴和程式實際用到的套件一致（例如 `rfc3339-validator` 沒有被直接 import，是 `event_validation.py` 的日期格式檢查需要）。
 - 程式會讀 repo 裡的 `schemas/`、`kg/`，必須維持可編輯安裝（`pip install -e .`）可用。
 - `legacy/prototype/` 只供參考與比對，不再開發。
 - 事件格式不接受未定義欄位（`additionalProperties: false`），未知欄位直接拒收。
@@ -98,6 +109,7 @@
 - **兩軸分開回報**：規範與需求各自列出問題，不合成一個分數。寫得漂亮不代表需求做對，需求做對也不代表寫法合規。
 - 每個問題標**阻擋**（合併前必須處理）或**建議**（可以之後再說）。單向門上的問題一律是阻擋。
 - 明確的問題直接修正並附驗證結果；需要人決定的（醫療判斷、口徑、範圍）才留討論，並寫清楚選項。
+- **單向門上的問題，AI 只回報、不修正**（包括 `/code-review --fix`）：不改 `kg/` 的內容與門檻、不跑會寫檔的 `radar-kg-build`／`radar-kg-manifest`、不改週報口徑與輸出文字、不改事件格式、不放寬任何檢查。即使問題看起來很明確（例如門檻缺口），也只列出問題與選項，由人或審核人決定。
 
 ## 6. 回顧：讓同樣的意見不再出現
 
