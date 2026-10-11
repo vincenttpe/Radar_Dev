@@ -157,8 +157,23 @@ def _errors(body: str, doors_hit: dict[str, list[str]], evidence_hit: dict[str, 
     return _door_errors(section, doors_hit) + _evidence_errors(body, evidence_hit)
 
 
+def quoted_paths(changed: list[str]) -> list[str]:
+    """被 git 加上引號轉義的路徑（例如 "kg/v1/\\351…"）。
+
+    這種路徑對不上任何單向門的前綴，會讓檢查默默通過，所以一律擋下。git diff 預設會把中文檔名
+    轉義，要加 -c core.quotePath=false；含 tab、引號等特殊字元的路徑即使加了也會被轉義。
+    """
+    return [p for p in changed if p.startswith('"')]
+
+
 def check(body: str, changed: list[str]) -> list[str]:
     """回傳錯誤訊息清單；空清單代表通過。"""
+    quoted = quoted_paths(changed)
+    if quoted:
+        return [(
+            f"變更檔案清單裡有被 git 轉義的路徑，無法比對單向門：{'、'.join(quoted)}；"
+            "請用 git -c core.quotePath=false diff --name-only 產生清單（檔名不能含 tab、引號等特殊字元）"
+        )]
     return _errors(body, required_doors(changed), required_evidence(changed))
 
 
@@ -171,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     body = Path(args.body).read_text(encoding="utf-8")
     changed = [s.strip() for s in Path(args.changed).read_text(encoding="utf-8").splitlines() if s.strip()]
     doors_hit = required_doors(changed)
-    errors = _errors(body, doors_hit, required_evidence(changed))
+    errors = check(body, changed)
     if errors:
         print("PR 說明檢查未通過（定義見 REVIEW.md 第 2 節）：", file=sys.stderr)
         for e in errors:

@@ -56,7 +56,7 @@ radar-kg-level 來回行走 5.4                                                 
 送 PR 前，可以先在本機檢查 PR 說明的單向門與驗證證據勾選（CI 的 pr-gate 跑的是同一支程式）：
 
 ```bash
-git diff --name-only main...HEAD > changed.txt
+git -c core.quotePath=false diff --name-only main...HEAD > changed.txt
 python -m radar_agent.pr_gate --body PR說明.md --changed changed.txt
 ```
 
