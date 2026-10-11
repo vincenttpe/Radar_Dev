@@ -27,16 +27,13 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
-from radar_agent.kg_manifest import sha256_of
+from radar_agent.kg_manifest import KgIntegrityError as KgIntegrityError  # 呼叫者與測試沿用 kg_rules.KgIntegrityError
+from radar_agent.kg_manifest import verify_release
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_VERSION = "v1"
 
 Status = Literal["assessed", "unassessable", "no_rule"]
-
-
-class KgIntegrityError(Exception):
-    """知識圖譜檔案與發布清單登記的不一致，或清單沒有這一版。"""
 
 
 class KgInfo(TypedDict):
@@ -77,20 +74,11 @@ class KnowledgeGraph:
 
 def load(version: str = DEFAULT_VERSION, repo: Path = REPO) -> KnowledgeGraph:
     """讀入某一版知識圖譜；雜湊與 releases.json 不符時丟 KgIntegrityError。"""
-    manifest = json.loads((repo / "kg" / "releases.json").read_text(encoding="utf-8"))
-    release = next((r for r in manifest["releases"] if r["version"] == version), None)
-    if release is None:
-        raise KgIntegrityError(f"kg/releases.json 沒有登記版本 {version!r}")
-    for name in ("thresholds.json", "metrics.json"):
-        rel = f"kg/{version}/{name}"
-        if release["files"].get(rel) != sha256_of(repo / rel):
-            raise KgIntegrityError(f"{rel} 與 kg/releases.json 登記的雜湊不同，請先執行 radar-kg-build 與 radar-kg-manifest")
-
+    release = verify_release(version, ("thresholds.json", "metrics.json"), repo)
     thresholds = json.loads((repo / "kg" / version / "thresholds.json").read_text(encoding="utf-8"))
     metrics = json.loads((repo / "kg" / version / "metrics.json").read_text(encoding="utf-8"))
-    approval = release["approval"]["status"]
     return KnowledgeGraph(
-        info={"version": version, "approval": approval, "approved": approval == "approved"},
+        info={"version": release.version, "approval": release.approval, "approved": release.approved},
         thresholds={m["name"]: m for m in thresholds["metrics"]},
         suggestions={(m["name"], lv["score"]): lv for m in metrics["metrics"] for lv in m["levels"]},
     )
