@@ -73,7 +73,7 @@ class KnowledgeGraph:
 # ── 讀入 ─────────────────────────────────────────────────
 
 def load(version: str = DEFAULT_VERSION, repo: Path = REPO) -> KnowledgeGraph:
-    """讀入某一版知識圖譜；雜湊與 releases.json 不符時丟 KgIntegrityError。"""
+    """讀入某一版知識圖譜；清單或檔案不存在、雜湊與 releases.json 不符時丟 KgIntegrityError。"""
     release = verify_release(version, ("thresholds.json", "metrics.json"), repo)
     thresholds = json.loads((repo / "kg" / version / "thresholds.json").read_text(encoding="utf-8"))
     metrics = json.loads((repo / "kg" / version / "metrics.json").read_text(encoding="utf-8"))

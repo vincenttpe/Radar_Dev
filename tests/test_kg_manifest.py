@@ -186,26 +186,30 @@ def test_missing_registered_source_is_a_clear_error_not_a_traceback(tmp_repo, ca
     assert tmp_repo.run(["--check"]) == 2
 
 
-# ── 現有行為的固定（已知問題，另案處理）──────────────────
-# 下面兩個測試記錄的是目前的行為，不是期望的行為；修正時要連測試一起改。
+# ── 清單本身有誤 ──────────────────────────────────────
 
-def test_missing_manifest_currently_raises_instead_of_a_clear_error(tmp_repo):
-    """已知問題：releases.json 不存在時，main 直接丟出 FileNotFoundError（印出 traceback），不是結束碼 2。"""
+@pytest.mark.parametrize("args", [["--check"], []])
+def test_missing_manifest_is_a_clear_error_not_a_traceback(tmp_repo, capsys, args):
     tmp_repo.manifest_path.unlink()
-    with pytest.raises(FileNotFoundError):
-        tmp_repo.run(["--check"])
+    assert tmp_repo.run(args) == 2
+    assert capsys.readouterr().err == "找不到清單：kg/releases.json\n"
 
 
-def test_registered_version_without_a_directory_currently_passes_check(tmp_repo):
-    """已知問題：清單登記的版本目錄不存在時，視為空版本，--check 照樣通過，寫檔模式也會寫入空的雜湊。"""
+@pytest.mark.parametrize("args", [["--check"], []])
+def test_registered_version_without_a_directory_is_refused_not_treated_as_empty(tmp_repo, capsys, args):
+    """登記了卻沒有目錄的版本不能當成空版本而默默通過；寫檔模式也不能寫入空的雜湊。"""
     assert tmp_repo.run([]) == 0
     manifest = tmp_repo.load()
     manifest["releases"].append({**manifest["releases"][0], "version": "v9", "files": {}})
     tmp_repo.dump(manifest)
-    assert tmp_repo.release_files("v9") == []
-    assert tmp_repo.run(["--check"]) == 0
-    assert tmp_repo.run([]) == 0
-    assert tmp_repo.load()["releases"][1]["files"] == {}
+    before = tmp_repo.manifest_path.read_bytes()
+    capsys.readouterr()
+
+    assert tmp_repo.run(args) == 2
+    assert capsys.readouterr().err == "清單登記的版本 v9 沒有目錄：kg/v9\n"
+    assert tmp_repo.manifest_path.read_bytes() == before
+    with pytest.raises(kg_manifest.ManifestError, match="清單登記的版本 v9 沒有目錄"):
+        tmp_repo.release_files("v9")
 
 
 # ── 已核准的版本：核准綁的是核准時的內容 ──────────────────

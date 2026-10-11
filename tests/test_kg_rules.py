@@ -205,25 +205,26 @@ def test_cli_reports_integrity_errors(repo_copy, monkeypatch, capsys):
     assert "metrics.json 與 kg/releases.json 登記的雜湊不同" in capsys.readouterr().err
 
 
-# 下面兩個測試記錄的是目前的行為，不是期望的行為（已知問題）：修正時要連測試一起改。
+# 檔案不存在也是「知識圖譜檔案有誤」：結束碼 2，不是 traceback，也不和「無法評估」的 1 混在一起。
 
-def test_missing_manifest_currently_raises_instead_of_an_integrity_error(repo_copy):
-    """已知問題：releases.json 不存在時丟出 FileNotFoundError，不是 KgIntegrityError。"""
+def test_missing_manifest_is_an_integrity_error_with_exit_code_2(repo_copy, monkeypatch, capsys):
     (repo_copy / "kg" / "releases.json").unlink()
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(kg_rules.KgIntegrityError, match=re.escape("找不到清單：kg/releases.json")):
         kg_rules.load("v1", repo_copy)
+    monkeypatch.setattr(kg_rules, "REPO", repo_copy)
+    assert kg_rules.main(["來回行走", "5.4"]) == 2
+    assert capsys.readouterr().err == "錯誤：找不到清單：kg/releases.json\n"
 
 
 @pytest.mark.parametrize("name", ["thresholds.json", "metrics.json"])
-def test_missing_kg_file_currently_raises_and_the_cli_does_not_catch_it(repo_copy, monkeypatch, name):
-    """已知問題：檔案不存在時丟出 FileNotFoundError；main 沒有接住，指令列印出 traceback、結束碼 1，
-    和「無法評估」的 1 相同，不符合檔頭的「2＝知識圖譜檔案有誤」。"""
+def test_missing_kg_file_is_an_integrity_error_with_exit_code_2(repo_copy, monkeypatch, capsys, name):
     (repo_copy / "kg" / "v1" / name).unlink()
-    with pytest.raises(FileNotFoundError):
+    message = f"kg/v1/{name} 不存在，請先執行 radar-kg-build 與 radar-kg-manifest"
+    with pytest.raises(kg_rules.KgIntegrityError, match=re.escape(message)):
         kg_rules.load("v1", repo_copy)
     monkeypatch.setattr(kg_rules, "REPO", repo_copy)
-    with pytest.raises(FileNotFoundError):
-        kg_rules.main(["來回行走", "5.4"])
+    assert kg_rules.main(["來回行走", "5.4"]) == 2
+    assert capsys.readouterr().err == f"錯誤：{message}\n"
 
 
 def test_main_reads_sys_argv_when_called_without_arguments(monkeypatch, capsys):

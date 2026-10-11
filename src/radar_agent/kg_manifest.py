@@ -27,6 +27,11 @@ from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[2]
+MANIFEST_NOT_FOUND = "找不到清單：kg/releases.json"
+
+
+class ManifestError(Exception):
+    """清單本身有誤（例如登記的版本沒有目錄）；radar-kg-manifest 以結束碼 2 回報。"""
 
 
 class KgIntegrityError(Exception):
@@ -51,8 +56,13 @@ def sha256_of(path: Path) -> str:
 
 
 def release_files(version: str, repo: Path = REPO) -> list[str]:
-    """kg/<version>/ 底下所有檔案，repo 相對路徑、排序。"""
+    """kg/<version>/ 底下所有檔案，repo 相對路徑、排序。
+
+    目錄不存在時丟 ManifestError：清單登記了這一版，不能把它當成空版本而默默通過。
+    """
     base = repo / "kg" / version
+    if not base.is_dir():
+        raise ManifestError(f"清單登記的版本 {version} 沒有目錄：kg/{version}")
     return sorted(p.relative_to(repo).as_posix() for p in base.rglob("*") if p.is_file())
 
 
@@ -75,14 +85,20 @@ def _is_approved(release: dict[str, Any]) -> bool:
 def verify_release(version: str, files: Iterable[str], repo: Path = REPO) -> VerifiedRelease:
     """確認 version 已登記，且 kg/<version>/ 底下的 files 內容與登記的雜湊相同。
 
-    沒有登記這一版、或任一檔案的雜湊不同時丟 KgIntegrityError。只比對呼叫者要讀的檔案，
-    版本裡其他檔案的變動不影響。
+    清單不存在、沒有登記這一版、任一檔案不存在或雜湊不同時丟 KgIntegrityError。
+    只比對呼叫者要讀的檔案，版本裡其他檔案的變動不影響。
     """
-    release = next((r for r in load(repo)["releases"] if r["version"] == version), None)
+    try:
+        manifest = load(repo)
+    except FileNotFoundError:
+        raise KgIntegrityError(MANIFEST_NOT_FOUND) from None
+    release = next((r for r in manifest["releases"] if r["version"] == version), None)
     if release is None:
         raise KgIntegrityError(f"kg/releases.json 沒有登記版本 {version!r}")
     for name in files:
         rel = f"kg/{version}/{name}"
+        if not (repo / rel).is_file():
+            raise KgIntegrityError(f"{rel} 不存在，請先執行 radar-kg-build 與 radar-kg-manifest")
         if release["files"].get(rel) != sha256_of(repo / rel):
             raise KgIntegrityError(f"{rel} 與 kg/releases.json 登記的雜湊不同，請先執行 radar-kg-build 與 radar-kg-manifest")
     return VerifiedRelease(version=version, approval=release["approval"]["status"], approved=_is_approved(release))
@@ -111,11 +127,18 @@ def dump(manifest: dict[str, Any], repo: Path = REPO) -> None:
 
 def main(argv: list[str] | None = None, repo: Path = REPO) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    current = load(repo)
+    try:
+        current = load(repo)
+    except FileNotFoundError:
+        print(MANIFEST_NOT_FOUND, file=sys.stderr)
+        return 2
     try:
         fresh = compute(json.loads(json.dumps(current)), repo)
     except FileNotFoundError as e:
         print(f"清單登記的檔案不存在：{e.filename}", file=sys.stderr)
+        return 2
+    except ManifestError as e:
+        print(e, file=sys.stderr)
         return 2
     changed = changed_approved_releases(current, fresh)
     if "--check" in argv:
