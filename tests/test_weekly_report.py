@@ -414,4 +414,13 @@ def test_a_single_readable_record_is_not_reported_as_the_whole_week():
     assert "本次輸入的紀錄中，動作紀錄共 **1** 筆（不含跌倒）。" in md
     assert "本週跌倒" not in md and "本週動作紀錄" not in md
     assert "| 2026/06/01（一） | 0 |\n" in md
-    assert "0 表示該日沒有收到紀錄，不代表沒有活動（尚無裝置在線資料，會議清單 D3）。" in md
+    assert "0 表示該日沒有納入活動統計的紀錄，不代表沒有活動，也不能據此判定裝置是否在線（會議清單 D3）。" in md
+
+
+@pytest.mark.parametrize("fall", ["yes", "unknown"])
+def test_daily_zero_note_does_not_claim_no_record_was_received(fall):
+    """當天只收到跌倒或無法判讀的紀錄，逐日表格仍是 0（不計入活動量）；說明不能寫成「沒有收到紀錄」。"""
+    md = wr.render_markdown(report_of([row("2026/06/03 10:00 AM", fall=fall)], week=date(2026, 6, 1)))
+    assert "| 2026/06/03（三） | 0 |" in md
+    assert "沒有收到紀錄" not in md
+    assert "0 表示該日沒有納入活動統計的紀錄，不代表沒有活動，也不能據此判定裝置是否在線（會議清單 D3）。" in md
