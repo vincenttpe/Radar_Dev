@@ -32,7 +32,8 @@ from pathlib import Path
 from typing import Literal, TypedDict
 
 SPEED_ORDER = ("Slow", "Normal", "Fast")
-DAILY_ZERO_NOTE = "0 表示該日沒有收到紀錄，不代表沒有活動（尚無裝置在線資料，會議清單 D3）。"
+# 逐日表格只計入活動量（fall 為 no）的紀錄：當天收到的跌倒、無法判讀的紀錄都不算，所以 0 不等於「沒收到」
+DAILY_ZERO_NOTE = "0 表示該日沒有納入活動統計的紀錄，不代表沒有活動，也不能據此判定裝置是否在線（會議清單 D3）。"
 OTHER_SPEED = "其他"
 WEEKDAYS = "一二三四五六日"
 
