@@ -207,3 +207,36 @@ def test_main_fails_with_reasons_on_stderr(template, tmp_path, capsys):
     err = capsys.readouterr().err
     assert "PR 說明檢查未通過" in err
     assert "變更碰到單向門「知識圖譜內容」但沒有勾選：kg/v1/graph.cypher" in err
+
+
+# ── 中文檔名與被 git 轉義的路徑 ───────────────────────────
+
+def test_non_ascii_path_under_a_door_requires_the_door(template):
+    assert "變更碰到單向門「知識圖譜內容」但沒有勾選：kg/v1/門檻.json" in check(_body(template, [NONE_LABEL]), ["kg/v1/門檻.json"])
+
+
+def test_git_quoted_path_is_refused_instead_of_silently_passing(template):
+    """git diff 預設把中文檔名轉義成 "kg/v1/\\351…"，對不上任何單向門；不能讓它默默通過。"""
+    quoted = '"kg/v1/\\351\\226\\200\\346\\252\\273.json"'
+    errors = check(_body(template, [NONE_LABEL]), [quoted, "README.md"])
+    assert errors == [(
+        f"變更檔案清單裡有被 git 轉義的路徑，無法比對單向門：{quoted}；"
+        "請用 git -c core.quotePath=false diff --name-only 產生清單（檔名不能含 tab、引號等特殊字元）"
+    )]
+
+
+def test_ci_lists_changed_files_without_git_path_quoting(repo):
+    import yaml
+
+    workflow = yaml.safe_load((repo / ".github" / "workflows" / "pr-gate.yml").read_text(encoding="utf-8"))
+    run = "\n".join(step.get("run", "") for step in workflow["jobs"]["one-way-doors"]["steps"])
+    assert "git -c core.quotePath=false diff --name-only" in run
+    assert "git -c core.quotePath=false diff --name-only" in (repo / "README.md").read_text(encoding="utf-8")
+
+
+def test_main_reports_quoted_paths(template, tmp_path, capsys):
+    body, changed = tmp_path / "body.md", tmp_path / "changed.txt"
+    body.write_text(_body(template, [NONE_LABEL]), encoding="utf-8")
+    changed.write_text('"kg/v1/\\351.json"\n', encoding="utf-8")
+    assert pr_gate.main(["--body", str(body), "--changed", str(changed)]) == 1
+    assert "被 git 轉義的路徑" in capsys.readouterr().err

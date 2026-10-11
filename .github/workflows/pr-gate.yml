@@ -24,5 +24,6 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           printf '%s' "$PR_BODY" > "$RUNNER_TEMP/body.md"
-          git diff --name-only "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/changed.txt"
+          # core.quotePath=false：不然中文檔名會被轉成 "kg/v1/\351…"，對不上單向門的路徑
+          git -c core.quotePath=false diff --name-only "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/changed.txt"
           PYTHONPATH=src python -m radar_agent.pr_gate --body "$RUNNER_TEMP/body.md" --changed "$RUNNER_TEMP/changed.txt"
