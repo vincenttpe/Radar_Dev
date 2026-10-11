@@ -403,3 +403,14 @@ def test_empty_week_with_out_of_week_records_points_at_the_week_start(fall_sampl
     assert "本週沒有任何紀錄，**無法判斷是否發生跌倒**；輸入資料有 11 筆在本週之外，請確認週起始日是否正確。" in md
     assert "裝置沒有傳資料" not in md
     assert "本週之外的跌倒紀錄 1 筆（未計入本週）：" in md
+
+
+# 已知問題（記錄的是目前的行為，不是期望的行為；修正時要連測試一起改）：
+# 沒有裝置在線時段的資料，卻把「輸入的紀錄都可判讀」寫成全週結論。
+def test_a_single_readable_record_is_currently_reported_as_the_whole_week():
+    r = report_of([row("2026/06/03 10:00 AM")], week=date(2026, 6, 1))
+    assert r["falls"]["completeness"] == "complete"
+    md = wr.render_markdown(r)
+    assert "本週跌倒 **0** 次。" in md
+    assert "本週動作紀錄 **1** 筆（不含跌倒）。" in md
+    assert "| 2026/06/01（一） | 0 |" in md
