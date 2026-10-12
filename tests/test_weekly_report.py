@@ -111,7 +111,7 @@ def test_fall_sample_week(fall_sample):
     assert act["speed"] == {"Slow": 0, "Normal": 5, "Fast": 5, "其他": 0}
     assert r["data_quality"] == {
         "records_in_week": 11, "out_of_week": 0, "fall_field_missing": 0, "fall_unreadable": 0,
-        "bad_timestamp": 0, "not_object": 0, "skipped": [],
+        "bad_timestamp": 0, "not_object": 0, "unjudged_total": 0, "skipped": [],
     }
     assert r["falls"]["completeness"] == "all_readable" and r["falls"]["unreadable"] == []
     assert r["falls"]["undated"] == [] and r["falls"]["outside_week"] == []
@@ -175,7 +175,7 @@ def test_mixed_fall_field_is_counted_and_flagged():
 def test_empty_input():
     r = report_of([])
     assert r["falls"] == {
-        "count": 0, "events": [], "judgeable": False, "completeness": "none", "unreadable": [], "undated": [], "outside_week": [],
+        "count": 0, "events": [], "judgeable": False, "completeness": "none", "unreadable": [], "undated": [], "undated_marked_fall": 0, "outside_week": [],
     }
     assert r["activity"]["total"] == 0 and r["activity"]["busiest_day"] is None
     assert r["activity"]["active_days"] == 0

@@ -8,9 +8,11 @@
 等會議清單 A1、A3、A4 有答案再加；在那之前不猜。
 
 結構（要改統計口徑時看這裡）：
-    口徑只在兩個函式：counts_as_fall()、counts_as_activity()（會議清單 C1、C2）。
+    算不算跌倒、算不算活動量：counts_as_fall()、counts_as_activity()（會議清單 C1、C2）；
+    其他會改變數字的地方見 REVIEW.md 3.3。
     統計：summarize_falls / summarize_activity / summarize_quality，由 build_report 組合。
-    輸出：render_markdown 只負責排版，不做任何判斷。
+    報告裡的每個數字都在這裡算好，--json 與 Markdown 讀的是同一份。
+    輸出：render_markdown 只排版：數字一律讀 WeeklyReport 的欄位，不自己計數，兩種輸出才不會不一致。
     報告的欄位定義在 WeeklyReport（TypedDict）；統計、Markdown、--json 與測試都以它為準。
 
 統計口徑（見 ASSUMPTIONS，也會印在報告裡，避免數字被誤讀）都是第 1 版的暫定值，
@@ -110,6 +112,7 @@ class FallSummary(TypedDict):
     completeness: Completeness
     unreadable: list[UnreadableFall]  # fall 值無法辨識的本週紀錄，逐筆列出（可能就是跌倒）
     undated: list[UndatedFall]  # 時間無法解析、但標記為跌倒或 fall 值無法辨識的紀錄（可能屬於本週）
+    undated_marked_fall: int    # undated 之中 fall 標記為 yes 的筆數
     outside_week: list[FallEvent]  # 本週之外的跌倒紀錄，未計入本週，但逐筆列出避免週起始日選錯時被埋掉
 
 
@@ -135,6 +138,7 @@ class DataQuality(TypedDict):
     fall_unreadable: int
     bad_timestamp: int    # 時間無法解析，可能屬於本週
     not_object: int       # 不是 JSON 物件，內容完全無法判讀
+    unjudged_total: int   # 無法判讀、未計入統計的筆數：上面四類（fall 欄位缺漏、無法辨識、時間無法解析、不是物件）的合計
     skipped: list[str]    # 上面兩類逐筆的說明
 
 
@@ -279,6 +283,7 @@ def summarize_falls(
             {"row": s.row, "timestamp": s.timestamp, "motion": s.motion, "fall": "yes" if s.fall else str(s.fall_raw)}
             for s in skipped if s.possible_fall
         ],
+        "undated_marked_fall": sum(1 for s in skipped if s.fall is True),
         "outside_week": [_event(r) for r in sorted(out_of_week, key=lambda r: r.at) if counts_as_fall(r)],
     }
 
@@ -313,6 +318,7 @@ def summarize_activity(in_week: list[Record], week_start: date, skipped: Sequenc
 
 
 def summarize_quality(records: list[Record], in_week: list[Record], skipped: Sequence[Skipped]) -> DataQuality:
+    unjudged_in_week = sum(1 for r in in_week if r.fall is None)  # fall 欄位缺漏或無法辨識
     return {
         "records_in_week": len(in_week),
         "out_of_week": len(records) - len(in_week),
@@ -320,6 +326,7 @@ def summarize_quality(records: list[Record], in_week: list[Record], skipped: Seq
         "fall_unreadable": sum(1 for r in in_week if r.fall_raw is not None),
         "bad_timestamp": sum(1 for s in skipped if s.kind == "bad_timestamp"),
         "not_object": sum(1 for s in skipped if s.kind == "not_object"),
+        "unjudged_total": unjudged_in_week + len(skipped),
         "skipped": [s.message for s in skipped],
     }
 
@@ -348,13 +355,9 @@ def _fmt_date(iso: str) -> str:
     return f"{d:%Y/%m/%d}（{WEEKDAYS[d.weekday()]}）"
 
 
-def _unjudged_total(quality: DataQuality) -> int:
-    return quality["fall_field_missing"] + quality["fall_unreadable"] + quality["bad_timestamp"] + quality["not_object"]
-
-
 def _unjudged_parts(quality: DataQuality, falls: FallSummary, lead: str = "") -> str:
     """無法判讀的筆數，依原因分開；只列出非零的。跌倒與活動量兩節共用，兩邊說法一致。"""
-    marked = sum(1 for u in falls["undated"] if u["fall"] == "yes")
+    marked = falls["undated_marked_fall"]
     bad_ts = "筆時間無法解析" + (f"（其中 {marked} 筆標記為跌倒）" if marked else "") + "，可能屬於本週"
     parts = [
         (quality["fall_field_missing"], "筆沒有跌倒欄位"),
@@ -374,15 +377,14 @@ def _fall_headline(falls: FallSummary, quality: DataQuality) -> list[str]:
             )]
         else:
             lines = ["本週沒有任何紀錄，**無法判斷是否發生跌倒**（也可能是裝置沒有傳資料）。"]
-        skipped = quality["bad_timestamp"] + quality["not_object"]
-        return lines + ([_unjudged_parts(quality, falls, lead="另有 ")] if skipped else [])
+        return lines + ([_unjudged_parts(quality, falls, lead="另有 ")] if quality["skipped"] else [])
     if falls["completeness"] == "none":
         return ["本週的資料沒有可判讀的跌倒欄位，**無法判斷是否發生跌倒**。", _unjudged_parts(quality, falls)]
     if falls["completeness"] == "all_readable":
         # 沒有裝置在線時段的資料（會議清單 D3），只能說「輸入的紀錄中」，不能寫成全週總數
         return [f'本次輸入的紀錄中，跌倒標記共 **{falls["count"]}** 筆。']
     return [
-        f'可判讀的紀錄中偵測到 **{falls["count"]}** 次跌倒；另有 {_unjudged_total(quality)} 筆無法判讀，**全週總數無法確認**。',
+        f'可判讀的紀錄中偵測到 **{falls["count"]}** 次跌倒；另有 {quality["unjudged_total"]} 筆無法判讀，**全週總數無法確認**。',
         _unjudged_parts(quality, falls),
     ]
 
@@ -418,7 +420,7 @@ def _activity_headline(activity: ActivitySummary, quality: DataQuality, falls: F
     return [
         (
             f'可判讀的紀錄中有動作紀錄 **{activity["total"]}** 筆（不含跌倒）；'
-            f"另有 {_unjudged_total(quality)} 筆無法判讀、未計入，**全週總數無法確認**。"
+            f'另有 {quality["unjudged_total"]} 筆無法判讀、未計入，**全週總數無法確認**。'
         ),
         _unjudged_parts(quality, falls),
     ]
