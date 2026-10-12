@@ -2,15 +2,15 @@
 
 長者照護用的 mmWave 雷達姿態判斷與健康建議系統。雷達與裝置上的小型語言模型負責偵測與語音確認；後端依知識圖譜判斷，產出給居服員、醫師、家屬、長者本人與主管機關的建議與報告。跌倒警示走獨立的即時路徑，不經過知識圖譜與 LLM。
 
-> 目前狀態：**原型階段**。本 repo 由舊雛形 Health-care-report-LLM 的 zip（2026-10-06 取得）重新整理而來，舊 repo 不再修改。新系統已有甲方週報第 1 版、事件驗證與知識圖譜工具（`src/radar_agent/`），但統計口徑是暫定值，正式資料串接與評分規則要等會議確認（見 `docs/05_會議待詢問清單.md`）。
+> 目前狀態：**原型階段**。本 repo 由舊雛形 Health-care-report-LLM 的 zip（2026-10-06 取得）重新整理而來，舊 repo 不再修改。新系統已有事件驗證與知識圖譜工具（`src/radar_agent/`），正式資料串接與評分規則要等會議確認（見 `docs/05_會議待詢問清單.md`）。
 >
-> 範圍（2026-10-08 確認）：現有系統已保存最近 7 天的雷達資訊（雲端 HTTPS，或邊緣裝置經 MQTT 送到 Jetson PC 的同一份），本 repo 只用其中的動作狀態 JSON；本 repo 負責用規則把這些資訊對應到知識圖譜的等級，再用在地模型依五種 Profile（居服員、醫師、家屬、長者本人、主管機關）輸出狀態、建議等文字訊息。雷達偵測、跌倒警示與資料保存都在現有系統，不在本 repo 範圍。詳見 `docs/02_目標架構.md`。
+> 範圍（2026-10-08 確認）：現有系統已保存最近 7 天的雷達資訊（雲端 HTTPS，或邊緣裝置經 MQTT 送到 Jetson PC 的同一份），本 repo 只用其中的動作狀態 JSON；本 repo 負責用規則把這些資訊對應到知識圖譜的等級，再用在地模型依五種 Profile（居服員、醫師、家屬、長者本人、主管機關）輸出狀態、建議等文字訊息。雷達偵測、跌倒警示與資料保存都在現有系統；甲方週報（跌倒次數、活動量）由 Dashboard 處理（2026-10-12 決定，交接見 `docs/07_週報交接_Dashboard.md`），都不在本 repo 範圍。詳見 `docs/02_目標架構.md`。
 
 ## 目錄
 
 | 路徑 | 內容 |
 |---|---|
-| `docs/` | 現況架構、目標架構、待確認事項、遷移紀錄、會議待詢問清單、Jetson 硬體評估 |
+| `docs/` | 現況架構、目標架構、待確認事項、遷移紀錄、會議待詢問清單、Jetson 硬體評估、週報交接（給 Dashboard） |
 | `kg/v1/` | 知識圖譜第 1 版：`graph.cypher`（建圖腳本）、`metrics.json`（同內容的結構化版本）、`bridge.cypher` |
 | `kg/source/` | 知識圖譜原始文件（`graph.docx`、`standard_suggestion.xlsx`） |
 | `kg/dumps/` | Neo4j 資料庫備份（2026-05-10） |
@@ -20,9 +20,9 @@
 | `data/samples_device_event/` | 2026-10-08 取得的裝置簡易動作事件樣本 |
 | `schemas/` | 雷達事件格式草案（**未經確認**） |
 | `legacy/prototype/` | 舊雛形程式，僅供參考與比對，不再開發 |
-| `src/radar_agent/` | 新系統的程式。目前有事件驗證（`event_validation.py`）、知識圖譜發布清單工具（`kg_manifest.py`）、甲方週報第 1 版（`weekly_report.py`）與 PR 單向門檢查（`pr_gate.py`） |
+| `src/radar_agent/` | 新系統的程式。目前有事件驗證（`event_validation.py`）、知識圖譜發布清單工具（`kg_manifest.py`）、門檻解析與等級判定（`kg_source.py`、`kg_rules.py`）與 PR 單向門檢查（`pr_gate.py`） |
 | `REVIEW.md` | 審查規範：單向門清單、規範與需求兩軸的檢查重點；PR 範本在 `.github/pull_request_template.md`，CI（`pr-gate.yml`）依變更的檔案檢查單向門勾選 |
-| `.claude/skills/` | Claude 用的專案 skill：`weekly-report`（產生甲方週報）、`kg-check`（知識圖譜一致性檢查） |
+| `.claude/skills/` | Claude 用的專案 skill：`kg-check`（知識圖譜一致性檢查） |
 | `tests/` | 資料檔的一致性測試與上述程式的測試，不載入模型、不連資料庫 |
 
 ## 從哪裡開始讀
@@ -45,7 +45,6 @@ pip install -e ".[dev]"          # 必須是可編輯安裝（-e），程式會�
 安裝後，在任何目錄都有這些指令：
 
 ```bash
-radar-weekly-report --input data/samples_fall/2026-06-03.json --title 機構名稱   # 甲方週報
 radar-kg-build --check                                                            # 檢查 metrics.json、thresholds.json 是否與 graph.cypher 一致
 radar-kg-manifest --check                                                         # 檢查知識圖譜發布清單
 radar-kg-level 來回行走 5.4                                                       # 量測值 → 知識圖譜等級與建議（--list 列出門檻）
@@ -72,7 +71,6 @@ python -m pytest
 
 - 知識圖譜：`kg/v1/` 各檔案彼此一致；門檻沒有未登記的缺口或重疊；`kg/releases.json` 的雜湊與實際檔案相符。
 - 事件格式：`schemas/event.v0.draft.json` 的必填與拒收行為、日期格式、時間先後（`radar_agent.event_validation`）。
-- 甲方週報：時間解析、一週的邊界、跌倒與活動量的統計、「沒有資料不等於沒有跌倒」、輸出內容（`radar_agent.weekly_report`）。
 - 資料：`data/` 的格式，以及文件引用的數字；舊雛形 `--input` 的路徑解析。
 
 改這些檔案時先跑一次。改了 `kg/v1/` 要先更新 `kg/releases.json`，指令見 `kg/README.md`。

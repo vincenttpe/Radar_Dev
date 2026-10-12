@@ -81,7 +81,6 @@ def test_docs_only_change_passes_with_none(template):
     ("src/radar_agent/kg_manifest.py", "知識圖譜內容"),
     ("src/radar_agent/kg_source.py", "數字與等級的判定"),
     ("src/radar_agent/kg_rules.py", "數字與等級的判定"),
-    ("src/radar_agent/weekly_report.py", "週報統計口徑"),
     ("data/samples_fall/2026-06-03.json", "個人資料的流向"),
     ("schemas/event.v0.draft.json", "事件格式"),
     ("src/radar_agent/event_validation.py", "事件格式"),
@@ -95,8 +94,8 @@ def test_touching_a_door_without_checking_it_is_rejected(template, path, door):
 
 
 def test_checking_the_touched_door_with_reversibility_passes(template):
-    body = _body(template, ["週報統計口徑", "改到指令或報告"], reversibility="只改排版；revert 後重新產生本週週報即可")
-    assert check(body, ["src/radar_agent/weekly_report.py"]) == []
+    body = _body(template, ["數字與等級的判定", "改到指令或報告"], reversibility="只改原因的說明文字；revert 即可")
+    assert check(body, ["src/radar_agent/kg_rules.py"]) == []
 
 
 def test_door_checked_without_reversibility_is_rejected(template):
@@ -151,7 +150,6 @@ def test_door_checked_but_reversibility_line_deleted_is_rejected():
     ("kg/v1/graph.cypher", "改到知識圖譜"),
     ("kg/releases.json", "改到知識圖譜"),
     ("src/radar_agent/kg_source.py", "改到知識圖譜"),
-    ("src/radar_agent/weekly_report.py", "改到指令或報告"),
     ("src/radar_agent/kg_rules.py", "改到指令或報告"),
 ])
 def test_touching_kg_or_a_command_without_evidence_is_rejected(template, path, item):
@@ -169,8 +167,8 @@ def test_evidence_is_not_required_for_docs_only_change(template):
 
 
 def test_missing_evidence_section_is_rejected_when_evidence_is_needed():
-    body = "## 單向門檢查\n\n- [x] 週報統計口徑\n\n**可逆性與回復方式**：可還原\n"
-    assert check(body, ["src/radar_agent/weekly_report.py"]) == [
+    body = "## 單向門檢查\n\n- [x] 數字與等級的判定\n\n**可逆性與回復方式**：可還原\n"
+    assert check(body, ["src/radar_agent/kg_rules.py"]) == [
         "PR 說明缺少「驗證證據」一節，請使用 .github/pull_request_template.md",
     ]
 
@@ -185,10 +183,10 @@ def test_required_doors_groups_files_by_door():
 
 def test_main_passes_and_names_doors_needing_review(template, tmp_path, capsys):
     body, changed = tmp_path / "body.md", tmp_path / "changed.txt"
-    body.write_text(_body(template, ["週報統計口徑", "改到指令或報告"], reversibility="可還原"), encoding="utf-8")
-    changed.write_text("src/radar_agent/weekly_report.py\n\nREADME.md\n", encoding="utf-8")
+    body.write_text(_body(template, ["數字與等級的判定", "改到指令或報告"], reversibility="可還原"), encoding="utf-8")
+    changed.write_text("src/radar_agent/kg_rules.py\n\nREADME.md\n", encoding="utf-8")
     assert pr_gate.main(["--body", str(body), "--changed", str(changed)]) == 0
-    assert capsys.readouterr().out == "單向門檢查通過；需要人工深入審查：週報統計口徑\n"
+    assert capsys.readouterr().out == "單向門檢查通過；需要人工深入審查：數字與等級的判定\n"
 
 
 def test_main_passes_without_doors(template, tmp_path, capsys):

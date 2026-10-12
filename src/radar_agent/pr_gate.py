@@ -32,7 +32,6 @@ DOORS: dict[str, tuple[str, ...]] = {
         "src/radar_agent/kg_rules.py",
         "src/radar_agent/kg_source.py",  # 解析門檻、產生 thresholds.json、METRIC_CONFIG
     ),
-    "週報統計口徑": ("src/radar_agent/weekly_report.py",),
     "給讀者的輸出與用語": (),  # Profile 範本與輸出檢查尚未實作，有了再補路徑
     "個人資料的流向": ("data/",),
     "事件格式": ("schemas/", "src/radar_agent/event_validation.py"),
@@ -52,8 +51,7 @@ EVIDENCE: dict[str, tuple[str, ...]] = {
         "src/radar_agent/kg_source.py", "src/radar_agent/kg_manifest.py",
     ),
     "改到指令或報告": (  # pyproject.toml 的 [project.scripts] 指向的模組
-        "src/radar_agent/weekly_report.py", "src/radar_agent/kg_rules.py",
-        "src/radar_agent/kg_source.py", "src/radar_agent/kg_manifest.py",
+        "src/radar_agent/kg_rules.py", "src/radar_agent/kg_source.py", "src/radar_agent/kg_manifest.py",
     ),
 }
 EVIDENCE_SECTION = "## 驗證證據"

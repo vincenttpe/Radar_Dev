@@ -14,7 +14,6 @@
 
 - [ ] 知識圖譜內容（`kg/` 的版本目錄、`source/`、`dumps/`、`releases.json`；`kg_manifest.py`）
 - [ ] 數字與等級的判定（換算規則、`kg_rules.py`、`kg_source.py`）
-- [ ] 週報統計口徑（`weekly_report.py` 任何部分，含輸入判讀、週的邊界、排版文字）
 - [ ] 給讀者的輸出與用語（Profile 範本、在地模型 prompt、輸出檢查）
 - [ ] 個人資料的流向（讀取、保存、傳送長者資料；`data/` 底下的資料檔）
 - [ ] 事件格式（`schemas/`、`event_validation.py`）

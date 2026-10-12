@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "radar-agent"
 version = "0.1.0"
-description = "長者照護雷達資料的週報、知識圖譜與事件驗證"
+description = "長者照護雷達資料的知識圖譜與事件驗證"
 requires-python = ">=3.11"
 dependencies = [
     "jsonschema>=4.18",
@@ -23,7 +23,6 @@ dev = [
 
 # 安裝後可在任何目錄使用這些指令
 [project.scripts]
-radar-weekly-report = "radar_agent.weekly_report:main"
 radar-kg-manifest = "radar_agent.kg_manifest:main"
 radar-kg-build = "radar_agent.kg_source:main"
 radar-kg-level = "radar_agent.kg_rules:main"

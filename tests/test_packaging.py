@@ -15,7 +15,6 @@ def project(repo):
 
 def test_declared_scripts(project):
     assert project["scripts"] == {
-        "radar-weekly-report": "radar_agent.weekly_report:main",
         "radar-kg-manifest": "radar_agent.kg_manifest:main",
         "radar-kg-build": "radar_agent.kg_source:main",
         "radar-kg-level": "radar_agent.kg_rules:main",
@@ -34,15 +33,6 @@ def test_kg_manifest_main_reads_sys_argv_when_called_without_arguments(monkeypat
 
     monkeypatch.setattr(sys, "argv", ["radar-kg-manifest", "--check"])
     assert kg_manifest.main() == 0
-
-
-def test_weekly_report_main_reads_sys_argv_when_called_without_arguments(repo, monkeypatch, capsys):
-    from radar_agent import weekly_report
-
-    path = repo / "data" / "samples_fall" / "2026-06-03.json"
-    monkeypatch.setattr(sys, "argv", ["radar-weekly-report", "--input", str(path)])
-    assert weekly_report.main() == 0
-    assert "本次輸入的紀錄中，跌倒標記共 **1** 筆。" in capsys.readouterr().out
 
 
 def _names(requirements: list[str]) -> set[str]:
@@ -108,7 +98,6 @@ def test_coverage_gate_is_configured_and_matches_the_readme(repo):
 @pytest.mark.parametrize("module,args", [
     ("radar_agent.kg_manifest", ["--check"]),
     ("radar_agent.kg_source", ["--check"]),
-    ("radar_agent.weekly_report", ["--input", "data/samples_fall/2026-06-03.json"]),
     ("radar_agent.kg_rules", ["來回行走", "5.4"]),
 ])
 def test_modules_run_as_scripts(repo, module, args):
