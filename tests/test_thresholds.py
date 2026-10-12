@@ -12,6 +12,7 @@ import json
 
 import pytest
 
+from radar_agent import kg_rules
 from radar_agent.kg_source import find_threshold_issues, parse_level_range
 
 # (指標, 低等級分數, 高等級分數, 種類)
@@ -141,3 +142,38 @@ def _lv(score, lo, hi, lo_incl=True, hi_incl=True):
 def test_find_threshold_issues_cases(name, resolution, low, high, expected):
     metric = {"name": "x", "resolution": resolution, "levels": [low, high]}
     assert find_threshold_issues(metric) == (set() if expected is None else {("x", 0, 1, expected)}), name
+
+
+# ── 建置檢查與執行期判定要一致 ───────────────────────────────
+
+def _off_grid_metric(low_max, high_min):
+    """精度 0.1，但邊界寫到小數兩位（不在精度格點上）。"""
+    def lv(score, lo, hi):
+        return {"score": score, "rank": str(score), "min": lo, "max": hi,
+                "min_inclusive": True, "max_inclusive": hi is not None, "source_text": ""}
+    return {"name": "x", "unit": "秒", "resolution": 0.1, "levels": [lv(0, 0, low_max), lv(1, high_min, None)]}
+
+
+def _assess(metric, value):
+    kg = kg_rules.KnowledgeGraph(
+        info={"version": "t", "approval": {}, "approved": False},
+        thresholds={metric["name"]: metric},
+        suggestions={(metric["name"], lv["score"]): {"suggestion": "", "recommended_dose": ""} for lv in metric["levels"]},
+    )
+    return kg_rules.assess(kg, metric["name"], value)
+
+
+def test_gap_between_off_grid_boundaries_current_behavior():
+    """現況：5.45 與 5.55 之間，建置檢查說沒有缺口，執行期卻把 5.5 判成缺口。"""
+    metric = _off_grid_metric(5.45, 5.55)
+    assert find_threshold_issues(metric) == set()
+    a = _assess(metric, "5.5")
+    assert a["status"] == "unassessable" and "不屬於任何等級" in a["reason"]
+
+
+def test_overlap_on_off_grid_boundary_current_behavior():
+    """現況：兩級都含 5.45，建置檢查說重疊，但執行期先以精度拒絕 5.45，不會遇到重疊。"""
+    metric = _off_grid_metric(5.45, 5.45)
+    assert find_threshold_issues(metric) == {("x", 0, 1, "overlap")}
+    a = _assess(metric, "5.45")
+    assert a["status"] == "unassessable" and "精度" in a["reason"] and a["candidates"] == []
