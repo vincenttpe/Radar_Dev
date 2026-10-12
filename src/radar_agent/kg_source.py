@@ -20,6 +20,8 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any, TypedDict
 
+from radar_agent import kg_rules
+
 REPO = Path(__file__).resolve().parents[2]
 VERSION = "v1"
 CYPHER = f"kg/{VERSION}/graph.cypher"
@@ -153,39 +155,39 @@ def build_thresholds(metrics: list[Metric]) -> dict[str, Any]:
     return {**THRESHOLDS_HEADER, "metrics": out}
 
 
-def _overlaps(low: dict[str, Any], high: dict[str, Any]) -> bool:
-    """較低等級的上界是否和較高等級的下界重疊（相等且兩邊都含也算重疊）。"""
-    edge_low, edge_high = Decimal(str(low["max"])), Decimal(str(high["min"]))
-    return edge_low > edge_high or (edge_low == edge_high and low["max_inclusive"] and high["min_inclusive"])
+def _pair_issues(metric: dict[str, Any], low: dict[str, Any], high: dict[str, Any]) -> set[str]:
+    """相鄰兩級之間的問題：在兩個邊界之間（含邊界）的每個格點上，問執行期同一個問題「落在哪些等級」。
 
-
-def _has_gap(low: dict[str, Any], high: dict[str, Any], resolution: Decimal | None) -> bool:
-    """兩級之間是否有量得到、卻不屬於任何一級的值。resolution 為 None 代表連續量。"""
-    edge_low, edge_high = Decimal(str(low["max"])), Decimal(str(high["min"]))
-    if resolution is None:  # 連續量：邊界相等且至少一邊含才相接
-        return not (edge_low == edge_high and (low["max_inclusive"] or high["min_inclusive"]))
-    # 離散量：低等級之後第一個沒被涵蓋的值，必須被高等級涵蓋
-    first_uncovered = edge_low + resolution if low["max_inclusive"] else edge_low
-    first_covered_by_high = edge_high if high["min_inclusive"] else edge_high + resolution
-    return first_uncovered < first_covered_by_high
+    沒有任何等級＝缺口；同時落在這兩級＝重疊。判斷與 kg_rules.assess 共用 levels_containing，
+    所以建置時說沒有缺口，執行期就不會遇到缺口（名詞定義見 CONTEXT.md）。
+    """
+    edges = sorted((Decimal(str(low["max"])), Decimal(str(high["min"]))))
+    found = set()
+    for value in kg_rules.grid_points(metric, *edges):
+        containing = kg_rules.levels_containing(metric, value)
+        if not containing:
+            found.add("gap")
+        elif low in containing and high in containing:
+            found.add("overlap")
+    return found
 
 
 def find_threshold_issues(metric: dict[str, Any]) -> set[tuple[Any, ...]]:
-    """依指標的 resolution 檢查相鄰等級有沒有缺口或重疊，回傳 {(指標, 低分, 高分, 'gap'|'overlap')}。
+    """依指標的 resolution 檢查門檻，回傳 {(指標, 低分, 高分, 'gap'|'overlap')} 與 {(指標, 分數, None, 'off_grid')}。
 
-    把等級依 min 排序，逐對比較「較低那級的上界」與「較高那級的下界」。
+    把等級依 min 排序，逐對檢查相鄰兩級之間有沒有缺口或重疊；另外列出寫在精度格點之外的邊界
+    （來源寫法與精度設定互相矛盾，待審核人決定，會議清單 E5）。
     """
-    resolution = None if metric["resolution"] is None else Decimal(str(metric["resolution"]))
     levels = sorted(metric["levels"], key=lambda lv: Decimal(str(lv["min"])))
-    issues = set()
+    issues: set[tuple[Any, ...]] = {
+        (metric["name"], lv["score"], None, "off_grid")
+        for lv in levels for edge in (lv["min"], lv["max"])
+        if edge is not None and not kg_rules.on_grid(metric, Decimal(str(edge)))
+    }
     for low, high in pairwise(levels):
         if low["max"] is None:
             raise ValueError(f'{metric["name"]} 分數 {low["score"]} 是開放上界，卻不是最高那一級')
-        key = (metric["name"], low["score"], high["score"])
-        if _overlaps(low, high):
-            issues.add((*key, "overlap"))
-        elif _has_gap(low, high, resolution):
-            issues.add((*key, "gap"))
+        issues |= {(metric["name"], low["score"], high["score"], kind) for kind in _pair_issues(metric, low, high)}
     return issues
 
 

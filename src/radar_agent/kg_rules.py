@@ -21,9 +21,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
@@ -118,15 +120,34 @@ def _is_multiple(value: Decimal, step: Decimal) -> bool:
     return (p * s) % (q * r) == 0
 
 
+def on_grid(metric: dict[str, Any], value: Decimal) -> bool:
+    """value 是否在指標的精度格點上：從 0 起、以 resolution 為間隔（見 CONTEXT.md）。連續量一律算在格點上。"""
+    resolution = metric["resolution"]
+    return resolution is None or _is_multiple(value, Decimal(str(resolution)))
+
+
+def grid_points(metric: dict[str, Any], low: Decimal, high: Decimal) -> list[Decimal]:
+    """low 到 high（含兩端）之間要檢查的數值：離散量是其間每個精度格點；連續量沒有格點，取兩端與中點。"""
+    if metric["resolution"] is None:
+        return sorted({low, high, (low + high) / 2})
+    step = Decimal(str(metric["resolution"]))
+    first, last = math.ceil(Fraction(low) / Fraction(step)), math.floor(Fraction(high) / Fraction(step))
+    return [k * step for k in range(first, last + 1)]
+
+
+def levels_containing(metric: dict[str, Any], value: Decimal) -> list[dict[str, Any]]:
+    """value 落在哪些等級的區間內；不檢查精度。0 個＝缺口，2 個以上＝重疊。"""
+    return [lv for lv in metric["levels"] if _contains(lv, value)]
+
+
 def _precision_reason(metric: dict[str, Any], value: Decimal) -> str | None:
     """數值比來源寫出的精度更細時的說明；不論是否落在某個等級的區間內，都不評分。
 
     低於所有等級下限的數值交給 _gap_reason，維持「低於下限」優先回報。
     """
-    resolution = metric["resolution"]
-    if resolution is None or value < _lowest(metric) or _is_multiple(value, Decimal(str(resolution))):
+    if value < _lowest(metric) or on_grid(metric, value):
         return None
-    return f"數值 {value} 比來源寫出的精度（{resolution}）更細；來源沒有定義取整方式，不由程式代決定（會議清單 E5）"
+    return f"數值 {value} 比來源寫出的精度（{metric['resolution']}）更細；來源沒有定義取整方式，不由程式代決定（會議清單 E5）"
 
 
 def _gap_reason(metric: dict[str, Any], value: Decimal) -> str:
@@ -160,7 +181,7 @@ def assess(kg: KnowledgeGraph, metric: str, value: object) -> Assessment:
     precision = _precision_reason(spec, number)
     if precision is not None:
         return _result(metric, text, kg, "unassessable", reason=precision)
-    matches = [lv for lv in spec["levels"] if _contains(lv, number)]
+    matches = levels_containing(spec, number)
     if not matches:
         return _result(metric, text, kg, "unassessable", reason=_gap_reason(spec, number))
     if len(matches) > 1:

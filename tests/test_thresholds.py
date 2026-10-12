@@ -9,12 +9,15 @@ thresholds.json 是 radar-kg-build 從 graph.cypher 的等級名稱轉成數字�
 更新清單與文件。
 """
 import json
+from decimal import Decimal
+from itertools import pairwise
 
 import pytest
 
+from radar_agent import kg_rules
 from radar_agent.kg_source import find_threshold_issues, parse_level_range
 
-# (指標, 低等級分數, 高等級分數, 種類)
+# (指標, 低等級分數, 高等級分數, 'gap'|'overlap')；邊界不在精度格點上是 (指標, 分數, None, 'off_grid')。名詞定義見 CONTEXT.md。
 KNOWN_ISSUES = {
     # 3 分到 89~99、4 分從 112 起，次數是整數，100~111 沒有等級。
     ("心肺耐力", 3, 4, "gap"),
@@ -141,3 +144,79 @@ def _lv(score, lo, hi, lo_incl=True, hi_incl=True):
 def test_find_threshold_issues_cases(name, resolution, low, high, expected):
     metric = {"name": "x", "resolution": resolution, "levels": [low, high]}
     assert find_threshold_issues(metric) == (set() if expected is None else {("x", 0, 1, expected)}), name
+
+
+# ── 建置檢查與執行期判定要一致 ───────────────────────────────
+
+def _off_grid_metric(low_max, high_min):
+    """精度 0.1，但邊界寫到小數兩位（不在精度格點上）。"""
+    def lv(score, lo, hi):
+        return {"score": score, "rank": str(score), "min": lo, "max": hi,
+                "min_inclusive": True, "max_inclusive": hi is not None, "source_text": ""}
+    return {"name": "x", "unit": "秒", "resolution": 0.1, "levels": [lv(0, 0, low_max), lv(1, high_min, None)]}
+
+
+def _assess(metric, value):
+    kg = kg_rules.KnowledgeGraph(
+        info={"version": "t", "approval": {}, "approved": False},
+        thresholds={metric["name"]: metric},
+        suggestions={(metric["name"], lv["score"]): {"suggestion": "", "recommended_dose": ""} for lv in metric["levels"]},
+    )
+    return kg_rules.assess(kg, metric["name"], value)
+
+
+def test_gap_between_off_grid_boundaries_is_found_like_at_runtime():
+    """5.45 與 5.55 之間的 5.5 不屬於任何等級：建置檢查與執行期都說是缺口，兩個邊界也都不在格點上。"""
+    metric = _off_grid_metric(5.45, 5.55)
+    assert find_threshold_issues(metric) == {("x", 0, 1, "gap"), ("x", 0, None, "off_grid"), ("x", 1, None, "off_grid")}
+    a = _assess(metric, "5.5")
+    assert a["status"] == "unassessable" and "不屬於任何等級" in a["reason"]
+
+
+def test_shared_off_grid_boundary_is_not_an_overlap():
+    """兩級都含 5.45，但 5.45 不在格點上，執行期先以精度拒絕，不會遇到重疊；建置檢查只回報邊界不在格點上。"""
+    metric = _off_grid_metric(5.45, 5.45)
+    assert find_threshold_issues(metric) == {("x", 0, None, "off_grid"), ("x", 1, None, "off_grid")}
+    a = _assess(metric, "5.45")
+    assert a["status"] == "unassessable" and "精度" in a["reason"] and a["candidates"] == []
+
+
+def _issues_by_assessing_every_grid_point(metric):
+    """沿精度格點逐一呼叫 assess，把「不屬於任何等級」與「同時屬於兩級」換算成 find_threshold_issues 的格式。"""
+    levels = sorted(metric["levels"], key=lambda lv: Decimal(str(lv["min"])))
+    edges = [Decimal(str(e)) for lv in levels for e in (lv["min"], lv["max"]) if e is not None]
+    step = Decimal(str(metric["resolution"]))
+    issues = set()
+    for value in kg_rules.grid_points(metric, min(edges), max(edges) + step):
+        a = _assess(metric, str(value))
+        if a["status"] == "assessed":
+            continue
+        if a["candidates"]:
+            pair = sorted((lv for lv in levels if lv["score"] in {c["score"] for c in a["candidates"]}),
+                          key=lambda lv: Decimal(str(lv["min"])))
+            issues |= {(metric["name"], lo["score"], hi["score"], "overlap") for lo, hi in pairwise(pair)}
+        else:
+            assert "不屬於任何等級" in a["reason"], (value, a["reason"])
+            below = max((lv for lv in levels if lv["max"] is not None and Decimal(str(lv["max"])) <= value),
+                        key=lambda lv: Decimal(str(lv["max"])))
+            above = min((lv for lv in levels if Decimal(str(lv["min"])) >= value), key=lambda lv: Decimal(str(lv["min"])))
+            issues.add((metric["name"], below["score"], above["score"], "gap"))
+    return issues
+
+
+def _without_off_grid(issues):
+    return {i for i in issues if i[3] != "off_grid"}
+
+
+def test_build_check_agrees_with_assessing_every_grid_point_on_v1(thresholds):
+    """建置時說沒有缺口或重疊，執行期就不會遇到；反之亦然。步行速度是連續量，沒有格點可掃。"""
+    discrete = [m for m in thresholds["metrics"] if m["resolution"] is not None]
+    assert len(discrete) == 4
+    for m in discrete:
+        assert _issues_by_assessing_every_grid_point(m) == find_threshold_issues(m), m["name"]
+
+
+@pytest.mark.parametrize("low_max,high_min", [(5.45, 5.55), (5.45, 5.45), (5.4, 5.6), (5.4, 5.5), (5.5, 5.4)])
+def test_build_check_agrees_with_assessing_every_grid_point_on_synthetic_metrics(low_max, high_min):
+    metric = _off_grid_metric(low_max, high_min)
+    assert _issues_by_assessing_every_grid_point(metric) == _without_off_grid(find_threshold_issues(metric))
