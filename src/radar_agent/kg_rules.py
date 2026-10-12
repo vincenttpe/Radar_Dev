@@ -21,9 +21,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
@@ -122,6 +124,15 @@ def on_grid(metric: dict[str, Any], value: Decimal) -> bool:
     """value 是否在指標的精度格點上：從 0 起、以 resolution 為間隔（見 CONTEXT.md）。連續量一律算在格點上。"""
     resolution = metric["resolution"]
     return resolution is None or _is_multiple(value, Decimal(str(resolution)))
+
+
+def grid_points(metric: dict[str, Any], low: Decimal, high: Decimal) -> list[Decimal]:
+    """low 到 high（含兩端）之間要檢查的數值：離散量是其間每個精度格點；連續量沒有格點，取兩端與中點。"""
+    if metric["resolution"] is None:
+        return sorted({low, high, (low + high) / 2})
+    step = Decimal(str(metric["resolution"]))
+    first, last = math.ceil(Fraction(low) / Fraction(step)), math.floor(Fraction(high) / Fraction(step))
+    return [k * step for k in range(first, last + 1)]
 
 
 def levels_containing(metric: dict[str, Any], value: Decimal) -> list[dict[str, Any]]:
