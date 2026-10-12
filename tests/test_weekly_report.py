@@ -424,3 +424,28 @@ def test_daily_zero_note_does_not_claim_no_record_was_received(fall):
     assert "| 2026/06/03（三） | 0 |" in md
     assert "沒有收到紀錄" not in md
     assert "0 表示該日沒有納入活動統計的紀錄，不代表沒有活動，也不能據此判定裝置是否在線（會議清單 D3）。" in md
+
+
+# ── JSON 與 Markdown 的數字要一致 ─────────────────────────────
+
+def test_unjudged_count_current_behavior():
+    """現況：JSON 的 activity.unjudged 不含時間無法解析的紀錄，Markdown 的「無法判讀」總數含。"""
+    r = report_of([row("2026/06/03 08:00 AM"), row("2026/06/03 09:00 AM", fall="maybe"), row("garbage")])
+    assert r["activity"]["unjudged"] == 1
+    assert "另有 2 筆無法判讀、未計入，**全週總數無法確認**。" in wr.render_markdown(r)
+
+
+def test_active_days_label_current_behavior():
+    """現況：只收到跌倒或無法判讀紀錄的日子不算，標籤卻寫「有紀錄的天數」。"""
+    r = report_of([
+        row("2026/06/03 10:00 AM", fall="yes"),
+        row("2026/06/04 10:00 AM", fall="unknown"),
+        row("2026/06/05 10:00 AM", fall="no"),
+    ])
+    assert r["activity"]["active_days"] == 1
+    assert "有紀錄的天數 1 / 7，最多的一天是 2026/06/05（五）。" in wr.render_markdown(r)
+
+
+def test_busiest_day_tie_takes_the_earliest_day():
+    r = report_of([row("2026/06/05 10:00 AM"), row("2026/06/03 10:00 AM")])
+    assert r["activity"]["busiest_day"] == "2026-06-03"
