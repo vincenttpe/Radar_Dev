@@ -124,9 +124,9 @@ class DayCount(TypedDict):
 class ActivitySummary(TypedDict):
     total: int            # 可判讀且不是跌倒的紀錄；complete 為 False 時只是下限
     complete: bool        # 本週每筆都能判讀是否為跌倒，且沒有時間無法解析的紀錄
-    unjudged: int         # 本週無法判讀是否為跌倒、因此未計入 total 的筆數
+    unjudged: int         # 無法判讀是否為跌倒或屬於哪一天、因此未計入 total 的筆數（等於 data_quality.unjudged_total）
     per_day: list[DayCount]
-    active_days: int
+    active_days: int      # 有動作紀錄（計入 total）的天數；只收到跌倒或無法判讀紀錄的日子不算
     busiest_day: str | None
     speed: dict[str, int]
 
@@ -301,14 +301,19 @@ def speed_distribution(activity: list[Record]) -> dict[str, int]:
     return counts
 
 
+def unjudged_total(in_week: list[Record], skipped: Sequence[Skipped]) -> int:
+    """無法判讀、未計入統計的筆數：本週 fall 欄位缺漏或無法辨識的紀錄，加上讀不進統計的紀錄（可能屬於本週）。"""
+    return sum(1 for r in in_week if r.fall is None) + len(skipped)
+
+
 def summarize_activity(in_week: list[Record], week_start: date, skipped: Sequence[Skipped] = ()) -> ActivitySummary:
     activity = [r for r in in_week if counts_as_activity(r)]
-    unjudged = sum(1 for r in in_week if r.fall is None)
+    unjudged = unjudged_total(in_week, skipped)
     per_day = daily_counts(activity, week_start)
-    busiest = max(per_day, key=lambda d: d["count"]) if activity else None
+    busiest = max(per_day, key=lambda d: d["count"]) if activity else None  # 並列時取最早的一天
     return {
         "total": len(activity),
-        "complete": not unjudged and not skipped,
+        "complete": not unjudged,
         "unjudged": unjudged,
         "per_day": per_day,
         "active_days": sum(1 for d in per_day if d["count"] > 0),
@@ -318,7 +323,6 @@ def summarize_activity(in_week: list[Record], week_start: date, skipped: Sequenc
 
 
 def summarize_quality(records: list[Record], in_week: list[Record], skipped: Sequence[Skipped]) -> DataQuality:
-    unjudged_in_week = sum(1 for r in in_week if r.fall is None)  # fall 欄位缺漏或無法辨識
     return {
         "records_in_week": len(in_week),
         "out_of_week": len(records) - len(in_week),
@@ -326,7 +330,7 @@ def summarize_quality(records: list[Record], in_week: list[Record], skipped: Seq
         "fall_unreadable": sum(1 for r in in_week if r.fall_raw is not None),
         "bad_timestamp": sum(1 for s in skipped if s.kind == "bad_timestamp"),
         "not_object": sum(1 for s in skipped if s.kind == "not_object"),
-        "unjudged_total": unjudged_in_week + len(skipped),
+        "unjudged_total": unjudged_total(in_week, skipped),
         "skipped": [s.message for s in skipped],
     }
 
@@ -432,7 +436,7 @@ def _render_activity(activity: ActivitySummary, quality: DataQuality, falls: Fal
         speed = activity["speed"]
         parts = [f"{k} {speed[k]}" for k in SPEED_ORDER] + ([f"{OTHER_SPEED} {speed[OTHER_SPEED]}"] if speed[OTHER_SPEED] else [])
         lines += [
-            f'有紀錄的天數 {activity["active_days"]} / 7，最多的一天是 {_fmt_date(activity["busiest_day"] or "")}。',
+            f'有動作紀錄的天數 {activity["active_days"]} / 7，最多的一天是 {_fmt_date(activity["busiest_day"] or "")}。',
             f'速度分布：{"、".join(parts)}。',
         ]
     lines += ["", "| 日期 | 動作紀錄筆數 |", "|---|---:|"]

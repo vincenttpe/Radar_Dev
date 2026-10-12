@@ -63,10 +63,10 @@
 - 「算不算一次跌倒、算不算活動量」只在 `counts_as_fall()`、`counts_as_activity()`。但會改變甲方看到的數字的不只這兩個函式，以下任何一處改了都是改口徑：
   - 輸入判讀：`parse_timestamp()`（時間怎麼解析）、`_parse_fall()`（哪些值算 yes、no，例如 `"1"`、`"true"`）、`_read_fall()`（無法辨識的值怎麼保留）、`from_description_records()`（哪些紀錄被跳過、列為無法解析）；
   - 週的邊界：`_in_week()`（含起始日 00:00、不含第 8 天 00:00）；
-  - 完整性與未判讀：`fall_completeness()`、`summarize_activity()` 的 `unjudged`（fall 無法判讀的紀錄怎麼算）；
+  - 完整性與未判讀：`fall_completeness()`、`unjudged_total()`（哪些紀錄算「無法判讀、未計入」；跌倒與活動量兩節共用）；
   - 統計說明：`ASSUMPTIONS`。
 - 改口徑時，`ASSUMPTIONS` 與報告的「統計口徑與資料品質」一節要同步，並在 PR 引用依據（會議清單 C1、C2 的答案）。
-- `render_markdown` 與各 `_render_*` 只排版，不做統計判斷；報告欄位以 `WeeklyReport`（TypedDict）為準。排版文字一樣會被甲方讀到，所以整個 `weekly_report.py` 都列在單向門。
+- `render_markdown` 與各 `_render_*` 只排版：印出的數字一律讀 `WeeklyReport`（TypedDict）的欄位，不自己計數，`--json` 與 Markdown 才不會不一致（`test_every_number_in_markdown_matches_the_json` 會檢查）。排版文字一樣會被甲方讀到，所以整個 `weekly_report.py` 都列在單向門。
 
 ### 3.4 個人資料與機密
 

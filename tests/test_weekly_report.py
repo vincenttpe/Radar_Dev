@@ -1,6 +1,7 @@
 """甲方週報第 1 版：跌倒次數與活動量。"""
 import copy
 import json
+import re
 from datetime import date, datetime
 
 import pytest
@@ -356,7 +357,7 @@ def test_activity_headline_is_partial_when_timestamps_are_unparseable():
 def test_complete_week_keeps_the_plain_activity_headline(fall_sample):
     md = wr.render_markdown(report_of(fall_sample))
     assert "本次輸入的紀錄中，動作紀錄共 **10** 筆（不含跌倒）。" in md
-    assert "有紀錄的天數 1 / 7，最多的一天是 2026/06/03（三）。" in md
+    assert "有動作紀錄的天數 1 / 7，最多的一天是 2026/06/03（三）。" in md
 
 
 def test_fall_with_bad_timestamp_is_named():
@@ -428,24 +429,56 @@ def test_daily_zero_note_does_not_claim_no_record_was_received(fall):
 
 # ── JSON 與 Markdown 的數字要一致 ─────────────────────────────
 
-def test_unjudged_count_current_behavior():
-    """現況：JSON 的 activity.unjudged 不含時間無法解析的紀錄，Markdown 的「無法判讀」總數含。"""
+def test_unjudged_count_is_the_same_in_json_and_markdown():
+    """時間無法解析的紀錄也是「無法判讀、未計入」：JSON 的 activity.unjudged 與 Markdown 都寫 2。"""
     r = report_of([row("2026/06/03 08:00 AM"), row("2026/06/03 09:00 AM", fall="maybe"), row("garbage")])
-    assert r["activity"]["unjudged"] == 1
+    assert r["activity"]["unjudged"] == r["data_quality"]["unjudged_total"] == 2
     assert "另有 2 筆無法判讀、未計入，**全週總數無法確認**。" in wr.render_markdown(r)
 
 
-def test_active_days_label_current_behavior():
-    """現況：只收到跌倒或無法判讀紀錄的日子不算，標籤卻寫「有紀錄的天數」。"""
+def test_active_days_counts_only_days_with_activity_and_says_so():
+    """只收到跌倒或無法判讀紀錄的日子不算，標籤寫明是「有動作紀錄的天數」，和逐日表格同一口徑。"""
     r = report_of([
         row("2026/06/03 10:00 AM", fall="yes"),
         row("2026/06/04 10:00 AM", fall="unknown"),
         row("2026/06/05 10:00 AM", fall="no"),
     ])
     assert r["activity"]["active_days"] == 1
-    assert "有紀錄的天數 1 / 7，最多的一天是 2026/06/05（五）。" in wr.render_markdown(r)
+    md = wr.render_markdown(r)
+    assert "有動作紀錄的天數 1 / 7，最多的一天是 2026/06/05（五）。" in md
+    assert "有紀錄的天數" not in md
 
 
 def test_busiest_day_tie_takes_the_earliest_day():
     r = report_of([row("2026/06/05 10:00 AM"), row("2026/06/03 10:00 AM")])
     assert r["activity"]["busiest_day"] == "2026-06-03"
+
+
+_CONSISTENCY_CASES = {
+    "全部可判讀": [row("2026/06/03 08:00 AM"), row("2026/06/04 08:00 AM"), row("2026/06/04 09:00 AM", fall="yes")],
+    "部分無法判讀": [row("2026/06/03 08:00 AM"), row("2026/06/03 09:00 AM", fall="maybe"), row("2026/06/05 10:00 AM", fall=None)],
+    "時間無法解析": [row("2026/06/03 08:00 AM"), row("garbage"), row("bad", fall="yes"), 5],
+    "只有跌倒與無法判讀": [row("2026/06/03 08:00 AM", fall="yes"), row("2026/06/04 08:00 AM", fall="zz")],
+    "空週": [],
+    "只有週外資料": [row("2026/06/20 08:00 AM"), row("2026/06/21 08:00 AM", fall="yes")],
+}
+
+
+@pytest.mark.parametrize("name", list(_CONSISTENCY_CASES))
+def test_every_number_in_markdown_matches_the_json(name):
+    """Markdown 印出的數字都要等於 JSON 的欄位；兩邊各算各的就會像 unjudged 那樣不一致。"""
+    r = report_of(_CONSISTENCY_CASES[name])
+    md = wr.render_markdown(r)
+    falls, act, quality = r["falls"], r["activity"], r["data_quality"]
+    for m in re.finditer(r"跌倒標記共 \*\*(\d+)\*\* 筆|偵測到 \*\*(\d+)\*\* 次跌倒", md):
+        assert int(m.group(1) or m.group(2)) == falls["count"], name
+    for m in re.finditer(r"動作紀錄共 \*\*(\d+)\*\* 筆|有動作紀錄 \*\*(\d+)\*\* 筆", md):
+        assert int(m.group(1) or m.group(2)) == act["total"], name
+    for m in re.finditer(r"另有 (\d+) 筆無法判讀", md):
+        assert int(m.group(1)) == quality["unjudged_total"] == act["unjudged"], name
+    for m in re.finditer(r"有動作紀錄的天數 (\d+) / 7", md):
+        assert int(m.group(1)) == act["active_days"], name
+    for m in re.finditer(r"（其中 (\d+) 筆標記為跌倒）", md):
+        assert int(m.group(1)) == falls["undated_marked_fall"], name
+    rows = re.findall(r"^\| \d{4}/\d{2}/\d{2}（.） \| (\d+) \|$", md, re.MULTILINE)
+    assert [int(n) for n in rows] == [d["count"] for d in act["per_day"]], name
