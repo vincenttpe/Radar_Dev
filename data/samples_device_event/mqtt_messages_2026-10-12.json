@@ -1,0 +1,155 @@
+{
+  "note": "2026-10-12 取得的裝置 MQTT 訊息規格，逐字收錄 payload；名稱與說明由原規格的註解整理為繁體中文。規格是範例，不是實際收到的資料。",
+  "topic": "radar10/{{identifier}}",
+  "messages": [
+    {
+      "id": "online",
+      "name": "在線",
+      "description": "裝置連上線。",
+      "payload": {
+        "event": "online"
+      }
+    },
+    {
+      "id": "offline",
+      "name": "離線",
+      "description": "裝置斷線。",
+      "payload": {
+        "event": "offline"
+      }
+    },
+    {
+      "id": "presence",
+      "name": "有人",
+      "description": "雷達追蹤到空間內有人。",
+      "payload": {
+        "event": "presence",
+        "trigger": "track",
+        "mode": "radar",
+        "userReply": false
+      }
+    },
+    {
+      "id": "absence",
+      "name": "無人",
+      "description": "雷達追蹤到空間內無人。",
+      "payload": {
+        "event": "absence",
+        "trigger": "track",
+        "mode": "radar",
+        "userReply": false
+      }
+    },
+    {
+      "id": "fall_radar_timeout",
+      "name": "跌倒警報：雷達偵測、無回應",
+      "description": "雷達偵測到跌倒後語音詢問，若無回應，等待 n 秒後自動上報。",
+      "payload": {
+        "event": "fall",
+        "confidence": 100,
+        "trigger": "timeout",
+        "mode": "radar",
+        "userReply": false,
+        "delaysec": 10
+      }
+    },
+    {
+      "id": "fall_fusion_conversation",
+      "name": "跌倒警報：雷達偵測、語音回覆求救",
+      "description": "雷達偵測到跌倒後語音詢問，收到求救回覆後上報。",
+      "payload": {
+        "event": "fall",
+        "confidence": 100,
+        "trigger": "conversation",
+        "mode": "fusion",
+        "userReply": true
+      }
+    },
+    {
+      "id": "fall_speech_conversation",
+      "name": "跌倒警報：主動呼救、語音確認",
+      "description": "語音偵測到主動呼救，再次語音詢問確認，收到求救回覆後上報。event=fall 加 mode=speech 會映射為 DistressCall 狀態。",
+      "maps_to": "DistressCall",
+      "payload": {
+        "event": "fall",
+        "confidence": 100,
+        "trigger": "conversation",
+        "mode": "speech",
+        "userReply": true
+      }
+    },
+    {
+      "id": "fall_speech_timeout",
+      "name": "跌倒警報：主動呼救、無回應",
+      "description": "語音偵測到主動呼救，再次語音詢問確認，若無回應，等待 n 秒後自動上報。event=fall 加 mode=speech 會映射為 DistressCall 狀態。",
+      "maps_to": "DistressCall",
+      "payload": {
+        "event": "fall",
+        "confidence": 100,
+        "trigger": "timeout",
+        "mode": "speech",
+        "userReply": false,
+        "delaysec": 10
+      }
+    },
+    {
+      "id": "resolved_standup",
+      "name": "解除跌倒警報：雷達偵測起身",
+      "description": "發出跌倒警報後，雷達偵測到起身，警報解除。",
+      "payload": {
+        "event": "resolved",
+        "confidence": 100,
+        "trigger": "standUp",
+        "mode": "radar",
+        "userReply": false
+      }
+    },
+    {
+      "id": "resolved_no_need_help",
+      "name": "解除跌倒警報：語音回覆正常",
+      "description": "發出跌倒警報後，語音回覆狀態正常，警報解除。",
+      "payload": {
+        "event": "resolved",
+        "confidence": 100,
+        "trigger": "noNeedHelp",
+        "mode": "speech",
+        "userReply": true
+      }
+    },
+    {
+      "id": "longstay",
+      "name": "靜止滯留警報",
+      "description": "偵測到滯留超過 n 秒後發出滯留警報。",
+      "payload": {
+        "event": "longstay",
+        "confidence": 100,
+        "trigger": "timeout",
+        "mode": "radar",
+        "userReply": false,
+        "delaysec": 600
+      }
+    },
+    {
+      "id": "static",
+      "name": "一般靜止",
+      "description": "雷達原本偵測到有人，但 tracker 開始失去此人，decision 判定此人還在空間時發出。",
+      "payload": {
+        "event": "static",
+        "trigger": "track",
+        "mode": "radar",
+        "userReply": false
+      }
+    },
+    {
+      "id": "moving",
+      "name": "活躍",
+      "description": "雷達開始偵測到有人，或靜止狀態時 tracker 判定有 ID 接管時發出。",
+      "payload": {
+        "event": "moving",
+        "trigger": "track",
+        "mode": "radar",
+        "userReply": false
+      }
+    }
+  ]
+}

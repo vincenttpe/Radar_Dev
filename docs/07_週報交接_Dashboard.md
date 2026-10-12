@@ -9,7 +9,7 @@
 ## 輸入
 
 - 只支援「動作描述 JSON」（`Timestamp`／`Motion`／`Speed`／`fall`，樣本見 `data/samples_fall/`）。
-- 裝置事件（`{"mode","event","trigger","userReply"}`）沒有時間戳，無法分到哪一天，所以沒有納入（會議清單 A1、A3、A4）。
+- 裝置事件（`{"mode","event","trigger","userReply"}`）沒有時間戳，無法分到哪一天，所以沒有納入（會議清單 A1、A3、A4）。2026-10-12 取得的 MQTT 訊息規格（`data/samples_device_event/README.md`）有幾點與週報直接相關：`mode=speech` 的 `fall` 是主動呼救（DistressCall），不一定是跌倒；`resolved` 表示警報被解除（起身或回覆不需要幫忙）；`online`、`offline` 可望提供裝置在線時段（D3）。怎麼計入待 C2 決定。
 - 時間格式：`2026/06/03 08:18 AM`，也接受 `-` 分隔與 24 小時制。樣本中有 24 小時制卻附 PM 的寫法（`17:31 PM`），小時大於 12 時忽略 AM/PM。
 - 時間戳是本地時間、沒有時區，照原樣分到日曆日，跨日以 00:00 為界（會議清單 A4）。
 - `fall` 欄位：`yes`、`true`、`1` 算是；`no`、`false`、`0` 算否（不分大小寫）。沒有欄位或其他值都算**無法判讀**，原值要保留下來。
