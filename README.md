@@ -10,7 +10,7 @@
 
 | 路徑 | 內容 |
 |---|---|
-| `docs/` | 現況架構、目標架構、待確認事項、遷移紀錄、會議待詢問清單、Jetson 硬體評估、週報交接（給 Dashboard） |
+| `docs/` | 現況架構、目標架構、待確認事項、遷移紀錄、會議待詢問清單、Jetson 硬體評估、週報交接（給 Dashboard）、KPI 與查核點 |
 | `kg/v1/` | 知識圖譜第 1 版：`graph.cypher`（建圖腳本）、`metrics.json`（同內容的結構化版本）、`bridge.cypher` |
 | `kg/source/` | 知識圖譜原始文件（`graph.docx`、`standard_suggestion.xlsx`） |
 | `kg/dumps/` | Neo4j 資料庫備份（2026-05-10） |
@@ -30,7 +30,8 @@
 1. `docs/01_現況架構.md`：舊雛形怎麼運作、有哪些問題。
 2. `docs/02_目標架構.md`：新系統的方向。
 3. `docs/03_待確認事項.md`：開始寫程式前要先確認的事。
-4. `REVIEW.md`：送 PR 前要知道的審查規範，特別是第 2 節的單向門。
+4. `docs/08_KPI與查核點.md`：結案驗收的 KPI、查核點時程，以及規格與本 repo 現況的落差。
+5. `REVIEW.md`：送 PR 前要知道的審查規範，特別是第 2 節的單向門。
 
 ## 安裝與使用
 
