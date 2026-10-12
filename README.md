@@ -17,7 +17,7 @@
 | `data/labels/` | 舊雛形用的動作描述標註資料 |
 | `data/samples/` | 舊雛形的測試輸入（6 個 JSON，共 64 筆） |
 | `data/samples_fall/` | 2026-10-08 取得的動作描述 JSON 樣本，多 `fall` 欄位 |
-| `data/samples_device_event/` | 2026-10-08 取得的裝置簡易動作事件樣本 |
+| `data/samples_device_event/` | 裝置動作事件：2026-10-08 收到的一筆樣本，與 2026-10-12 取得的 MQTT 訊息規格（13 種訊息） |
 | `schemas/` | 雷達事件格式草案（**未經確認**） |
 | `legacy/prototype/` | 舊雛形程式，僅供參考與比對，不再開發 |
 | `src/radar_agent/` | 新系統的程式。目前有事件驗證（`event_validation.py`）、知識圖譜發布清單工具（`kg_manifest.py`）、門檻解析與等級判定（`kg_source.py`、`kg_rules.py`）與 PR 單向門檢查（`pr_gate.py`） |

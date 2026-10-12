@@ -17,6 +17,8 @@
 | `started`／`ended` | 無 | 無 |
 | `event_id`／`device_id`／`subject_id` | 無 | 無 |
 
+**2026-10-12 取得裝置 MQTT 訊息規格**（`data/samples_device_event/README.md`）：(b) 的 `event` 有 online、offline、presence、absence、moving、static、longstay、fall、resolved；fall、resolved、longstay 另有 `confidence`（範例都是 100）與（逾時類）`delaysec`。對照上表：`confidence` 在 (b) 有了來源；`voice_confirmation` 可由 `trigger`（conversation／timeout）與 `userReply` 得出；草案沒有對應的有 online／offline（連線狀態，可算涵蓋率）、resolved（解除警報）與 `mode`（radar、speech、fusion）。時間戳、`event_id`、`device_id`（只在 topic 的 `{{identifier}}`）仍沒有。草案先不改，等會議清單 A1、A3、A4、A5 確認後一次改為 v1。
+
 兩種格式都沒有持續時間，所以草案要求 posture／activity 必填 `started`／`ended` 這一點，目前的來源給不出來；活動量統計暫時只能用事件數與 `Speed` 分布。等確認 (a)(b) 的關係與 7 天資料的實際格式後，草案改為 v1。
 
 ## 草案目前的取捨
