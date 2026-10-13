@@ -10,14 +10,14 @@
 
 | 路徑 | 內容 |
 |---|---|
-| `docs/` | 現況架構、目標架構、待確認事項、遷移紀錄、會議待詢問清單、Jetson 硬體評估、週報交接（給 Dashboard） |
+| `docs/` | 現況架構、目標架構、待確認事項、遷移紀錄、會議待詢問清單、Jetson 硬體評估、週報交接（給 Dashboard）、KPI 與查核點 |
 | `kg/v1/` | 知識圖譜第 1 版：`graph.cypher`（建圖腳本）、`metrics.json`（同內容的結構化版本）、`bridge.cypher` |
 | `kg/source/` | 知識圖譜原始文件（`graph.docx`、`standard_suggestion.xlsx`） |
 | `kg/dumps/` | Neo4j 資料庫備份（2026-05-10） |
 | `data/labels/` | 舊雛形用的動作描述標註資料 |
 | `data/samples/` | 舊雛形的測試輸入（6 個 JSON，共 64 筆） |
 | `data/samples_fall/` | 2026-10-08 取得的動作描述 JSON 樣本，多 `fall` 欄位 |
-| `data/samples_device_event/` | 2026-10-08 取得的裝置簡易動作事件樣本 |
+| `data/samples_device_event/` | 裝置動作事件：2026-10-08 收到的一筆樣本，與 2026-10-12 取得的 MQTT 訊息規格（13 種訊息） |
 | `schemas/` | 雷達事件格式草案（**未經確認**） |
 | `legacy/prototype/` | 舊雛形程式，僅供參考與比對，不再開發 |
 | `src/radar_agent/` | 新系統的程式。目前有事件驗證（`event_validation.py`）、知識圖譜發布清單工具（`kg_manifest.py`）、門檻解析與等級判定（`kg_source.py`、`kg_rules.py`）與 PR 單向門檢查（`pr_gate.py`） |
@@ -30,7 +30,8 @@
 1. `docs/01_現況架構.md`：舊雛形怎麼運作、有哪些問題。
 2. `docs/02_目標架構.md`：新系統的方向。
 3. `docs/03_待確認事項.md`：開始寫程式前要先確認的事。
-4. `REVIEW.md`：送 PR 前要知道的審查規範，特別是第 2 節的單向門。
+4. `docs/08_KPI與查核點.md`：結案驗收的 KPI、查核點時程，以及規格與本 repo 現況的落差。
+5. `REVIEW.md`：送 PR 前要知道的審查規範，特別是第 2 節的單向門。
 
 ## 安裝與使用
 
