@@ -55,6 +55,8 @@ class Summary:
     fall_alerts: list[FallAlert] = field(default_factory=list)
     # 語音回覆「沒事」：resolved + noNeedHelp（docs/05 A30）；不直接當誤報（C2）
     no_need_help_replies: list[datetime] = field(default_factory=list)
+    # 久待：滯留超過 stillThreshold 時裝置送出 longstay（docs/05 A26）
+    longstay_alerts: list[datetime] = field(default_factory=list)
     setting_changes: list[SettingChange] = field(default_factory=list)
     errors: list[tuple[datetime, str]] = field(default_factory=list)
     # 時間或格式讀不懂的紀錄：原樣保留、不參與任何計算
@@ -64,6 +66,7 @@ class Summary:
 
 
 def summarize(records: list[dict[str, Any]]) -> Summary:
+    """整理一台裝置的紀錄（不同 topic 混在一起會丟出 ValueError）。"""
     summary = Summary()
     parsed = _parse(records, summary)
     start: datetime | None = None
@@ -99,6 +102,8 @@ def summarize(records: list[dict[str, Any]]) -> Summary:
             fall_active = True
         elif event in ("resolved", "absence"):
             fall_active = False
+        if event == "longstay":
+            summary.longstay_alerts.append(when)
         if event == "resolved" and payload.get("trigger") == "noNeedHelp":
             summary.no_need_help_replies.append(when)
         if event in PRESENT_EVENTS and start is None:
@@ -119,15 +124,24 @@ def _parse(
     """去重、略過伺服器下的指令、解析時間，依時間排序（同一秒保留原順序）。"""
     seen: set[str] = set()
     parsed = []
+    device: str | None = None
     for record in records:
         key = json.dumps(record, sort_keys=True, ensure_ascii=False)
         if key in seen:
             summary.duplicates_removed += 1
             continue
         seen.add(key)
-        if str(record.get("topic", "")).count("/") > 1:
+        topic = str(record.get("topic", ""))
+        if topic.count("/") > 1:
             # 例如 radar10/<裝置>/config/set：伺服器下給裝置的指令，不是裝置送出的，也不算心跳
             continue
+        if not topic:
+            summary.unreadable.append(record)
+            continue
+        if device is None:
+            device = topic
+        elif topic != device:
+            raise ValueError(f"一次只整理一台裝置，收到 {device} 與 {topic}")
         try:
             when = datetime.strptime(record["timestamp"], TIMESTAMP_FORMAT)
             payload = record["payload"]

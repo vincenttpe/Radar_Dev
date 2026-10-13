@@ -5,6 +5,8 @@
 """
 from datetime import datetime, timedelta
 
+import pytest
+
 from radar_agent.device_events import summarize
 
 TOPIC = "radar10/DEVICE01"
@@ -207,3 +209,26 @@ def test_visit_still_open_at_end_of_data_is_reported_as_ongoing():
     assert summary.visits == []
     assert summary.ongoing_visit is not None
     assert (summary.ongoing_visit.start, summary.ongoing_visit.end) == (t("10:00:00"), t("10:00:05"))
+
+
+def test_longstay_alerts_are_listed():
+    """久待未出是 Demo 主打；裝置滯留超過 stillThreshold 送出 longstay（docs/05 A26）。"""
+    summary = summarize([
+        rec("10:00:00", "presence"),
+        rec("10:30:00", "longstay", trigger="timeout", delaysec=600, confidence=100),
+    ])
+    assert summary.longstay_alerts == [t("10:30:00")]
+
+
+def test_records_from_two_devices_are_rejected():
+    """一次只整理一台裝置；混在一起會把兩個地點的造訪切錯。"""
+    other = rec("10:00:05", "absence")
+    other["topic"] = "radar10/DEVICE02"
+    with pytest.raises(ValueError, match="DEVICE02"):
+        summarize([rec("10:00:00", "absence"), other])
+
+
+def test_record_without_topic_is_unreadable_not_another_device():
+    no_topic = {"timestamp": "2026-10-13 10:00:05", "payload": {"event": "absence"}}
+    summary = summarize([rec("10:00:00", "absence"), no_topic])
+    assert summary.unreadable == [no_topic]
