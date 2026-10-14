@@ -37,7 +37,8 @@ class FallAlert:
 
 @dataclass(frozen=True)
 class SettingChange:
-    """裝置回報的偵測設定（例如 fallSwitch、stillThreshold）；意義待 docs/05 A31。"""
+    """裝置回報的偵測設定。fallSwitch 決定坐著要不要也算跌倒，不是偵測開關（docs/05 A31）；
+    stillThreshold 是久待門檻（A26）。"""
     time: datetime
     values: dict[str, Any]
 
