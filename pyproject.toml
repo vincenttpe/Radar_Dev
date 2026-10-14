@@ -40,7 +40,7 @@ target-version = "py311"
 # 明確列出規則，結果不依賴 ruff 版本的預設規則集。
 select = ["E4", "E7", "E9", "F", "W", "B", "UP", "SIM", "DTZ", "RUF", "ISC", "PLW", "C4", "PIE"]
 ignore = [
-    "DTZ001",                          # 資料的時間戳沒有時區（會議清單 A4），刻意使用沒有時區的 datetime
+    "DTZ001", "DTZ007",                # 資料的時間戳沒有時區（會議清單 A4、A27），刻意使用沒有時區的 datetime
     "RUF001", "RUF002", "RUF003",      # 全形標點（，、：（））是繁體中文的正常寫法，不是可疑字元
 ]
 
