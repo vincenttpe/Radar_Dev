@@ -29,12 +29,12 @@
 |---|---|---|
 | 知識圖譜內容 | `kg/` 的版本目錄（`kg/v1/` 等）、`kg/source/`、`kg/dumps/`、`kg/releases.json`（含 `approval`）；保護核准的 `src/radar_agent/kg_manifest.py` | 會變成給長者、家屬、醫師的建議；內容與醫療行為相關，須審核人核准（`kg/README.md`）。放寬 `kg_manifest.py` 的檢查，等於讓已核准版本可以被悄悄改掉 |
 | 數字與等級的判定 | 換算規則、`src/radar_agent/kg_rules.py`、`src/radar_agent/kg_source.py`（解析門檻、產生 `thresholds.json`、`METRIC_CONFIG`） | 等級判錯，下游五種 Profile 都跟著錯 |
-| 給讀者的輸出與用語 | Profile 範本、在地模型的 prompt、輸出檢查（尚未實作） | 已送出的文字收不回；產品定位為非醫療器材，用語不能越界 |
+| 給讀者的輸出與用語 | Profile 範本與輸出檢查（`caregiver.py`）、在地模型的 prompt（尚未實作） | 已送出的文字收不回；產品定位為非醫療器材，用語不能越界 |
 | 個人資料的流向 | 讀取、保存、傳送長者資料的程式；`data/` 底下的資料檔 | 個人資料一旦流出（進模型、快取、log、commit）就無法撤回 |
 | 事件格式 | `schemas/`；實際執行格式檢查的 `src/radar_agent/event_validation.py` | 現有系統與雷達端照著格式送資料，改了要雙方一起升版；放寬驗證等於默默接受格式改版 |
 | 檢查與審查機制 | `.github/`（CI、PR 範本）、`REVIEW.md`、`src/radar_agent/pr_gate.py` | 放寬檢查或規範，上面各項的保護就跟著失效，而且不會有人發現 |
 
-檔案路徑與單向門的對應寫在 `src/radar_agent/pr_gate.py` 的 `DOORS`，CI 依此檢查：變更碰到哪一項，PR 就必須勾哪一項，並填寫可逆性。沒有對應檔案的項目（目前是「給讀者的輸出與用語」）仍靠作者勾選與審查者判斷。
+檔案路徑與單向門的對應寫在 `src/radar_agent/pr_gate.py` 的 `DOORS`，CI 依此檢查：變更碰到哪一項，PR 就必須勾哪一項，並填寫可逆性。沒有列在 `DOORS` 的檔案（例如之後新增的報告或在地模型 prompt）仍靠作者勾選與審查者判斷；新增這類檔案時，要一併補進 `DOORS`。
 
 其他都是雙向門（文件、測試補強、內部重構、開發工具），可以 revert，人工審查可以看摘要與驗證證據就好。**小不等於雙向門**：改一個門檻數字只有一行，仍是單向門。
 

@@ -10,7 +10,7 @@
   三項 CI 本來就會跑，不另外要求勾選。
 
 路徑對應只寫在 DOORS 與 EVIDENCE；REVIEW.md 的表格與 PR 範本的勾選項由 tests/test_pr_gate.py
-檢查是否一致。路徑對應只能擋下已知的檔案；沒有對應路徑的單向門（例如給讀者的輸出）仍靠作者勾選與人工審查。
+檢查是否一致。路徑對應只能擋下已知的檔案；沒有列在 DOORS 的檔案（例如之後新增的報告或 prompt）仍靠作者勾選與人工審查。
 
 執行：
     python -m radar_agent.pr_gate --body PR說明.md --changed 變更檔案清單.txt
@@ -32,7 +32,9 @@ DOORS: dict[str, tuple[str, ...]] = {
         "src/radar_agent/kg_rules.py",
         "src/radar_agent/kg_source.py",  # 解析門檻、產生 thresholds.json、METRIC_CONFIG
     ),
-    "給讀者的輸出與用語": (),  # Profile 範本與輸出檢查尚未實作，有了再補路徑
+    "給讀者的輸出與用語": (
+        "src/radar_agent/caregiver.py",  # 居服員 Profile 範本與輸出檢查；在地模型 prompt 有了再補
+    ),
     "個人資料的流向": ("data/",),
     "事件格式": ("schemas/", "src/radar_agent/event_validation.py"),
     "檢查與審查機制": (

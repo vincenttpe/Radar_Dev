@@ -81,6 +81,7 @@ def test_docs_only_change_passes_with_none(template):
     ("src/radar_agent/kg_manifest.py", "知識圖譜內容"),
     ("src/radar_agent/kg_source.py", "數字與等級的判定"),
     ("src/radar_agent/kg_rules.py", "數字與等級的判定"),
+    ("src/radar_agent/caregiver.py", "給讀者的輸出與用語"),
     ("data/samples_fall/2026-06-03.json", "個人資料的流向"),
     ("schemas/event.v0.draft.json", "事件格式"),
     ("src/radar_agent/event_validation.py", "事件格式"),
@@ -116,7 +117,7 @@ def test_none_together_with_a_door_is_rejected(template):
 
 
 def test_checking_a_door_the_diff_does_not_touch_is_allowed(template):
-    """沒有對應路徑的單向門（例如給讀者的輸出）只能靠作者主動勾，不能因為沒碰到路徑就擋。"""
+    """變更沒碰到某個單向門的路徑，作者仍可主動勾（例如尚未列進 DOORS 的新報告），不能因此擋下。"""
     assert check(_body(template, ["給讀者的輸出與用語"], reversibility="可還原"), ["docs/x.md"]) == []
 
 
