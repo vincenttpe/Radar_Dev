@@ -128,6 +128,23 @@ def test_repeated_fall_messages_before_resolution_are_one_alert():
     assert [a.time for a in summary.fall_alerts] == [t("10:00:10"), t("10:00:50")]
 
 
+def test_fall_source_wait_time_and_resolution_kind_are_kept_as_sent():
+    """處置提示要分得出雷達無回應、回覆求救、主動呼救，以及回覆沒事與起身（docs/11 G1）。"""
+    summary = summarize([
+        rec("10:00:00", "presence"),
+        rec("10:00:10", "fall", trigger="timeout", delaysec=10),
+        rec("10:00:20", "resolved", trigger="standUp"),
+        rec("10:00:30", "fall", mode="fusion", trigger="conversation", userReply=True),
+        rec("10:00:40", "resolved", mode="speech", trigger="noNeedHelp", userReply=True),
+        rec("10:00:50", "fall", trigger="timeout", delaysec="十"),
+    ])
+    assert [(a.mode, a.trigger, a.delay_s) for a in summary.fall_alerts] == [
+        ("radar", "timeout", 10), ("fusion", "conversation", None), ("radar", "timeout", None),
+    ]
+    assert [(r.time, r.trigger) for r in summary.resolutions] == [(t("10:00:20"), "standUp"), (t("10:00:40"), "noNeedHelp")]
+    assert summary.no_need_help_replies == [t("10:00:40")]
+
+
 def test_speech_fall_is_marked_as_distress_call():
     """event=fall 且 mode=speech 是主動呼救（DistressCall），不一定跌倒，要能分開看。"""
     summary = summarize([fall("10:00:10", mode="speech")])

@@ -33,6 +33,19 @@ class FallAlert:
     time: datetime
     # event=fall 且 mode=speech：語音偵測到主動呼救，不一定真的跌倒（docs/05 A3）
     distress_call: bool
+    # 來源與觸發方式照 payload 原值（data/samples_device_event/README.md）：
+    # radar+timeout 雷達偵測、無回應；fusion+conversation 雷達偵測、回覆求救；speech 主動呼救
+    mode: str | None = None
+    trigger: str | None = None
+    # 等候語音回應的秒數（trigger=timeout 時的 delaysec）；沒有或讀不懂就是 None，不猜
+    delay_s: int | None = None
+
+
+@dataclass(frozen=True)
+class Resolution:
+    """警報解除：trigger 為 noNeedHelp（語音回覆沒事）或 standUp（偵測到起身），照原值。"""
+    time: datetime
+    trigger: str | None
 
 
 @dataclass(frozen=True)
@@ -56,6 +69,8 @@ class Summary:
     fall_alerts: list[FallAlert] = field(default_factory=list)
     # 語音回覆「沒事」：resolved + noNeedHelp（docs/05 A30）；不直接當誤報（C2）
     no_need_help_replies: list[datetime] = field(default_factory=list)
+    # 所有 resolved 紀錄，依時間；no_need_help_replies 是其中 trigger=noNeedHelp 的時間
+    resolutions: list[Resolution] = field(default_factory=list)
     # 久待：滯留超過 stillThreshold 時裝置送出 longstay（docs/05 A26）
     longstay_alerts: list[datetime] = field(default_factory=list)
     setting_changes: list[SettingChange] = field(default_factory=list)
@@ -99,14 +114,23 @@ def summarize(records: list[dict[str, Any]]) -> Summary:
             summary.setting_changes.append(SettingChange(when, payload["params"].get("sys.config", {})))
         if event == "fall":
             if not fall_active:
-                summary.fall_alerts.append(FallAlert(when, payload.get("mode") == "speech"))
+                mode, trigger, delay = payload.get("mode"), payload.get("trigger"), payload.get("delaysec")
+                summary.fall_alerts.append(FallAlert(
+                    when, mode == "speech",
+                    mode if isinstance(mode, str) else None,
+                    trigger if isinstance(trigger, str) else None,
+                    delay if isinstance(delay, int) and not isinstance(delay, bool) else None,
+                ))
             fall_active = True
         elif event in ("resolved", "absence"):
             fall_active = False
         if event == "longstay":
             summary.longstay_alerts.append(when)
-        if event == "resolved" and payload.get("trigger") == "noNeedHelp":
-            summary.no_need_help_replies.append(when)
+        if event == "resolved":
+            trigger = payload.get("trigger")
+            summary.resolutions.append(Resolution(when, trigger if isinstance(trigger, str) else None))
+            if trigger == "noNeedHelp":
+                summary.no_need_help_replies.append(when)
         if event in PRESENT_EVENTS and start is None:
             start = when
         elif event == "absence" and start is not None:

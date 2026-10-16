@@ -4,7 +4,7 @@
 """
 import json
 
-from radar_agent.caregiver import caregiver_text, check_output
+from radar_agent.caregiver import caregiver_report, caregiver_text, check_output, event_notes
 from radar_agent.device_events import summarize
 
 TOPIC = "radar10/DEVICE01"
@@ -223,7 +223,8 @@ def _run(capsys, *argv) -> tuple[int, str, str]:
 
 
 VISITS = [("09:05:00", "09:13:00"), ("09:20:00", "09:21:30")]
-EXPECTED = "1 號廁所 10/14：有人使用 2 次，最長一次 8 分鐘。跌倒警報 0 次。久待警報 0 次。這段時間裝置都在線。\n"
+# 沒有任何事件：只有摘要，不另寫「沒有事件」
+EXPECTED = "【事件摘要】\n1 號廁所 10/14：有人使用 2 次，最長一次 8 分鐘。跌倒警報 0 次。久待警報 0 次。這段時間裝置都在線。\n"
 
 
 def test_cli_reads_a_json_array_and_prints_the_checked_text(tmp_path, capsys):
@@ -306,3 +307,93 @@ def test_cli_reads_sys_argv_when_called_without_arguments(tmp_path, capsys, monk
     monkeypatch.setattr(sys, "argv", ["radar-caregiver", str(path), "--place", "1 號廁所"])
     assert main() == 0
     assert capsys.readouterr().out == EXPECTED
+
+
+# ── 逐事件的處置提示與照護紀錄草稿（docs/11 G1，用語 2026-10-16 確認）──────
+
+def _fall(hms: str, mode: str, trigger: str, **extra) -> dict:
+    return rec(hms, "fall", mode=mode, trigger=trigger, **extra)
+
+
+def _resolved(hms: str, trigger: str) -> dict:
+    return rec(hms, "resolved", mode="speech" if trigger == "noNeedHelp" else "radar", trigger=trigger)
+
+
+def _notes(records: list[dict]) -> list[tuple[str, str]]:
+    return [(n.prompt, n.record) for n in event_notes(summarize(records), "1 號廁所")]
+
+
+def test_radar_fall_without_reply_asks_to_go_now_and_states_how_long_it_waited():
+    records = [*timeline("09:00:00", "09:10:00"), _fall("09:02:00", "radar", "timeout", delaysec=10)]
+    assert _notes(records) == [
+        ("請立即到場確認。", "09:02 1 號廁所雷達偵測到疑似跌倒，語音詢問 10 秒未獲回應。"),
+    ]
+
+
+def test_wait_time_is_left_out_when_the_device_did_not_send_it():
+    records = [*timeline("09:00:00", "09:10:00"), _fall("09:02:00", "radar", "timeout")]
+    assert _notes(records) == [("請立即到場確認。", "09:02 1 號廁所雷達偵測到疑似跌倒，語音詢問未獲回應。")]
+
+
+def test_fusion_fall_and_distress_call_have_their_own_wording():
+    records = [*timeline("09:00:00", "09:30:00"), _fall("09:02:00", "fusion", "conversation", userReply=True), _resolved("09:03:00", "standUp"), _fall("09:20:00", "speech", "timeout", delaysec=10)]
+    assert _notes(records) == [
+        ("長者回覆需要協助，請立即到場。", "09:02 1 號廁所雷達偵測到疑似跌倒，長者語音回覆需要協助。"),
+        ("已偵測到起身，警報已解除。", "09:03 偵測到長者起身，警報解除。"),
+        ("長者主動呼救，請立即到場。", "09:20 1 號廁所偵測到主動呼救。"),
+    ]
+
+
+def test_unknown_fall_source_is_not_guessed_and_still_asks_to_go():
+    records = [*timeline("09:00:00", "09:10:00"), _fall("09:02:00", "radar", "somethingNew")]
+    assert _notes(records) == [("請立即到場確認。", "09:02 1 號廁所跌倒警報。")]
+
+
+def test_full_report_has_summary_prompts_and_record_draft_in_time_order():
+    records = timeline("09:00:00", "09:10:00", [("09:01:00", "09:06:00")]) + timeline("09:40:00", "09:50:00")
+    records += [
+        _fall("09:02:00", "radar", "timeout", delaysec=10),
+        _resolved("09:03:00", "noNeedHelp"),
+        rec("09:45:00", "longstay", trigger="timeout", delaysec=600),
+    ]
+    summary = summarize(records)
+    report = caregiver_report(summary, place="1 號廁所")
+    assert report == (
+        "【事件摘要】\n"
+        + caregiver_text(summary, place="1 號廁所") + "\n"
+        "\n【處置提示】\n"
+        "09:02 請立即到場確認。\n"
+        "09:03 長者回覆沒事，警報已解除；可視情況前往關心。\n"
+        "09:10–09:40 這段時間無法判斷是否有跌倒，請通知資訊人員。\n"
+        "09:45 停留超過設定時間，請前往查看。\n"
+        "\n【照護紀錄草稿】\n"
+        "09:02 1 號廁所雷達偵測到疑似跌倒，語音詢問 10 秒未獲回應。\n"
+        "09:03 長者語音回覆沒事，警報解除。\n"
+        "09:10–09:40 裝置斷線，期間狀況不明。\n"
+        "09:45 1 號廁所停留超過設定時間（久待警報）。"
+    )
+    assert check_output(report, summary, place="1 號廁所") == []
+
+
+def test_report_with_every_event_kind_passes_its_own_check():
+    records = timeline("09:00:00", "09:30:00") + timeline("09:50:00", "10:00:00") + [
+        _fall("09:02:00", "radar", "timeout", delaysec=10), _resolved("09:02:30", "noNeedHelp"),
+        _fall("09:05:00", "fusion", "conversation", userReply=True), _resolved("09:06:00", "standUp"),
+        _fall("09:10:00", "speech", "conversation", userReply=True), _resolved("09:11:00", "standUp"),
+        _fall("09:15:00", "radar", "somethingNew"),
+        rec("09:25:00", "longstay", trigger="timeout", delaysec=600),
+    ]
+    summary = summarize(records)
+    assert check_output(caregiver_report(summary, place="1 號廁所"), summary, place="1 號廁所") == []
+
+
+def test_cli_prints_prompts_and_record_draft(tmp_path, capsys):
+    path = tmp_path / "events.json"
+    records = [*timeline("09:00:00", "09:10:00"), _fall("09:02:00", "radar", "timeout", delaysec=10)]
+    path.write_text(json.dumps(records), encoding="utf-8")
+    code, out, _ = _run(capsys, path, "--place", "1 號廁所")
+    assert code == 0
+    assert out.endswith(
+        "【處置提示】\n09:02 請立即到場確認。\n\n【照護紀錄草稿】\n"
+        "09:02 1 號廁所雷達偵測到疑似跌倒，語音詢問 10 秒未獲回應。\n"
+    )

@@ -10,12 +10,13 @@ import argparse
 import json
 import re
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from radar_agent.device_events import Summary, summarize
+from radar_agent.device_events import FallAlert, Summary, summarize
 from radar_agent.kg_rules import Assessment
 
 
@@ -99,6 +100,65 @@ def caregiver_text(source: Summary | Assessment, *, place: str = "") -> str:
     return _personal_text(source)
 
 
+# ── 逐事件的處置提示與照護紀錄草稿 ─────────────────────────
+# 計畫書「決策建議輸出」：事件摘要、處置提示、照護紀錄草稿（docs/11 G1）。
+# 用語於 2026-10-16 在對話中確認（docs/11「G1 用語」）。只寫裝置事件裡有的事實：
+# 沒有姿態持續時間，所以不寫計畫書例句的「持續 30 秒」。
+
+@dataclass(frozen=True)
+class EventNote:
+    time: datetime
+    prompt: str   # 處置提示
+    record: str   # 照護紀錄草稿
+    span: str = ""  # 處置提示前面標的時間；空的就用 time 的 HH:MM（斷線標起訖）
+
+
+def _fall_note(alert: FallAlert, place: str) -> EventNote:
+    when = f"{alert.time:%H:%M}"
+    if alert.mode == "speech":
+        return EventNote(alert.time, "長者主動呼救，請立即到場。", f"{when} {place}偵測到主動呼救。")
+    if alert.mode == "fusion":
+        return EventNote(
+            alert.time, "長者回覆需要協助，請立即到場。", f"{when} {place}雷達偵測到疑似跌倒，長者語音回覆需要協助。"
+        )
+    if alert.mode == "radar" and alert.trigger == "timeout":
+        waited = f" {alert.delay_s} 秒" if alert.delay_s is not None else ""
+        return EventNote(
+            alert.time, "請立即到場確認。", f"{when} {place}雷達偵測到疑似跌倒，語音詢問{waited}未獲回應。"
+        )
+    # 規格外的來源組合：不猜是哪一種，一律當成要到場確認
+    return EventNote(alert.time, "請立即到場確認。", f"{when} {place}跌倒警報。")
+
+
+def event_notes(summary: Summary, place: str) -> list[EventNote]:
+    """每個事件一則：跌倒警報、警報解除、久待警報、裝置斷線，依時間排列。"""
+    notes = [_fall_note(a, place) for a in summary.fall_alerts]
+    for r in summary.resolutions:
+        when = f"{r.time:%H:%M}"
+        if r.trigger == "noNeedHelp":
+            notes.append(EventNote(r.time, "長者回覆沒事，警報已解除；可視情況前往關心。", f"{when} 長者語音回覆沒事，警報解除。"))
+        elif r.trigger == "standUp":
+            notes.append(EventNote(r.time, "已偵測到起身，警報已解除。", f"{when} 偵測到長者起身，警報解除。"))
+    for t in summary.longstay_alerts:
+        notes.append(EventNote(t, "停留超過設定時間，請前往查看。", f"{t:%H:%M} {place}停留超過設定時間（久待警報）。"))
+    for a, b in zip(summary.online, summary.online[1:], strict=False):
+        span = f"{a.end:%H:%M}–{b.start:%H:%M}"
+        notes.append(EventNote(
+            a.end, "這段時間無法判斷是否有跌倒，請通知資訊人員。", f"{span} 裝置斷線，期間狀況不明。", span
+        ))
+    return sorted(notes, key=lambda n: n.time)
+
+
+def caregiver_report(summary: Summary, *, place: str) -> str:
+    """事件摘要＋處置提示＋照護紀錄草稿。沒有事件時只有摘要，不另寫「沒有事件」。"""
+    parts = ["【事件摘要】", _site_text(summary, place)]
+    notes = event_notes(summary, place)
+    if notes:
+        parts += ["", "【處置提示】", *(f"{n.span or f'{n.time:%H:%M}'} {n.prompt}" for n in notes)]
+        parts += ["", "【照護紀錄草稿】", *(n.record for n in notes)]
+    return "\n".join(parts)
+
+
 
 # ── 輸出檢查 ─────────────────────────────────────────────
 # 範本與日後在地模型的改寫都要通過；檢查的是文字本身，不信任產生文字的程式。
@@ -129,6 +189,8 @@ def _facts(source: Summary | Assessment, place: str) -> set[Decimal]:
         ]
         allowed |= {Decimal(c) for c in counts}
         times = [a.time for a in source.fall_alerts] + source.longstay_alerts + [w for w, _ in source.errors]
+        times += [r.time for r in source.resolutions]
+        allowed |= {Decimal(a.delay_s) for a in source.fall_alerts if a.delay_s is not None}
         times += [p.start for p in source.online] + [p.end for p in source.online]
         if source.ongoing_visit is not None:
             times.append(source.ongoing_visit.start)
@@ -196,7 +258,9 @@ def _read_records(path: Path) -> list[dict[str, Any]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="一台裝置的事件 → 居服員看的場域摘要（範本，不用模型；先過輸出檢查）")
+    ap = argparse.ArgumentParser(
+        description="一台裝置的事件 → 居服員看的事件摘要、處置提示與照護紀錄草稿（範本，不用模型；先過輸出檢查）"
+    )
     ap.add_argument("events", type=Path, help="紀錄檔：雲端格式 {timestamp, topic, resolution, payload}，JSON 陣列或一行一筆")
     ap.add_argument("--place", required=True, help="地點名稱，例如「1 號廁所」；不放長者姓名等個人資料")
     args = ap.parse_args(sys.argv[1:] if argv is None else argv)
@@ -209,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError) as e:
         print(f"錯誤：{args.events}：{e}", file=sys.stderr)
         return 2
-    text = caregiver_text(summary, place=args.place)
+    text = caregiver_report(summary, place=args.place)
     problems = check_output(text, summary, place=args.place)
     if problems:
         print("輸出檢查沒通過，不輸出給居服員：", file=sys.stderr)
