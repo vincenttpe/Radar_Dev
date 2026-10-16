@@ -91,6 +91,8 @@ KPI 與查核點已整理在 `08_KPI與查核點.md`，這裡不重複，只標�
 
 `demo/prototype.html`：照護人員畫面的原型，Demo 主流程用這一頁，旁邊開終端機現場跑一次 `radar-caregiver`，證明畫面上的句子是程式產生的。說明見 `demo/README.md`。
 
+**線上預覽**：https://claude.ai/artifact/2UMoTEQwohsQNFpGPWocbe 。內容與 `python demo/build.py` 產生的頁面相同，不用下載 repo 就能看。頁面預設只有擁有者能開，要由擁有者從頁面的分享選單開權限（看頁面 Viewer 即可）。改了 `demo/` 或用語之後，線上頁面不會自動更新，要重新發布（`python demo/build.py --fragment 路徑` 產生發布用的版本）；Demo 當天以 repo 裡的 `demo/prototype.html` 為準。
+
 | 區塊 | 內容 | 對應主軸 |
 |---|---|---|
 | 頂端橫幅 | 「模擬資料」「句子由範本產生，尚未接上在地模型」，捲動時也一直顯示 | Demo 中一律標明的事 |
