@@ -110,6 +110,18 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .summary { font-size: 16px; line-height: 1.8; max-width: 68ch; margin: 0; }
 .summary.wait { color: var(--muted); }
 
+
+/* Gap 模式（內部演示用，網址加 #gaps 才顯示；對甲方 Demo 不開） */
+.gap-badge { display: none; }
+.gaps .gap-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; margin-left: 8px; border-radius: 999px; border: 0; background: var(--check); color: var(--surface); font: 700 12px var(--f-mono); vertical-align: 3px; cursor: pointer; }
+.gaps .gap-badge:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.gap-table-wrap { overflow-x: auto; }
+.gap-table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 14px; }
+.gap-table th, .gap-table td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.gap-table th { font-size: 12px; letter-spacing: .06em; color: var(--muted); font-weight: 500; }
+.gap-table td:first-child { font: 700 13px var(--f-mono); color: var(--check); white-space: nowrap; }
+.gap-table tr.flash td { background: var(--check-bg); }
+.gap-table code { font: 12.5px var(--f-mono); }
 /* 使用趨勢 */
 .chart { overflow-x: auto; }
 .chart svg { display: block; width: 100%; min-width: 600px; height: auto; }
@@ -125,21 +137,42 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 </style>
 
 <div class="sim"><div class="wrap">
-  <strong id="src-label">模擬資料</strong>
+  <strong id="src-label">模擬資料</strong><button type="button" class="gap-badge" data-gap="1" aria-label="Gap 1">1</button>
   <span id="src-note">非真實裝置紀錄；裝置名稱 DEMO-SIM-01，沒有任何長者資料。句子由範本產生，尚未接上在地模型。</span>
 </div></div>
 
 <header class="top"><div class="wrap">
   <div class="eyebrow">雷達照護助理・第 1 階段原型</div>
-  <h1 id="title">1 號廁所的一個上午</h1>
+  <h1><span id="title">1 號廁所的一個上午</span><button type="button" class="gap-badge" data-gap="9" aria-label="Gap 9">9</button></h1>
   <p class="lede">浴廁不裝攝影機，只用雷達的動作狀態。三項機制：雷達偵測疑似跌倒、長者主動語音呼救、異常滯留警示。照護人員收到的是處置提示與可直接複製的照護紀錄草稿。</p>
 </div></header>
 
 <main><div class="wrap">
+  <section aria-labelledby="h-gaps" id="gaps" hidden>
+    <div class="head-row"><h2 id="h-gaps">Gap 一覽（內部用）</h2><span class="hint">畫面上的橘色編號對應這張表；題號見 docs/05、docs/13</span></div>
+    <div class="panel gap-table-wrap">
+      <table class="gap-table">
+        <thead><tr><th>#</th><th>畫面上的哪裡</th><th>現在</th><th>目標</th><th>卡在哪</th></tr></thead>
+        <tbody>
+        <tr id="gap-row-1"><td>1</td><td>頂端橫幅</td><td>模擬資料，格式是現在雲端保存的裝置事件</td><td>場域實測資料；正式部署後讀 Jetson 收到的資料</td><td>實測資料 A10（10/19 實機操演）；Jetson 收得到裝置事件嗎 A23、A32</td></tr>
+        <tr id="gap-row-2"><td>2</td><td>時鐘與時間軸</td><td>時間戳是雲端<b>收到</b>時補上的，時區還沒確認</td><td>事件<b>發生</b>時間；KPI 3「通報 &lt; 10 秒」要用它來量</td><td>A4、A27（10/19 討論；實機操演時對時）</td></tr>
+        <tr id="gap-row-3"><td>3</td><td>處置提示卡片</td><td>本 repo 事後整理一段時間的紀錄才產生，<b>不是即時通知</b></td><td>即時警示 &lt; 10 秒，由警示服務發出，不經本 repo</td><td>誰發、要不要和處置提示合成一則：10/19 Dashboard 題 3</td></tr>
+        <tr id="gap-row-4"><td>4</td><td>跌倒警報的句子</td><td>只寫得出「語音詢問 10 秒未獲回應」</td><td>計畫書例句「接近地面姿態持續 30 秒，未取得有效語音回應」</td><td>姿態持續時間 A6（Jetson 可做、尚未實作）</td></tr>
+        <tr id="gap-row-5"><td>5</td><td>所有句子</td><td>由範本產生；改寫層與檢查已做好，還沒接模型</td><td>Jetson 上的在地語言模型改寫，數字仍照規則</td><td>Jetson 型號 B1、模型選型 F2</td></tr>
+        <tr id="gap-row-6"><td>6</td><td>照護紀錄草稿</td><td>一行一事件，格式自訂；只顯示、不保存</td><td>撰寫時間降低 ≥ 50%；查核點 B4 照護紀錄自動生成；BLEU、ROUGE 等文字指標</td><td>機構紀錄樣本 F13、與 radarLLM 的分工 F12、寫回哪裡（Dashboard 題 4）</td></tr>
+        <tr id="gap-row-7"><td>7</td><td>事件摘要的次數</td><td>去重只能比「完全一樣」；重複的跌倒訊息合併到解除為止</td><td>跌倒偵測準確率 ≥ 90%、漏報率 ≤ 10%，以人工標註驗收</td><td>事件序號 A11、重複警報 A26、標註資料 A10</td></tr>
+        <tr id="gap-row-8"><td>8</td><td>兩週使用趨勢</td><td>場域統計，兩週模擬資料；現有系統只存 7 天</td><td>應用情境 2：個人基線與長期趨勢</td><td>長者代號 A15、超過 7 天的保存 E8、由誰計算（Dashboard 題 8）</td></tr>
+        <tr id="gap-row-9"><td>9</td><td>整個頁面</td><td>原型頁，示意本 repo 產生的內容</td><td>照護人員在 Dashboard 上看到</td><td>輸出介面與格式 B4（10/19 Dashboard 題 1、2）</td></tr>
+        <tr id="gap-row-—"><td>—</td><td>畫面上沒有：體適能等級</td><td>知識圖譜判定已可用，但量測值要人工輸入；知識圖譜尚未核准</td><td>雷達量測五項指標</td><td>E7、門檻缺口 E5、知識圖譜審核</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <section aria-labelledby="h-tl">
     <div class="panel timeline">
       <div class="controls">
-        <div class="clock" id="clock" aria-live="polite">--:--</div>
+        <div class="clock" id="clock" aria-live="polite">--:--</div><button type="button" class="gap-badge" data-gap="2" aria-label="Gap 2">2</button>
         <button type="button" id="btn-reset">從頭重播</button>
         <button type="button" id="btn-prev">上一個</button>
         <button type="button" id="btn-next" class="primary">下一個事件</button>
@@ -161,11 +194,11 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
   <div class="split">
     <section aria-labelledby="h-feed">
-      <div class="head-row"><h2 id="h-feed">處置提示</h2><span class="hint">照護人員收到的通知，新的在上</span></div>
+      <div class="head-row"><h2 id="h-feed">處置提示<button type="button" class="gap-badge" data-gap="3" aria-label="Gap 3">3</button><button type="button" class="gap-badge" data-gap="4" aria-label="Gap 4">4</button><button type="button" class="gap-badge" data-gap="5" aria-label="Gap 5">5</button></h2><span class="hint">照護人員收到的通知，新的在上</span></div>
       <div class="feed" id="feed"></div>
     </section>
     <section aria-labelledby="h-rec">
-      <div class="head-row"><h2 id="h-rec">照護紀錄草稿</h2><button type="button" id="btn-copy">複製紀錄</button></div>
+      <div class="head-row"><h2 id="h-rec">照護紀錄草稿<button type="button" class="gap-badge" data-gap="6" aria-label="Gap 6">6</button></h2><button type="button" id="btn-copy">複製紀錄</button></div>
       <div class="panel">
         <ol class="records" id="records"></ol>
         <div class="copied" id="copied" aria-live="polite"></div>
@@ -174,12 +207,12 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   </div>
 
   <section aria-labelledby="h-sum">
-    <h2 id="h-sum">事件摘要</h2>
+    <h2 id="h-sum">事件摘要<button type="button" class="gap-badge" data-gap="7" aria-label="Gap 7">7</button></h2>
     <div class="panel"><p class="summary" id="summary"></p></div>
   </section>
 
   <section aria-labelledby="h-trend" id="trend">
-    <div class="head-row"><h2 id="h-trend">兩週使用趨勢</h2><span class="hint">模擬資料 10/1–10/14，規則為暫定值</span></div>
+    <div class="head-row"><h2 id="h-trend">兩週使用趨勢<button type="button" class="gap-badge" data-gap="8" aria-label="Gap 8">8</button></h2><span class="hint">模擬資料 10/1–10/14，規則為暫定值</span></div>
     <div class="panel" style="display:grid;gap:14px">
       <div class="chart" id="chart"></div>
       <div class="legend">
@@ -328,6 +361,17 @@ $("btn-copy").onclick = () => {
   DATA.trend.lines.slice(1).forEach(line => ul.append(el("li", null, line)));
 })();
 
+// Gap 模式：網址加 #gaps 才顯示編號與一覽表（內部演示用）
+if (location.hash === "#gaps") {
+  document.body.classList.add("gaps");
+  $("gaps").hidden = false;
+  document.querySelectorAll(".gap-badge").forEach(b => b.addEventListener("click", () => {
+    const row = $("gap-row-" + b.dataset.gap);
+    document.querySelectorAll(".gap-table tr.flash").forEach(r => r.classList.remove("flash"));
+    row.classList.add("flash");
+    row.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }));
+}
 if (location.hash === "#replay") { document.body.classList.add("present"); shown = 0; }
 render();
 </script>

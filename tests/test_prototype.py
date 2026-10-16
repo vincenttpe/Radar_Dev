@@ -99,3 +99,13 @@ def test_field_data_page_without_events_has_only_the_summary(build, tmp_path):
                     "payload": {"event": "absence"}}) + "\n" for s in (0, 5, 10)), encoding="utf-8")
     data = build.demo_data(quiet)
     assert data["events"] == [] and "沒有偵測到有人使用" in data["summary"]
+
+
+def test_gap_mode_is_hidden_by_default_and_every_badge_has_a_row(repo):
+    """Gap 一覽是內部用的：預設隱藏（只有網址加 #gaps 才顯示），畫面上每個編號都對得到表裡的一列。"""
+    page = (repo / "demo" / "prototype.html").read_text(encoding="utf-8")
+    assert '<section aria-labelledby="h-gaps" id="gaps" hidden>' in page
+    assert 'location.hash === "#gaps"' in page
+    badges = set(re.findall(r'class="gap-badge" data-gap="(\d+)"', page))
+    rows = set(re.findall(r'<tr id="gap-row-(\d+)">', page))
+    assert badges == rows == {str(n) for n in range(1, 10)}
