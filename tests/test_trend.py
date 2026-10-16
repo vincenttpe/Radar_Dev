@@ -53,7 +53,7 @@ SIX = ["07:00", "09:00", "11:00", "14:00", "17:00", "20:00"]
 
 
 def test_dawn_use_increase_is_reported_and_daytime_stays_the_same():
-    """每日多 2 次但只是前一週的 29%，不到 50%，所以每日總次數寫「差不多」。"""
+    """每日多 2 次但只是前一週的 29%，不到 30%，所以每日總次數寫「差不多」。"""
     per_day = [[*SIX, "02:00"]] * 7 + [[*SIX, "01:00", "02:30", "04:00"]] * 7
     trend = usage_trend(two_weeks(per_day))
     text = trend_text(trend, place="1 號廁所")
@@ -66,10 +66,28 @@ def test_dawn_use_increase_is_reported_and_daytime_stays_the_same():
 
 
 def test_small_differences_are_reported_as_about_the_same():
-    """差距不到 1 次，或不到前一週的 50%，都寫「差不多」。"""
+    """差距不到 1 次寫「差不多」。"""
     per_day = [SIX] * 7 + [[*SIX, "15:00"]] * 3 + [SIX] * 4      # 平均多 0.4 次
     text = trend_text(usage_trend(two_weeks(per_day)), place="1 號廁所")
     assert "每日使用次數：平均每日 6.4 次，前一週 6.0 次，差不多。" in text
+
+
+def test_daily_total_uses_30_percent_and_dawn_uses_50_percent():
+    """門檻分開（2026-10-16 決定）：每日總次數 30%，凌晨 50%。"""
+    six_more = [*SIX, "21:00", "22:00"]                       # 6 → 8 次：多 33%，達 30%
+    per_day = [SIX] * 7 + [six_more] * 7
+    text = trend_text(usage_trend(two_weeks(per_day)), place="1 號廁所")
+    assert "每日使用次數：平均每日 8.0 次，前一週 6.0 次，增加。" in text
+
+    dawn3, dawn4 = ["01:00", "02:30", "04:00"], ["00:30", "01:30", "03:00", "05:00"]
+    per_day = [[*SIX, *dawn3]] * 7 + [[*SIX, *dawn4]] * 7     # 凌晨 3 → 4：多 33%，不到 50%
+    text = trend_text(usage_trend(two_weeks(per_day)), place="1 號廁所")
+    assert "凌晨（00:00–06:00）使用次數：平均每日 4.0 次，前一週 3.0 次，差不多。" in text
+
+    dawn2 = ["01:00", "03:00"]
+    per_day = [[*SIX, *dawn2]] * 7 + [[*SIX, *dawn3]] * 7     # 凌晨 2 → 3：多 50%，剛好達到
+    text = trend_text(usage_trend(two_weeks(per_day)), place="1 號廁所")
+    assert "凌晨（00:00–06:00）使用次數：平均每日 3.0 次，前一週 2.0 次，增加。" in text
 
 
 def test_from_zero_any_increase_of_at_least_one_counts():

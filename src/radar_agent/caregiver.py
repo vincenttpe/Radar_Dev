@@ -165,7 +165,8 @@ def caregiver_report(summary: Summary, *, place: str) -> str:
 FULL_DAY_ONLINE = timedelta(hours=23)   # 當天在線不到這麼久就不列入比較（沒有資料不等於沒有使用）
 MIN_COUNTED_DAYS = 5                     # 每一週至少要有幾天可比較
 CHANGE_AT_LEAST = Decimal(1)             # 平均每日差距至少 1 次……
-CHANGE_RATIO = Decimal("0.5")            # ……而且至少是前一週的 50%，才寫「增加／減少」
+# ……而且至少是前一週的這個比例，才寫「增加／減少」。每日總次數 30%（2026-10-16 在對話中決定），凌晨 50%
+CHANGE_RATIO = {"visits": Decimal("0.3"), "dawn": Decimal("0.5")}
 DAWN_END_HOUR = 6                        # 凌晨：00:00–06:00
 
 
@@ -214,9 +215,9 @@ def _one(value: Decimal) -> str:
     return str(value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
 
-def _direction(recent: Decimal, before: Decimal) -> str:
+def _direction(recent: Decimal, before: Decimal, ratio: Decimal) -> str:
     diff = recent - before
-    if abs(diff) >= CHANGE_AT_LEAST and (before == 0 or abs(diff) / before >= CHANGE_RATIO):
+    if abs(diff) >= CHANGE_AT_LEAST and (before == 0 or abs(diff) / before >= ratio):
         return "增加" if diff > 0 else "減少"
     return "差不多"
 
@@ -231,15 +232,15 @@ def trend_text(trend: Trend | None, *, place: str) -> str:
     r, b = trend.recent, trend.before
     lines = [f"【使用趨勢】{place} {_md(r[0].day)}–{_md(r[-1].day)} 與前一週（{_md(b[0].day)}–{_md(b[-1].day)}）比較："]
     rows = [("每日使用次數", "visits"), (f"凌晨（00:00–0{DAWN_END_HOUR}:00）使用次數", "dawn")]
-    averages = [(label, _average(r, f), _average(b, f)) for label, f in rows]
-    if any(ra is None or ba is None for _, ra, ba in averages):
+    averages = [(label, f, _average(r, f), _average(b, f)) for label, f in rows]
+    if any(ra is None or ba is None for _, _, ra, ba in averages):
         n_r = sum(c.visits is not None for c in r)
         n_b = sum(c.visits is not None for c in b)
         lines.append(f"可比較的天數不足（近一週 {n_r} 天、前一週 {n_b} 天，各需 {MIN_COUNTED_DAYS} 天），無法比較。")
     else:
-        for label, ra, ba in averages:
+        for label, f, ra, ba in averages:
             assert ra is not None and ba is not None
-            lines.append(f"{label}：平均每日 {_one(ra)} 次，前一週 {_one(ba)} 次，{_direction(ra, ba)}。")
+            lines.append(f"{label}：平均每日 {_one(ra)} 次，前一週 {_one(ba)} 次，{_direction(ra, ba, CHANGE_RATIO[f])}。")
     days = [
         f"{_md(c.day)} {c.visits} 次（凌晨 {c.dawn}）" if c.visits is not None else f"{_md(c.day)} 在線不足，不列入"
         for c in r
