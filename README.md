@@ -53,6 +53,8 @@ radar-kg-build --check                                                          
 radar-kg-manifest --check                                                         # 檢查知識圖譜發布清單
 radar-kg-level 來回行走 5.4                                                       # 量測值 → 知識圖譜等級與建議（--list 列出門檻）
 radar-caregiver 事件.jsonl --place "1 號廁所"                                     # 一台裝置的事件 → 居服員看的場域摘要（輸出檢查沒過就不輸出）
+radar-field-data inspect 實測.json                                                 # 實測資料的格式、時間範圍、事件數與每小時分布（不印出 MAC）
+radar-field-data mask 實測.json --out-dir outputs/field                            # 裝置識別換成 FIELD-01…，每台一個檔案；只能寫到 outputs/
 ```
 
 `git pull` 之後如果 `pyproject.toml` 有變動，再執行一次 `pip install -e ".[dev]"`。

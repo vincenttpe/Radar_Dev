@@ -40,6 +40,7 @@ DOORS: dict[str, tuple[str, ...]] = {
     "個人資料的流向": (
         "data/",
         "src/radar_agent/audience.py",  # 讀者權限決定個人資料交給誰
+        "src/radar_agent/field_data.py",  # 實測資料的遮罩與輸出位置限制
     ),
     "事件格式": ("schemas/", "src/radar_agent/event_validation.py"),
     "檢查與審查機制": (
@@ -59,7 +60,7 @@ EVIDENCE: dict[str, tuple[str, ...]] = {
     ),
     "改到指令或報告": (  # pyproject.toml 的 [project.scripts] 指向的模組
         "src/radar_agent/kg_rules.py", "src/radar_agent/kg_source.py", "src/radar_agent/kg_manifest.py",
-        "src/radar_agent/caregiver.py",
+        "src/radar_agent/caregiver.py", "src/radar_agent/field_data.py",
     ),
 }
 EVIDENCE_SECTION = "## 驗證證據"

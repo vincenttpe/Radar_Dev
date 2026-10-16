@@ -7,6 +7,11 @@
 重新產生（改了 template.html、caregiver.py 的用語或模擬資料後都要跑；tests/test_prototype.py 會檢查）：
     python demo/build.py                  # → demo/prototype.html（可直接用瀏覽器開，不需網路也能顯示）
     python demo/build.py --fragment 路徑  # 不含 doctype 的版本，給 Artifact 發布用
+
+實測資料版（docs/11「10/19 實測資料」）：先用 radar-field-data mask 遮罩，再
+    python demo/build.py --events outputs/field/FIELD-01.jsonl --place "1 號廁所"
+寫到 outputs/field_prototype.html（不會被 commit）。頁面橫幅改成「實測資料」，沒有兩週趨勢。
+還有像 MAC 的字串、或輸出位置會被 commit 時，拒絕產生。
 """
 from __future__ import annotations
 
@@ -26,6 +31,7 @@ from radar_agent.caregiver import (
     usage_trend,
 )
 from radar_agent.device_events import summarize
+from radar_agent.field_data import MAC_LIKE, check_out_dir
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
@@ -60,20 +66,30 @@ def _section(report: str, heading: str) -> list[str]:
     return lines[start:end]
 
 
-def demo_data() -> dict[str, Any]:
-    records = [
-        json.loads(line)
-        for line in (REPO / "data" / "samples_demo" / "bathroom_morning.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
+def _jsonl(path: Path) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def demo_data(events: Path | None = None, place: str = PLACE) -> dict[str, Any]:
+    """events 為 None 時用 Demo 模擬資料（含兩週趨勢）；否則是遮罩過的實測資料（不含趨勢）。"""
+    if events is not None:
+        if MAC_LIKE.search(events.read_text(encoding="utf-8")):
+            raise ValueError(f"{events} 裡還有像 MAC 的字串，請先用 radar-field-data mask 遮罩")
+        records = _jsonl(events)
+    else:
+        records = _jsonl(REPO / "data" / "samples_demo" / "bathroom_morning.jsonl")
     summary = summarize(records)
-    report = caregiver_report(summary, place=PLACE)
-    problems = check_output(report, summary, place=PLACE)
+    if not summary.online:
+        raise ValueError("沒有讀得懂的紀錄，無法產生頁面")
+    report = caregiver_report(summary, place=place)
+    problems = check_output(report, summary, place=place)
     if problems:
         raise ValueError(f"radar-caregiver 輸出檢查沒通過：{problems}")
 
-    notes = event_notes(summary, PLACE)
-    prompts, drafts = _section(report, "【處置提示】"), _section(report, "【照護紀錄草稿】")
-    events = []
+    notes = event_notes(summary, place)
+    prompts = _section(report, "【處置提示】") if notes else []
+    drafts = _section(report, "【照護紀錄草稿】") if notes else []
+    cards = []
     for note, prompt_line, draft in zip(notes, prompts, drafts, strict=True):
         label = note.span or f"{note.time:%H:%M}"
         if prompt_line != f"{label} {note.prompt}" or draft != note.record:
@@ -81,36 +97,41 @@ def demo_data() -> dict[str, Any]:
         if note.prompt not in KINDS:
             raise ValueError(f"build.py 的 KINDS 沒有這句處置提示，請補上：{note.prompt}")
         level, title = KINDS[note.prompt]
-        events.append({
-            "at": f"{note.time:%H:%M:%S}", "label": label, "level": level, "title": title,
+        cards.append({
+            "at": f"{note.time:%Y-%m-%d %H:%M:%S}", "label": label, "level": level, "title": title,
             "prompt": note.prompt, "record": note.record,
         })
 
+    data: dict[str, Any] = {
+        "source": "field" if events is not None else "sim",
+        "place": place,
+        "day": f"{summary.online[0].start:%Y-%m-%d}",
+        "from": f"{summary.online[0].start:%Y-%m-%d %H:%M:%S}",
+        "to": f"{summary.online[-1].end:%Y-%m-%d %H:%M:%S}",
+        "summary": _section(report, "【事件摘要】")[0],
+        "visits": [[f"{v.start:%Y-%m-%d %H:%M:%S}", f"{v.end:%Y-%m-%d %H:%M:%S}"] for v in summary.visits],
+        "offline": [
+            [f"{a.end:%Y-%m-%d %H:%M:%S}", f"{b.start:%Y-%m-%d %H:%M:%S}"] for a, b in zip(summary.online, summary.online[1:], strict=False)
+        ],
+        "events": cards,
+        "trend": None,
+    }
+    if events is not None:
+        return data
+
     trend = usage_trend(_load_generator().generate_two_weeks())
-    trend_lines = trend_text(trend, place=PLACE)
-    problems = check_trend(trend_lines, trend, place=PLACE)
+    trend_lines = trend_text(trend, place=place)
+    problems = check_trend(trend_lines, trend, place=place)
     if problems or trend is None:
         raise ValueError(f"使用趨勢輸出檢查沒通過：{problems}")
-
-    return {
-        "place": PLACE,
-        "day": f"{summary.online[0].start:%Y-%m-%d}",
-        "from": f"{summary.online[0].start:%H:%M:%S}",
-        "to": f"{summary.online[-1].end:%H:%M:%S}",
-        "summary": _section(report, "【事件摘要】")[0],
-        "visits": [[f"{v.start:%H:%M:%S}", f"{v.end:%H:%M:%S}"] for v in summary.visits],
-        "offline": [
-            [f"{a.end:%H:%M:%S}", f"{b.start:%H:%M:%S}"] for a, b in zip(summary.online, summary.online[1:], strict=False)
+    data["trend"] = {
+        "lines": trend_lines.splitlines(),
+        "days": [
+            {"day": f"{c.day.month}/{c.day.day}", "visits": c.visits, "dawn": c.dawn, "recent": i >= 7}
+            for i, c in enumerate(trend.before + trend.recent)
         ],
-        "events": events,
-        "trend": {
-            "lines": trend_lines.splitlines(),
-            "days": [
-                {"day": f"{c.day.month}/{c.day.day}", "visits": c.visits, "dawn": c.dawn, "recent": i >= 7}
-                for i, c in enumerate(trend.before + trend.recent)
-            ],
-        },
     }
+    return data
 
 
 def fragment(data: dict[str, Any]) -> str:
@@ -125,10 +146,25 @@ def page(data: dict[str, Any]) -> str:
     return head + fragment(data) + "</html>\n"
 
 
+FIELD_OUT = REPO / "outputs" / "field_prototype.html"
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--fragment", type=Path, help="改寫出不含 doctype 的版本到這個路徑（Artifact 發布用）")
+    ap.add_argument("--events", type=Path, help="改用遮罩過的實測資料（radar-field-data mask 的輸出）")
+    ap.add_argument("--place", default=PLACE, help=f"地點名稱，預設「{PLACE}」")
     args = ap.parse_args()
+    if args.events:
+        if args.fragment:
+            raise SystemExit("錯誤：實測資料版不提供 --fragment；實測資料不發布到線上")
+        problem = check_out_dir(FIELD_OUT.parent)
+        if problem:
+            raise SystemExit(f"錯誤：{problem}")
+        FIELD_OUT.parent.mkdir(exist_ok=True)
+        FIELD_OUT.write_text(page(demo_data(args.events, args.place)), encoding="utf-8")
+        print(f"寫入 {FIELD_OUT}（實測資料，不要 commit、不要發布）")
+        raise SystemExit(0)
     data = demo_data()
     if args.fragment:
         args.fragment.write_text(fragment(data), encoding="utf-8")

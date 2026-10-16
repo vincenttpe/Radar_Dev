@@ -15,4 +15,5 @@ python demo/build.py    # 改了 template.html、caregiver.py 的用語或 data/
 - 頁面上的句子**全部**來自 `caregiver_report()` 與 `trend_text()`，並先通過 `check_output()`、`check_trend()`；頁面不自己寫事件句子。只有卡片上的標籤（跌倒警報、主動呼救、久待警報、回覆沒事、起身解除、裝置斷線）寫在 `build.py` 的 `KINDS`，處置提示改了而 `KINDS` 沒跟著改，建置會失敗。
 - 頁面頂端一直標明「模擬資料」與「句子由範本產生，尚未接上在地模型」。
 - 操作：「下一個事件」逐一出現（鍵盤 → 也可以），「從頭重播」回到 08:00，「全部顯示」一次看完。警報解除時，前面那則要到場的通知會標上「HH:MM 已解除」。
+- **實測資料版**：`python demo/build.py --events outputs/field/FIELD-01.jsonl --place "1 號廁所"`，輸入要先用 `radar-field-data mask` 遮罩（還有像 MAC 的字串會拒絕產生），輸出固定寫到 `outputs/field_prototype.html`（不會被 commit），橫幅改成「實測資料」、沒有兩週趨勢，不提供發布用的版本。步驟見 `docs/11_Demo規劃.md`「10/19 實測資料」。
 - `tests/test_prototype.py` 檢查：`prototype.html` 與 `build.py` 的輸出一致、頁面句子與 `radar-caregiver` 輸出逐行相同、在線不足的日子沒有畫成 0 次、模擬資料的標示還在。

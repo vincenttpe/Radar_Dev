@@ -34,6 +34,7 @@
   --sim-bg: #3a3150; --sim-ink: #f4effa; color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.65 var(--f-body); }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--sim-bg); }
 .wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
@@ -125,8 +126,8 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 </style>
 
 <div class="sim"><div class="wrap">
-  <strong>模擬資料</strong>
-  <span>非真實裝置紀錄；裝置名稱 DEMO-SIM-01，沒有任何長者資料。句子由範本產生，尚未接上在地模型。</span>
+  <strong id="src-label">模擬資料</strong>
+  <span id="src-note">非真實裝置紀錄；裝置名稱 DEMO-SIM-01，沒有任何長者資料。句子由範本產生，尚未接上在地模型。</span>
 </div></div>
 
 <header class="top"><div class="wrap">
@@ -178,7 +179,7 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
     <div class="panel"><p class="summary" id="summary"></p></div>
   </section>
 
-  <section aria-labelledby="h-trend">
+  <section aria-labelledby="h-trend" id="trend">
     <div class="head-row"><h2 id="h-trend">兩週使用趨勢</h2><span class="hint">模擬資料 10/1–10/14，規則為暫定值</span></div>
     <div class="panel" style="display:grid;gap:14px">
       <div class="chart" id="chart"></div>
@@ -194,53 +195,54 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   <section aria-labelledby="h-notes">
     <h2 id="h-notes">展示時要說明</h2>
     <ul class="notes">
-      <li>全部是模擬資料，還沒接上真實雷達資料。</li>
+      <li id="note-source">全部是模擬資料，還沒接上真實雷達資料。</li>
       <li>句子由範本產生，接上在地模型之前不稱為「LLM 產生」。</li>
       <li>斷線時段寫「無法判斷」，不算成 0 次跌倒。</li>
       <li>長者回覆沒事不直接算誤報；主動呼救另外列，不算進跌倒警報。</li>
-      <li>使用趨勢是場域統計，沒有個人 ID，不代表特定長者。</li>
+      <li id="note-trend">使用趨勢是場域統計，沒有個人 ID，不代表特定長者。</li>
     </ul>
   </section>
 </div></main>
 
 <script>
 const DATA = {
+ "source": "sim",
  "place": "1 號廁所",
  "day": "2026-10-14",
- "from": "08:00:00",
- "to": "11:59:55",
+ "from": "2026-10-14 08:00:00",
+ "to": "2026-10-14 11:59:55",
  "summary": "1 號廁所 10/14：有人使用 5 次，最長一次 22 分鐘。在線期間跌倒警報 2 次（08:32、09:16）。在線期間主動呼救 1 次（10:03）。語音回覆沒事 1 次。在線期間久待警報 1 次（10:45）。11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。",
  "visits": [
   [
-   "08:05:00",
-   "08:09:00"
+   "2026-10-14 08:05:00",
+   "2026-10-14 08:09:00"
   ],
   [
-   "08:31:00",
-   "08:35:00"
+   "2026-10-14 08:31:00",
+   "2026-10-14 08:35:00"
   ],
   [
-   "09:15:00",
-   "09:21:00"
+   "2026-10-14 09:15:00",
+   "2026-10-14 09:21:00"
   ],
   [
-   "10:02:00",
-   "10:07:00"
+   "2026-10-14 10:02:00",
+   "2026-10-14 10:07:00"
   ],
   [
-   "10:30:00",
-   "10:52:00"
+   "2026-10-14 10:30:00",
+   "2026-10-14 10:52:00"
   ]
  ],
  "offline": [
   [
-   "11:10:00",
-   "11:25:00"
+   "2026-10-14 11:10:00",
+   "2026-10-14 11:25:00"
   ]
  ],
  "events": [
   {
-   "at": "08:32:10",
+   "at": "2026-10-14 08:32:10",
    "label": "08:32",
    "level": "urgent",
    "title": "跌倒警報",
@@ -248,7 +250,7 @@ const DATA = {
    "record": "08:32 1 號廁所雷達偵測到疑似跌倒，語音詢問 10 秒未獲回應。"
   },
   {
-   "at": "08:32:40",
+   "at": "2026-10-14 08:32:40",
    "label": "08:32",
    "level": "resolved",
    "title": "回覆沒事",
@@ -256,7 +258,7 @@ const DATA = {
    "record": "08:32 長者語音回覆沒事，警報解除。"
   },
   {
-   "at": "09:16:20",
+   "at": "2026-10-14 09:16:20",
    "label": "09:16",
    "level": "urgent",
    "title": "跌倒警報",
@@ -264,7 +266,7 @@ const DATA = {
    "record": "09:16 1 號廁所雷達偵測到疑似跌倒，長者語音回覆需要協助。"
   },
   {
-   "at": "09:19:30",
+   "at": "2026-10-14 09:19:30",
    "label": "09:19",
    "level": "resolved",
    "title": "起身解除",
@@ -272,7 +274,7 @@ const DATA = {
    "record": "09:19 偵測到長者起身，警報解除。"
   },
   {
-   "at": "10:03:15",
+   "at": "2026-10-14 10:03:15",
    "label": "10:03",
    "level": "urgent",
    "title": "主動呼救",
@@ -280,7 +282,7 @@ const DATA = {
    "record": "10:03 1 號廁所偵測到主動呼救。"
   },
   {
-   "at": "10:05:50",
+   "at": "2026-10-14 10:05:50",
    "label": "10:05",
    "level": "resolved",
    "title": "起身解除",
@@ -288,7 +290,7 @@ const DATA = {
    "record": "10:05 偵測到長者起身，警報解除。"
   },
   {
-   "at": "10:45:00",
+   "at": "2026-10-14 10:45:00",
    "label": "10:45",
    "level": "check",
    "title": "久待警報",
@@ -296,7 +298,7 @@ const DATA = {
    "record": "10:45 1 號廁所停留超過設定時間（久待警報）。"
   },
   {
-   "at": "11:10:00",
+   "at": "2026-10-14 11:10:00",
    "label": "11:10–11:25",
    "level": "device",
    "title": "裝置斷線",
@@ -400,15 +402,26 @@ const DATA = {
   ]
  }
 };
-const sec = s => { const [h, m, x] = s.split(":").map(Number); return h * 3600 + m * 60 + (x || 0); };
-const t0 = sec(DATA.from), t1 = sec(DATA.to);
+// 時間都是 "YYYY-MM-DD HH:MM:SS"、沒有時區；當成 UTC 解析只為了算位置，不做時區換算
+const sec = s => Date.parse(s.replace(" ", "T") + "Z") / 1000;
+const t0 = sec(DATA.from), t1 = Math.max(sec(DATA.to), t0 + 60);
 const pct = s => ((sec(s) - t0) / (t1 - t0) * 100).toFixed(3) + "%";
+const md = s => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
+const multiDay = DATA.from.slice(0, 10) !== DATA.to.slice(0, 10);
 const $ = id => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const events = DATA.events;
 let shown = events.length;
 
-$("title").textContent = `${DATA.place}的一個上午（${DATA.day.slice(5).replace("-", "/")}）`;
+if (DATA.source === "field") {
+  $("src-label").textContent = "實測資料";
+  $("src-note").textContent = "裝置識別已遮罩；只在本機使用，不要 commit、不要發布。句子由範本產生，尚未接上在地模型。";
+  $("note-source").textContent = "這是實測資料，裝置識別已遮罩；只在本機展示。";
+  $("title").textContent = `${DATA.place}的實測紀錄（${md(DATA.from)}${multiDay ? "–" + md(DATA.to) : ""}）`;
+} else {
+  $("title").textContent = `${DATA.place}的一個上午（${md(DATA.from)}）`;
+}
+$("trend").hidden = $("note-trend").hidden = !DATA.trend;
 
 // 時間軸：使用時段、斷線時段、事件標記、播放位置
 const track = $("track");
@@ -416,18 +429,20 @@ for (const [a, b] of DATA.visits) { const v = el("div", "visit"); v.style.left =
 for (const [a, b] of DATA.offline) { const v = el("div", "off"); v.style.left = pct(a); v.style.width = `calc(${pct(b)} - ${pct(a)})`; track.append(v); }
 const marks = events.map(e => { const m = el("div", "mark " + e.level); m.style.left = pct(e.at); track.append(m); return m; });
 const head = el("div", "head"); track.append(head);
-const firstHour = Math.ceil(t0 / 3600), lastHour = Math.floor(t1 / 3600);
-for (let h = firstHour; h <= lastHour + 1; h++) {
-  const s = Math.min(h * 3600, t1), label = String(h).padStart(2, "0") + ":00";
-  const span = el("span", null, h * 3600 > t1 ? DATA.to.slice(0, 5) : label);
-  span.style.left = ((s - t0) / (t1 - t0) * 100) + "%"; $("ticks").append(span);
-}
+// 刻度：跨不到 8 小時每小時一格，跨不到 3 天每 6 小時，再長就每天
+const span = t1 - t0, step = span <= 8 * 3600 ? 3600 : span <= 3 * 86400 ? 6 * 3600 : 86400;
+const tick = (t, text) => { const e = el("span", null, text); e.style.left = ((t - t0) / span * 100) + "%"; $("ticks").append(e); };
+const stamp = t => { const d = new Date(t * 1000).toISOString(); return (multiDay ? md(d) + " " : "") + d.slice(11, 16); };
+tick(t0, stamp(t0));
+for (let t = Math.ceil(t0 / step) * step; t < t1; t += step) if ((t - t0) / span > 0.06 && (t1 - t) / span > 0.06) tick(t, stamp(t));
+tick(t1, stamp(t1));
 
 function render() {
   const now = shown ? events[shown - 1].at : DATA.from;
   head.style.left = pct(now);
   marks.forEach((m, i) => m.classList.toggle("future", i >= shown));
-  const clock = $("clock"); clock.textContent = shown ? events[shown - 1].label : DATA.from.slice(0, 5);
+  const clock = $("clock"); clock.textContent = shown ? events[shown - 1].label : DATA.from.slice(11, 16);
+  if (multiDay) clock.prepend(md(shown ? events[shown - 1].at : DATA.from) + " ");
   clock.append(el("small", null, shown ? `第 ${shown} / ${events.length} 個事件` : "尚未有事件"));
 
   // 警報解除對應到它之前、還沒解除的那一則要到場的通知
@@ -443,7 +458,7 @@ function render() {
   for (let i = shown - 1; i >= 0; i--) {
     const e = events[i];
     const card = el("article", `card ${e.level}${i in settledBy ? " settled" : ""}${i === shown - 1 && shown < events.length ? " latest" : ""}`);
-    card.append(el("div", "t" + (e.label.length > 5 ? " span" : ""), e.label));
+    card.append(el("div", "t" + (e.label.length > 5 || multiDay ? " span" : ""), (multiDay ? md(e.at) + " " : "") + e.label));
     const body = el("div", "body"), chips = el("div", "chips");
     chips.append(el("span", "chip kind", e.title));
     if (i in settledBy) chips.append(el("span", "chip done", `${settledBy[i]} 已解除`));
@@ -458,7 +473,7 @@ function render() {
 
   const done = shown === events.length;
   const sum = $("summary"); sum.className = "summary" + (done ? "" : " wait");
-  sum.textContent = done ? DATA.summary : "重播中。播完整個上午後顯示這段時間的摘要。";
+  sum.textContent = done ? DATA.summary : "重播中。播完全部事件後顯示這段時間的摘要。";
   $("btn-prev").disabled = shown === 0; $("btn-next").disabled = done; $("btn-all").disabled = done;
 }
 
@@ -482,6 +497,7 @@ $("btn-copy").onclick = () => {
 
 // 兩週使用趨勢：每天的使用次數，深色是凌晨（00:00–06:00）；在線不足的日子不列入、畫虛線
 (function chart() {
+  if (!DATA.trend) return;
   const days = DATA.trend.days, W = 960, H = 250, L = 34, R = 8, T = 26, B = 26;
   const max = Math.max(10, ...days.map(d => d.visits || 0));
   const top = Math.ceil(max / 5) * 5, y = v => T + (H - T - B) * (1 - v / top);
