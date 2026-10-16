@@ -15,7 +15,7 @@
 - `ruff check src tests`：風格與常見錯誤，規則明列在 `pyproject.toml`，不依賴 ruff 預設值。
 - `mypy`：`src/` 嚴格模式。
 - `pytest --cov`：覆蓋率低於 95% 就失敗。
-- 指令列工具冒煙測試，包含 `radar-kg-build --check`、`radar-kg-manifest --check`。
+- 指令列工具冒煙測試：`pyproject.toml` 宣告的每一個指令都實際執行一次，包含 `radar-kg-build --check`、`radar-kg-manifest --check`，以及用 Demo 模擬資料跑 `radar-caregiver`（`tests/test_packaging.py` 檢查沒有漏掉的指令）。
 
 `.github/workflows/pr-gate.yml` 檢查 PR 說明的勾選與變更的檔案是否一致：單向門（第 2 節）與驗證證據（改到知識圖譜或指令列工具時，對應的驗證項目必須勾選）。
 
