@@ -6,13 +6,18 @@ payload 照 2026-10-12 的 MQTT 訊息規格（data/samples_device_event/README.
 
 情境照計畫書的三項互補機制與「從警報到溝通」排列，見同目錄 README.md。
 
+兩週版（docs/11 G3，應用情境 2「從日常活動發現異常」的示範）太大（約 24 萬筆），不放進 repo，
+用 `--two-weeks` 產生到 outputs/（已被 git 忽略）。
+
 重新產生（只用標準函式庫）：
-    python data/samples_demo/generate.py
+    python data/samples_demo/generate.py              # 一個上午 → bathroom_morning.jsonl
+    python data/samples_demo/generate.py --two-weeks  # 兩週 → outputs/bathroom_two_weeks.jsonl
 """
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+import sys
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 DAY = "2026-10-14"
@@ -84,11 +89,64 @@ def generate() -> list[dict]:
     return records
 
 
+# ── 兩週版 ───────────────────────────────────────────────
+# 2026-10-01～10-14。白天的使用照固定時刻表（每天 5～7 次）；凌晨使用前一週大多每晚 1 次，
+# 最後三天（10/12～10/14）每晚 3 次，用來示範「凌晨使用變多」。10/10 13:00～15:30 斷線，
+# 用來示範在線不足的日子不列入比較。沒有任何警報，只看使用模式。
+FIRST_DAY = date(2026, 10, 1)
+DAYS = 14
+DAYTIME = ["07:10", "09:40", "11:50", "14:20", "16:30", "18:40", "20:50"]
+DAYTIME_COUNT = [6, 5, 7, 6, 6, 5, 7]          # 依星期幾輪替，第 i 天用前 n 個時刻
+NIGHT = {0: ["02:10"], 1: ["02:40"], 2: [], 3: ["01:50"], 4: ["03:10"], 5: ["02:20"], 6: ["02:30"],
+         7: ["02:10"], 8: ["03:00"], 9: ["02:20"], 10: ["02:50"],
+         11: ["00:40", "02:30", "04:10"], 12: ["01:10", "02:50", "04:30"], 13: ["00:50", "02:40", "04:20"]}
+TWO_WEEK_GAP = (date(2026, 10, 10), "13:00:00", "15:30:00")
+VISIT_MINUTES = 4
+
+
+def generate_two_weeks() -> list[dict]:
+    starts: set[datetime] = set()
+    for i in range(DAYS):
+        day = FIRST_DAY + timedelta(days=i)
+        times = DAYTIME[:DAYTIME_COUNT[i % 7]] + NIGHT[i]
+        starts |= {datetime.combine(day, datetime.strptime(hm, "%H:%M").time()) for hm in times}
+    visit = timedelta(minutes=VISIT_MINUTES)
+    gap_day, gap_off, gap_on = TWO_WEEK_GAP
+    off = datetime.combine(gap_day, datetime.strptime(gap_off, "%H:%M:%S").time())
+    on = datetime.combine(gap_day, datetime.strptime(gap_on, "%H:%M:%S").time())
+    begin = datetime.combine(FIRST_DAY, datetime.min.time())
+    end = begin + timedelta(days=DAYS) - STEP
+    records = [_record(begin, {"event": "online"})]
+    now, current = begin + STEP, None
+    while now <= end:
+        if now in starts:
+            current = now
+        if off <= now < on:
+            if now == off:
+                records.append(_record(now, {"event": "offline"}))
+        elif now == on:
+            records.append(_record(now, {"event": "online"}))
+        elif current is not None and now == current:
+            records.append(_record(now, {**RADAR, "event": "presence"}))
+        elif current is not None and now < current + visit:
+            records.append(_record(now, {**RADAR, "event": "moving"}))
+        else:
+            current = None
+            records.append(_record(now, {**RADAR, "event": "absence"}))
+        now += STEP
+    return records
+
+
 def to_jsonl(records: list[dict]) -> str:
     return "".join(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n" for r in records)
 
 
 if __name__ == "__main__":
-    out = Path(__file__).with_name("bathroom_morning.jsonl")
-    out.write_text(to_jsonl(generate()), encoding="utf-8")
+    if "--two-weeks" in sys.argv[1:]:
+        out = Path(__file__).resolve().parents[2] / "outputs" / "bathroom_two_weeks.jsonl"
+        out.parent.mkdir(exist_ok=True)
+        out.write_text(to_jsonl(generate_two_weeks()), encoding="utf-8")
+    else:
+        out = Path(__file__).with_name("bathroom_morning.jsonl")
+        out.write_text(to_jsonl(generate()), encoding="utf-8")
     print(f"寫入 {out}")

@@ -11,12 +11,12 @@ import json
 import re
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from decimal import Decimal
+from datetime import date, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-from radar_agent.device_events import FallAlert, Summary, summarize
+from radar_agent.device_events import FallAlert, Summary, summarize, summarize_days
 from radar_agent.kg_rules import Assessment
 
 
@@ -159,6 +159,115 @@ def caregiver_report(summary: Summary, *, place: str) -> str:
     return "\n".join(parts)
 
 
+# ── 使用趨勢：近 7 天與前 7 天比較（docs/11 G3）────────────────
+# 計畫書應用情境 2「從日常活動發現異常」的最小版。場域層級：沒有個人 ID，不推測是哪一位長者。
+# 下列門檻都是暫定值，待審核人確認（docs/11「G3 暫定規則」）。
+FULL_DAY_ONLINE = timedelta(hours=23)   # 當天在線不到這麼久就不列入比較（沒有資料不等於沒有使用）
+MIN_COUNTED_DAYS = 5                     # 每一週至少要有幾天可比較
+CHANGE_AT_LEAST = Decimal(1)             # 平均每日差距至少 1 次……
+CHANGE_RATIO = Decimal("0.5")            # ……而且至少是前一週的 50%，才寫「增加／減少」
+DAWN_END_HOUR = 6                        # 凌晨：00:00–06:00
+
+
+@dataclass(frozen=True)
+class DayCount:
+    day: date
+    visits: int | None   # None：當天在線不足或沒有資料，不列入比較
+    dawn: int | None
+
+
+@dataclass(frozen=True)
+class Trend:
+    recent: list[DayCount]   # 最後 7 天，依日期
+    before: list[DayCount]   # 再往前 7 天
+    unplaced: int            # 時間讀不懂、分不到哪一天的紀錄
+
+
+def _day_count(day: date, summary: Summary | None) -> DayCount:
+    if summary is None or sum((p.duration for p in summary.online), timedelta()) < FULL_DAY_ONLINE:
+        return DayCount(day, None, None)
+    starts = [v.start for v in summary.visits + summary.interrupted_visits]
+    if summary.ongoing_visit is not None:
+        starts.append(summary.ongoing_visit.start)
+    return DayCount(day, len(starts), sum(t.hour < DAWN_END_HOUR for t in starts))
+
+
+def usage_trend(records: list[dict[str, Any]]) -> Trend | None:
+    """依最後一天往前切兩週；完全沒有可分日的紀錄時回傳 None。"""
+    days, unplaced = summarize_days(records)
+    if not days:
+        return None
+    last = max(days)
+    window = [last - timedelta(days=13 - i) for i in range(14)]
+    counts = [_day_count(d, days.get(d)) for d in window]
+    return Trend(counts[7:], counts[:7], len(unplaced))
+
+
+def _average(counts: list[DayCount], field: str) -> Decimal | None:
+    values = [getattr(c, field) for c in counts if getattr(c, field) is not None]
+    if len(values) < MIN_COUNTED_DAYS:
+        return None
+    return Decimal(sum(values)) / len(values)
+
+
+def _one(value: Decimal) -> str:
+    return str(value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+
+
+def _direction(recent: Decimal, before: Decimal) -> str:
+    diff = recent - before
+    if abs(diff) >= CHANGE_AT_LEAST and (before == 0 or abs(diff) / before >= CHANGE_RATIO):
+        return "增加" if diff > 0 else "減少"
+    return "差不多"
+
+
+def _md(d: date) -> str:
+    return f"{d.month}/{d.day}"
+
+
+def trend_text(trend: Trend | None, *, place: str) -> str:
+    if trend is None:
+        return f"【使用趨勢】{place}：沒有收到資料，無法判斷。"
+    r, b = trend.recent, trend.before
+    lines = [f"【使用趨勢】{place} {_md(r[0].day)}–{_md(r[-1].day)} 與前一週（{_md(b[0].day)}–{_md(b[-1].day)}）比較："]
+    rows = [("每日使用次數", "visits"), (f"凌晨（00:00–0{DAWN_END_HOUR}:00）使用次數", "dawn")]
+    averages = [(label, _average(r, f), _average(b, f)) for label, f in rows]
+    if any(ra is None or ba is None for _, ra, ba in averages):
+        n_r = sum(c.visits is not None for c in r)
+        n_b = sum(c.visits is not None for c in b)
+        lines.append(f"可比較的天數不足（近一週 {n_r} 天、前一週 {n_b} 天，各需 {MIN_COUNTED_DAYS} 天），無法比較。")
+    else:
+        for label, ra, ba in averages:
+            assert ra is not None and ba is not None
+            lines.append(f"{label}：平均每日 {_one(ra)} 次，前一週 {_one(ba)} 次，{_direction(ra, ba)}。")
+    days = [
+        f"{_md(c.day)} {c.visits} 次（凌晨 {c.dawn}）" if c.visits is not None else f"{_md(c.day)} 在線不足，不列入"
+        for c in r
+    ]
+    lines.append("近 7 天：" + "、".join(days) + "。")
+    if trend.unplaced:
+        lines.append(f"另有 {trend.unplaced} 筆紀錄時間無法判讀，請通知資訊人員。")
+    lines.append("這是場域的統計，沒有個人 ID，不代表特定長者；供照護人員參考。")
+    return "\n".join(lines)
+
+
+def check_trend(text: str, trend: Trend | None, *, place: str = "") -> list[str]:
+    """使用趨勢的輸出檢查：數字都要來自統計，用語規則同 check_output。"""
+    allowed = _numbers(place) | {Decimal(0), Decimal(DAWN_END_HOUR), Decimal(MIN_COUNTED_DAYS), Decimal(7)}
+    if trend is not None:
+        for c in trend.recent + trend.before:
+            allowed |= {Decimal(c.day.month), Decimal(c.day.day)}
+            allowed |= {Decimal(n) for n in (c.visits, c.dawn) if n is not None}
+        allowed |= {Decimal(sum(c.visits is not None for c in w)) for w in (trend.recent, trend.before)}
+        for f in ("visits", "dawn"):
+            for w in (trend.recent, trend.before):
+                avg = _average(w, f)
+                if avg is not None:
+                    allowed.add(Decimal(_one(avg)))
+        allowed.add(Decimal(trend.unplaced))
+    problems = [f"數字 {n} 不在統計裡" for n in sorted(_numbers(text) - allowed)]
+    return problems + _wording_problems(text)
+
 
 # ── 輸出檢查 ─────────────────────────────────────────────
 # 範本與日後在地模型的改寫都要通過；檢查的是文字本身，不信任產生文字的程式。
@@ -208,6 +317,14 @@ def _facts(source: Summary | Assessment, place: str) -> set[Decimal]:
     return allowed
 
 
+def _wording_problems(text: str) -> list[str]:
+    problems = []
+    for word, why in FORBIDDEN.items():
+        if word in text:
+            problems.append(f"不能出現「{word}」（{why}）" if why == "非醫療器材" else f"不能寫「{word}」（{why}）")
+    return problems
+
+
 def check_output(text: str, source: Summary | Assessment, *, place: str = "") -> list[str]:
     """回報輸出文字的問題；空清單表示通過。"""
     problems = []
@@ -220,9 +337,7 @@ def check_output(text: str, source: Summary | Assessment, *, place: str = "") ->
         for key in ("suggestion", "recommended_dose", "source_text", "rank"):
             if source[key]:
                 unquoted = unquoted.replace(str(source[key]), "")
-    for word, why in FORBIDDEN.items():
-        if word in unquoted:
-            problems.append(f"不能出現「{word}」（{why}）" if why == "非醫療器材" else f"不能寫「{word}」（{why}）")
+    problems += _wording_problems(unquoted)
     if isinstance(source, Summary):
         disconnected = len(source.online) != 1 or bool(source.interrupted_visits)
         if disconnected and re.search(r"(?<!在線期間)跌倒警報 0 次", text):
@@ -263,18 +378,25 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("events", type=Path, help="紀錄檔：雲端格式 {timestamp, topic, resolution, payload}，JSON 陣列或一行一筆")
     ap.add_argument("--place", required=True, help="地點名稱，例如「1 號廁所」；不放長者姓名等個人資料")
+    ap.add_argument("--trend", action="store_true", help="改輸出使用趨勢：最後 7 天與前 7 天比較（需要約兩週的紀錄）")
     args = ap.parse_args(sys.argv[1:] if argv is None else argv)
 
     if not args.place.strip():
         print("錯誤：--place 不能是空白", file=sys.stderr)
         return 2
     try:
-        summary = summarize(_read_records(args.events))
+        records = _read_records(args.events)
+        if args.trend:
+            trend = usage_trend(records)
+            text = trend_text(trend, place=args.place)
+            problems = check_trend(text, trend, place=args.place)
+        else:
+            summary = summarize(records)
+            text = caregiver_report(summary, place=args.place)
+            problems = check_output(text, summary, place=args.place)
     except (OSError, ValueError) as e:
         print(f"錯誤：{args.events}：{e}", file=sys.stderr)
         return 2
-    text = caregiver_report(summary, place=args.place)
-    problems = check_output(text, summary, place=args.place)
     if problems:
         print("輸出檢查沒通過，不輸出給居服員：", file=sys.stderr)
         for problem in problems:

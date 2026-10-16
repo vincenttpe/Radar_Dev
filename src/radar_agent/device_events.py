@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -141,6 +141,23 @@ def summarize(records: list[dict[str, Any]]) -> Summary:
         if start is not None:
             summary.ongoing_visit = Period(start, last)
     return summary
+
+
+def summarize_days(records: list[dict[str, Any]]) -> tuple[dict[date, Summary], list[dict[str, Any]]]:
+    """依日曆日切開再各自整理（以 00:00 為界，時間戳沒有時區，照原樣，docs/05 A4）。
+
+    回傳（{日期: 該日摘要}, 時間讀不懂、分不到哪一天的紀錄）。跨過午夜的造訪會被切成兩段。
+    """
+    by_day: dict[date, list[dict[str, Any]]] = {}
+    unplaced: list[dict[str, Any]] = []
+    for record in records:
+        try:
+            day = datetime.strptime(str(record["timestamp"]), TIMESTAMP_FORMAT).date()
+        except (KeyError, TypeError, ValueError):
+            unplaced.append(record)
+            continue
+        by_day.setdefault(day, []).append(record)
+    return {day: summarize(rs) for day, rs in sorted(by_day.items())}, unplaced
 
 
 def _parse(
