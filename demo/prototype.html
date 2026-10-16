@@ -158,7 +158,7 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
       <table class="gap-table">
         <thead><tr><th>#</th><th>畫面上的哪裡</th><th>現在</th><th>目標</th><th>卡在哪</th></tr></thead>
         <tbody>
-        <tr id="gap-row-1"><td>1</td><td>頂端橫幅</td><td>模擬資料，格式是現在雲端保存的裝置事件</td><td>場域實測資料；正式部署後讀 Jetson 收到的資料</td><td>實測資料 A10（10/19 實機操演）；Jetson 收得到裝置事件嗎 A23、A32</td></tr>
+        <tr id="gap-row-1"><td>1</td><td>頂端橫幅</td><td>模擬資料，格式是現在雲端保存的裝置事件</td><td>場域實測資料；正式部署後讀 Jetson 收到的資料</td><td>實測資料 A10（10/19 實機操演）；Jetson 收得到裝置事件（A32 已確認），但要自己補時間戳</td></tr>
         <tr id="gap-row-2"><td>2</td><td>時鐘與時間軸</td><td>時間戳是雲端<b>收到</b>時補上的，時區還沒確認</td><td>事件<b>發生</b>時間；KPI 3「通報 &lt; 10 秒」要用它來量</td><td>A4、A27（10/19 討論；實機操演時對時）</td></tr>
         <tr id="gap-row-3"><td>3</td><td>處置提示卡片</td><td>本 repo 事後整理一段時間的紀錄才產生，<b>不是即時通知</b></td><td>即時警示 &lt; 10 秒，由警示服務發出，不經本 repo</td><td>誰發、要不要和處置提示合成一則：10/19 Dashboard 題 3</td></tr>
         <tr id="gap-row-4"><td>4</td><td>跌倒警報的句子</td><td>只寫得出「語音詢問 10 秒未獲回應」</td><td>計畫書例句「接近地面姿態持續 30 秒，未取得有效語音回應」</td><td>姿態持續時間 A6（Jetson 可做、尚未實作）</td></tr>
