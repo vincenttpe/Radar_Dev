@@ -49,6 +49,7 @@ pip install -e ".[dev]"          # 必須是可編輯安裝（-e），程式會�
 radar-kg-build --check                                                            # 檢查 metrics.json、thresholds.json 是否與 graph.cypher 一致
 radar-kg-manifest --check                                                         # 檢查知識圖譜發布清單
 radar-kg-level 來回行走 5.4                                                       # 量測值 → 知識圖譜等級與建議（--list 列出門檻）
+radar-caregiver 事件.jsonl --place "1 號廁所"                                     # 一台裝置的事件 → 居服員看的場域摘要（輸出檢查沒過就不輸出）
 ```
 
 `git pull` 之後如果 `pyproject.toml` 有變動，再執行一次 `pip install -e ".[dev]"`。

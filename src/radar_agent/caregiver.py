@@ -6,11 +6,16 @@ docs/02「在地模型負載與分流」的範本層：範本是主要路徑，�
 """
 from __future__ import annotations
 
+import argparse
+import json
 import re
+import sys
 from datetime import datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
+from typing import Any
 
-from radar_agent.device_events import Summary
+from radar_agent.device_events import Summary, summarize
 from radar_agent.kg_rules import Assessment
 
 
@@ -161,3 +166,59 @@ def check_output(text: str, source: Summary | Assessment, *, place: str = "") ->
         if disconnected and re.search(r"(?<!在線期間)跌倒警報 0 次", text):
             problems.append("裝置有斷線，不能寫「跌倒警報 0 次」而不註明在線期間")
     return problems
+
+
+# ── 命令列 ───────────────────────────────────────────────
+# 裝置事件檔 → summarize → caregiver_text → check_output；檢查沒通過就不輸出文字。
+
+def _read_records(path: Path) -> list[dict[str, Any]]:
+    """雲端格式的紀錄檔（docs/05 A2）：JSON 陣列，或一行一筆（JSON Lines）。
+
+    整行讀不懂就整份拒收並指出位置，不略過（REVIEW.md 3.1）；欄位讀不懂的紀錄交給 summarize 列為無法判讀。
+    """
+    text = path.read_text(encoding="utf-8")
+    records: list[Any]
+    if text.lstrip().startswith("["):
+        records = json.loads(text)
+    else:
+        records = []
+        for n, line in enumerate(text.splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError as e:
+                raise ValueError(f"第 {n} 行不是 JSON（{e.msg}）") from e
+    for n, record in enumerate(records, 1):
+        if not isinstance(record, dict):
+            raise ValueError(f"第 {n} 筆不是 {{timestamp, topic, resolution, payload}} 物件")
+    return records
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="一台裝置的事件 → 居服員看的場域摘要（範本，不用模型；先過輸出檢查）")
+    ap.add_argument("events", type=Path, help="紀錄檔：雲端格式 {timestamp, topic, resolution, payload}，JSON 陣列或一行一筆")
+    ap.add_argument("--place", required=True, help="地點名稱，例如「1 號廁所」；不放長者姓名等個人資料")
+    args = ap.parse_args(sys.argv[1:] if argv is None else argv)
+
+    if not args.place.strip():
+        print("錯誤：--place 不能是空白", file=sys.stderr)
+        return 2
+    try:
+        summary = summarize(_read_records(args.events))
+    except (OSError, ValueError) as e:
+        print(f"錯誤：{args.events}：{e}", file=sys.stderr)
+        return 2
+    text = caregiver_text(summary, place=args.place)
+    problems = check_output(text, summary, place=args.place)
+    if problems:
+        print("輸出檢查沒通過，不輸出給居服員：", file=sys.stderr)
+        for problem in problems:
+            print(f"  {problem}", file=sys.stderr)
+        return 1
+    print(text)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

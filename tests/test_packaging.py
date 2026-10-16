@@ -18,6 +18,7 @@ def test_declared_scripts(project):
         "radar-kg-manifest": "radar_agent.kg_manifest:main",
         "radar-kg-build": "radar_agent.kg_source:main",
         "radar-kg-level": "radar_agent.kg_rules:main",
+        "radar-caregiver": "radar_agent.caregiver:main",
     }
 
 

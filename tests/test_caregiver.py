@@ -1,7 +1,9 @@
 """居服員 Profile 的範本與輸出檢查（docs/02「依 Profile 改寫」範本層、輸出檢查）。
 
-只透過 caregiver_text() 與 check_output() 驗證；期望的句子是在對話中確認過的寫法（2026-10-14）。
+只透過 caregiver_text()、check_output() 與命令列 main() 驗證；期望的句子是在對話中確認過的寫法（2026-10-14）。
 """
+import json
+
 from radar_agent.caregiver import caregiver_text, check_output
 from radar_agent.device_events import summarize
 
@@ -208,3 +210,99 @@ def test_data_spanning_two_days_shows_the_date_range():
     records = [rec("23:59:50", "absence", day="2026-10-13"), rec("23:59:55", "absence", day="2026-10-13"),
                rec("00:00:00", "absence"), rec("00:00:05", "absence")]
     assert caregiver_text(summarize(records), place="1 號廁所").startswith("1 號廁所 10/13–10/14：")
+
+
+# ── 命令列（radar-caregiver）────────────────────────────
+
+def _run(capsys, *argv) -> tuple[int, str, str]:
+    from radar_agent.caregiver import main
+
+    code = main([str(a) for a in argv])
+    out, err = capsys.readouterr()
+    return code, out, err
+
+
+VISITS = [("09:05:00", "09:13:00"), ("09:20:00", "09:21:30")]
+EXPECTED = "1 號廁所 10/14：有人使用 2 次，最長一次 8 分鐘。跌倒警報 0 次。久待警報 0 次。這段時間裝置都在線。\n"
+
+
+def test_cli_reads_a_json_array_and_prints_the_checked_text(tmp_path, capsys):
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps(timeline("09:00:00", "09:30:00", VISITS)), encoding="utf-8")
+    assert _run(capsys, path, "--place", "1 號廁所") == (0, EXPECTED, "")
+
+
+def test_cli_reads_json_lines_with_blank_lines(tmp_path, capsys):
+    path = tmp_path / "events.jsonl"
+    lines = [json.dumps(r, ensure_ascii=False) for r in timeline("09:00:00", "09:30:00", VISITS)]
+    path.write_text("\n".join(lines[:10]) + "\n\n" + "\n".join(lines[10:]) + "\n", encoding="utf-8")
+    assert _run(capsys, path, "--place", "1 號廁所") == (0, EXPECTED, "")
+
+
+def test_cli_lists_records_with_unreadable_fields_instead_of_failing(tmp_path, capsys):
+    path = tmp_path / "events.jsonl"
+    records = [*timeline("09:00:00", "09:10:00"), {"timestamp": "昨天", "topic": TOPIC, "payload": {}}]
+    path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in records), encoding="utf-8")
+    code, out, _ = _run(capsys, path, "--place", "1 號廁所")
+    assert code == 0
+    assert out.endswith("另有 1 筆紀錄無法判讀，請通知資訊人員。\n")
+
+
+def test_cli_rejects_a_line_that_is_not_json_and_says_where(tmp_path, capsys):
+    path = tmp_path / "events.jsonl"
+    path.write_text(json.dumps(rec("09:00:00", "absence")) + "\n{壞掉\n", encoding="utf-8")
+    code, out, err = _run(capsys, path, "--place", "1 號廁所")
+    assert (code, out) == (2, "")
+    assert "第 2 行不是 JSON" in err
+
+
+def test_cli_rejects_entries_that_are_not_records(tmp_path, capsys):
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps([rec("09:00:00", "absence"), "absence"]), encoding="utf-8")
+    code, out, err = _run(capsys, path, "--place", "1 號廁所")
+    assert (code, out) == (2, "")
+    assert "第 2 筆不是" in err
+
+
+def test_cli_refuses_two_devices_in_one_file(tmp_path, capsys):
+    other = {**rec("09:00:05", "absence"), "topic": "radar10/DEVICE02"}
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps([rec("09:00:00", "absence"), other]), encoding="utf-8")
+    code, out, err = _run(capsys, path, "--place", "1 號廁所")
+    assert (code, out) == (2, "")
+    assert "一次只整理一台裝置" in err
+
+
+def test_cli_reports_a_missing_file(tmp_path, capsys):
+    code, out, err = _run(capsys, tmp_path / "沒有這個檔.json", "--place", "1 號廁所")
+    assert (code, out) == (2, "")
+    assert "沒有這個檔.json" in err
+
+
+def test_cli_requires_a_place_name(tmp_path, capsys):
+    path = tmp_path / "events.json"
+    path.write_text("[]", encoding="utf-8")
+    assert _run(capsys, path, "--place", "  ")[0] == 2
+
+
+def test_cli_prints_nothing_for_the_caregiver_when_the_check_fails(tmp_path, capsys):
+    """地點名稱帶進醫療用詞，輸出檢查擋下：只在 stderr 說明，不輸出文字。"""
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps(timeline("09:00:00", "09:10:00")), encoding="utf-8")
+    code, out, err = _run(capsys, path, "--place", "治療室")
+    assert (code, out) == (1, "")
+    assert "輸出檢查沒通過" in err
+    assert "治療" in err
+
+
+def test_cli_reads_sys_argv_when_called_without_arguments(tmp_path, capsys, monkeypatch):
+    """console script 呼叫 main() 時不帶參數，要自己從 sys.argv 取。"""
+    import sys
+
+    from radar_agent.caregiver import main
+
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps(timeline("09:00:00", "09:30:00", VISITS)), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["radar-caregiver", str(path), "--place", "1 號廁所"])
+    assert main() == 0
+    assert capsys.readouterr().out == EXPECTED

@@ -54,6 +54,7 @@ EVIDENCE: dict[str, tuple[str, ...]] = {
     ),
     "改到指令或報告": (  # pyproject.toml 的 [project.scripts] 指向的模組
         "src/radar_agent/kg_rules.py", "src/radar_agent/kg_source.py", "src/radar_agent/kg_manifest.py",
+        "src/radar_agent/caregiver.py",
     ),
 }
 EVIDENCE_SECTION = "## 驗證證據"
