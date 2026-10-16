@@ -108,13 +108,14 @@ KPI 與查核點已整理在 `08_KPI與查核點.md`，這裡不重複，只標�
 
 ## 10/19 實測資料（2026-10-16 準備）
 
-10/19 測試時會用真的雷達把 Demo 的每個狀況實際操演一遍（腳本與紀錄表見 `12_Demo預演.md`「10/19 實機操演」），下載有跌倒、滯留、斷線的實測資料（會議清單 A10），也會討論時區（A27）。當天照下面四步，就能用實測資料跑同一套輸出與原型頁。**實測資料一律不 commit、不發布到線上**。
+10/19 測試時會用真的雷達把 Demo 的每個狀況實際操演一遍（腳本與紀錄表見 `12_Demo預演.md`「10/19 實機操演」），下載有跌倒、滯留、斷線的實測資料（會議清單 A10），也會討論時區（A27）。當天照下面五步，就能用實測資料跑同一套輸出與原型頁，並逐項對照操演紀錄表。**實測資料一律不 commit、不發布到線上**。
 
 ```bash
 radar-field-data inspect 下載的檔案.json                                     # 1. 檢查：格式、時間範圍、事件數、斷線、每小時有人的次數（不印出 MAC）
 radar-field-data mask 下載的檔案.json --out-dir outputs/field                 # 2. 遮罩：裝置識別換成 FIELD-01…，每台一個檔案
 radar-caregiver outputs/field/FIELD-01.jsonl --place "1 號廁所"               # 3. 事件摘要、處置提示、照護紀錄草稿
 python demo/build.py --events outputs/field/FIELD-01.jsonl --place "1 號廁所" # 4. 實測資料版原型頁 → outputs/field_prototype.html
+radar-field-data compare 操演紀錄.csv outputs/field/FIELD-01.jsonl --date 2026-10-19  # 5. 實機操演逐項比對（紀錄表用 radar-field-data sheet 產生，docs/12）
 ```
 
 | 步驟 | 做什麼 | 防呆 |
