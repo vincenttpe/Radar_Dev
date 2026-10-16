@@ -46,6 +46,9 @@ header.top .wrap { padding-block: 28px 8px; display: grid; gap: 4px; }
 h1 { font: 600 clamp(24px, 4vw, 32px)/1.25 var(--f-display); margin: 0; text-wrap: balance; }
 h2 { font: 600 19px/1.3 var(--f-display); margin: 0; text-wrap: balance; }
 .lede { color: var(--muted); margin: 0; max-width: 62ch; }
+/* 重播模式（網址加 #replay 或按「從頭重播」）：收起說明文字，1366×768 的投影畫面也看得到最後一行紀錄 */
+.present header.top .wrap { padding-block: 14px 0; }
+.present .lede, .present .eyebrow { display: none; }
 main .wrap { display: grid; gap: 28px; padding-block: 16px 48px; }
 section { display: grid; gap: 12px; min-width: 0; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
@@ -478,7 +481,7 @@ function render() {
 }
 
 const go = n => { shown = Math.max(0, Math.min(events.length, n)); render(); };
-$("btn-reset").onclick = () => go(0);
+$("btn-reset").onclick = () => { document.body.classList.add("present"); go(0); };
 $("btn-prev").onclick = () => go(shown - 1);
 $("btn-next").onclick = () => go(shown + 1);
 $("btn-all").onclick = () => go(events.length);
@@ -524,6 +527,7 @@ $("btn-copy").onclick = () => {
   DATA.trend.lines.slice(1).forEach(line => ul.append(el("li", null, line)));
 })();
 
+if (location.hash === "#replay") { document.body.classList.add("present"); shown = 0; }
 render();
 </script>
 </html>
