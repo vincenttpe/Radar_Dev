@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal, Protocol
 
+from radar_agent.audience import Profile, check_audience
 from radar_agent.caregiver import caregiver_text, check_output
 from radar_agent.device_events import Summary
 from radar_agent.kg_rules import Assessment
@@ -38,6 +39,7 @@ class Model(Protocol):
 class Rewritten:
     text: str
     layer: Literal["template", "model"]
+    profile: Profile
     # 有呼叫模型就記下，即使最後退回範本，方便追查哪一版模型被擋下
     model: str | None = None
     prompt_version: str | None = None
@@ -85,20 +87,28 @@ def _kept_facts(template: str, text: str, source: Summary | Assessment) -> list[
     return problems
 
 
-def rewrite(source: Summary | Assessment, *, place: str = "", model: Model | None = None) -> Rewritten:
-    """居服員看的文字。沒有模型就用範本；模型出錯或輸出沒通過檢查也退回範本。
+def rewrite(
+    source: Summary | Assessment, *, profile: Profile = "居服員", place: str = "", model: Model | None = None
+) -> Rewritten:
+    """給 profile 讀者看的文字。沒有模型就用範本；模型出錯或輸出沒通過檢查也退回範本。
 
-    範本本身沒通過輸出檢查時丟出 ValueError：那是範本或輸入的問題，不能交給模型修。
+    丟出 ValueError、不產生任何文字的情況：這個 Profile 不能看這份資料（先檢查，資料不進範本也不進模型）；
+    這個 Profile 還沒有範本（目前只有居服員）；範本本身沒通過輸出檢查（範本或輸入的問題，不能交給模型修）。
     """
+    refused = check_audience(profile, source)
+    if refused:
+        raise ValueError("讀者權限不符：" + "；".join(refused))
+    if profile != "居服員":
+        raise ValueError(f"還沒有{profile}的範本")
     template = caregiver_text(source, place=place)
     problems = check_output(template, source, place=place)
     if problems:
         raise ValueError("範本沒通過輸出檢查：" + "；".join(problems))
     if model is None:
-        return Rewritten(template, "template")
+        return Rewritten(template, "template", profile)
 
     def fallback(*reasons: str) -> Rewritten:
-        return Rewritten(template, "template", model.name, PROMPT_VERSION, reasons)
+        return Rewritten(template, "template", profile, model.name, PROMPT_VERSION, reasons)
 
     try:
         text = model(build_prompt(template)).strip()
@@ -109,4 +119,4 @@ def rewrite(source: Summary | Assessment, *, place: str = "", model: Model | Non
     problems = check_output(text, source, place=place) + _kept_facts(template, text, source)
     if problems:
         return fallback(*problems)
-    return Rewritten(text, "model", model.name, PROMPT_VERSION)
+    return Rewritten(text, "model", profile, model.name, PROMPT_VERSION)

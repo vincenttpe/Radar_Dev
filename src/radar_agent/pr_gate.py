@@ -35,8 +35,12 @@ DOORS: dict[str, tuple[str, ...]] = {
     "給讀者的輸出與用語": (
         "src/radar_agent/caregiver.py",  # 居服員 Profile 範本與輸出檢查
         "src/radar_agent/rewrite.py",  # 在地模型的 prompt 與改寫後的檢查
+        "src/radar_agent/audience.py",  # 讀者權限：哪種 Profile 能看哪類資料
     ),
-    "個人資料的流向": ("data/",),
+    "個人資料的流向": (
+        "data/",
+        "src/radar_agent/audience.py",  # 讀者權限決定個人資料交給誰
+    ),
     "事件格式": ("schemas/", "src/radar_agent/event_validation.py"),
     "檢查與審查機制": (
         ".github/", "REVIEW.md",
