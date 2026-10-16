@@ -43,7 +43,7 @@ def timeline(start: str, end: str, visits: list[tuple[str, str]] = (), step: int
 def test_site_summary_all_online():
     summary = summarize(timeline("09:00:00", "09:30:00", [("09:05:00", "09:13:00"), ("09:20:00", "09:21:30")]))
     assert caregiver_text(summary, place="1 號廁所") == (
-        "1 號廁所 10/14：有人使用 2 次，最長一次 8 分鐘。跌倒警報 0 次。久待警報 0 次。這段時間裝置都在線。"
+        "1 號廁所 10/14：有人使用 2 次，最長一次 8 分鐘。跌倒警報 0 次。主動呼救 0 次。久待警報 0 次。這段時間裝置都在線。"
     )
 
 
@@ -51,7 +51,7 @@ def test_disconnection_is_stated_and_zero_falls_is_limited_to_online_time():
     """斷線期間不能寫成 0 次跌倒（REVIEW.md 3.1 沒有資料不等於 0）。"""
     records = timeline("09:00:00", "09:10:00", [("09:02:00", "09:03:00")]) + timeline("09:40:00", "09:50:00")
     assert caregiver_text(summarize(records), place="1 號廁所") == (
-        "1 號廁所 10/14：有人使用 1 次，最長一次 1 分鐘。在線期間跌倒警報 0 次。在線期間久待警報 0 次。"
+        "1 號廁所 10/14：有人使用 1 次，最長一次 1 分鐘。在線期間跌倒警報 0 次。在線期間主動呼救 0 次。在線期間久待警報 0 次。"
         "09:10–09:40 裝置斷線，這段時間無法判斷是否有跌倒。"
     )
 
@@ -62,12 +62,12 @@ def test_no_data_at_all_says_cannot_judge():
 
 def test_online_without_visits_says_no_use_detected():
     assert caregiver_text(summarize(timeline("09:00:00", "09:10:00")), place="1 號廁所") == (
-        "1 號廁所 10/14：沒有偵測到有人使用。跌倒警報 0 次。久待警報 0 次。這段時間裝置都在線。"
+        "1 號廁所 10/14：沒有偵測到有人使用。跌倒警報 0 次。主動呼救 0 次。久待警報 0 次。這段時間裝置都在線。"
     )
 
 
 def test_alerts_list_their_times_and_no_need_help_is_separate():
-    """C2：跌倒警報次數與語音回覆沒事次數分開列；主動呼救（DistressCall）標出來。"""
+    """C2：跌倒警報、主動呼救（DistressCall）、語音回覆沒事分開列；主動呼救不算進跌倒（2026-10-16 第四次書面回覆）。"""
     records = timeline("09:00:00", "09:50:00", [("09:04:00", "09:08:00"), ("09:19:00", "09:46:00")])
     records += [
         rec("09:05:00", "fall", trigger="timeout", userReply=False, confidence=100),
@@ -77,7 +77,7 @@ def test_alerts_list_their_times_and_no_need_help_is_separate():
     ]
     assert caregiver_text(summarize(records), place="1 號廁所") == (
         "1 號廁所 10/14：有人使用 2 次，最長一次 27 分鐘。"
-        "跌倒警報 2 次（09:05、09:20；含主動呼救 1 次）。語音回覆沒事 1 次。"
+        "跌倒警報 1 次（09:05）。主動呼救 1 次（09:20）。語音回覆沒事 1 次。"
         "久待警報 1 次（09:45）。這段時間裝置都在線。"
     )
 
@@ -88,7 +88,7 @@ def test_interrupted_and_ongoing_visits_are_not_dropped():
     assert caregiver_text(summarize(records), place="1 號廁所") == (
         "1 號廁所 10/14：沒有偵測到有人使用。另有 1 次使用途中裝置斷線，停留時間不明。"
         "資料結束時仍有人在內（09:45 起）。"
-        "在線期間跌倒警報 0 次。在線期間久待警報 0 次。"
+        "在線期間跌倒警報 0 次。在線期間主動呼救 0 次。在線期間久待警報 0 次。"
         "09:10–09:40 裝置斷線，這段時間無法判斷是否有跌倒。"
     )
 
@@ -135,6 +135,13 @@ def test_check_flags_a_number_that_is_not_in_the_facts():
     summary = summarize(timeline("09:00:00", "09:30:00", ONLINE_TWO_VISITS))
     text = caregiver_text(summary, place="1 號廁所").replace("有人使用 2 次", "有人使用 3 次")
     assert check_output(text, summary, place="1 號廁所") == ["數字 3 不在事實裡"]
+
+
+def test_check_flags_zero_distress_calls_when_device_was_offline():
+    records = timeline("09:00:00", "09:10:00") + timeline("09:40:00", "09:50:00")
+    summary = summarize(records)
+    text = caregiver_text(summary, place="1 號廁所").replace("在線期間主動呼救 0 次", "主動呼救 0 次")
+    assert check_output(text, summary, place="1 號廁所") == ["裝置有斷線，不能寫「主動呼救 0 次」而不註明在線期間"]
 
 
 def test_check_flags_medical_wording_and_false_alarm():
@@ -224,7 +231,7 @@ def _run(capsys, *argv) -> tuple[int, str, str]:
 
 VISITS = [("09:05:00", "09:13:00"), ("09:20:00", "09:21:30")]
 # 沒有任何事件：只有摘要，不另寫「沒有事件」
-EXPECTED = "【事件摘要】\n1 號廁所 10/14：有人使用 2 次，最長一次 8 分鐘。跌倒警報 0 次。久待警報 0 次。這段時間裝置都在線。\n"
+EXPECTED = "【事件摘要】\n1 號廁所 10/14：有人使用 2 次，最長一次 8 分鐘。跌倒警報 0 次。主動呼救 0 次。久待警報 0 次。這段時間裝置都在線。\n"
 
 
 def test_cli_reads_a_json_array_and_prints_the_checked_text(tmp_path, capsys):

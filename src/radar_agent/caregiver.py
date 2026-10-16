@@ -48,15 +48,12 @@ def _site_text(summary: Summary, place: str) -> str:
         parts.append(f"資料結束時仍有人在內（{summary.ongoing_visit.start:%H:%M} 起）。")
     gaps = [(a.end, b.start) for a, b in zip(summary.online, summary.online[1:], strict=False)]
     scope = "在線期間" if gaps else ""
-    falls = summary.fall_alerts
-    detail = ""
-    if falls:
-        detail = "、".join(f"{a.time:%H:%M}" for a in falls)
-        distress = sum(a.distress_call for a in falls)
-        if distress:
-            detail += f"；含主動呼救 {distress} 次"
-        detail = f"（{detail}）"
-    parts.append(f"{scope}跌倒警報 {len(falls)} 次{detail}。")
+    # 主動呼救（mode=speech 的 fall）另外列，不算進跌倒警報（docs/05 C2，2026-10-16 第四次書面回覆）
+    falls = [a for a in summary.fall_alerts if not a.distress_call]
+    calls = [a for a in summary.fall_alerts if a.distress_call]
+    for label, alerts in (("跌倒警報", falls), ("主動呼救", calls)):
+        times = f"（{'、'.join(f'{a.time:%H:%M}' for a in alerts)}）" if alerts else ""
+        parts.append(f"{scope}{label} {len(alerts)} 次{times}。")
     if summary.no_need_help_replies:
         parts.append(f"語音回覆沒事 {len(summary.no_need_help_replies)} 次。")
     stays = summary.longstay_alerts
@@ -295,6 +292,7 @@ def _facts(source: Summary | Assessment, place: str) -> set[Decimal]:
     if isinstance(source, Summary):
         counts = [
             len(source.visits), len(source.fall_alerts), sum(a.distress_call for a in source.fall_alerts),
+            sum(not a.distress_call for a in source.fall_alerts),
             len(source.no_need_help_replies), len(source.longstay_alerts), len(source.interrupted_visits),
             len(source.errors), len(source.unreadable) + len(source.unknown_events),
         ]
@@ -342,8 +340,9 @@ def check_output(text: str, source: Summary | Assessment, *, place: str = "") ->
     problems += _wording_problems(unquoted)
     if isinstance(source, Summary):
         disconnected = len(source.online) != 1 or bool(source.interrupted_visits)
-        if disconnected and re.search(r"(?<!在線期間)跌倒警報 0 次", text):
-            problems.append("裝置有斷線，不能寫「跌倒警報 0 次」而不註明在線期間")
+        for label in ("跌倒警報", "主動呼救"):
+            if disconnected and re.search(rf"(?<!在線期間){label} 0 次", text):
+                problems.append(f"裝置有斷線，不能寫「{label} 0 次」而不註明在線期間")
     return problems
 
 
