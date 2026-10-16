@@ -18,6 +18,8 @@ def test_declared_scripts(project):
         "radar-kg-manifest": "radar_agent.kg_manifest:main",
         "radar-kg-build": "radar_agent.kg_source:main",
         "radar-kg-level": "radar_agent.kg_rules:main",
+        "radar-caregiver": "radar_agent.caregiver:main",
+        "radar-field-data": "radar_agent.field_data:main",
     }
 
 
@@ -82,6 +84,13 @@ def test_ci_runs_every_quality_gate_unconditionally_and_without_swallowing_failu
     assert not steps[command].get("continue-on-error"), f"{command!r} 失敗時不應該被忽略"
 
 
+def test_ci_runs_every_declared_command(ci_job, project):
+    """pyproject.toml 宣告的每一個指令，CI 都要實際執行一次；新增指令時忘了補 CI 會在這裡失敗。"""
+    smoke = next(step["run"] for step in ci_job["steps"] if step.get("name", "").startswith("指令列工具能用"))
+    ran = {line.split()[0] for line in smoke.splitlines() if line.strip()}
+    assert set(project["scripts"]) <= ran, f"CI 沒有執行：{sorted(set(project['scripts']) - ran)}"
+
+
 def test_dev_extra_has_the_tools_ci_uses(project):
     """逐一比對套件名稱：pytest 不會被 pytest-cov 蓋過，也不會被註解或別的套件名稱湊數。"""
     assert {"pytest", "pytest-cov", "ruff", "mypy", "pyyaml"} <= _names(project["optional-dependencies"]["dev"])
@@ -99,6 +108,8 @@ def test_coverage_gate_is_configured_and_matches_the_readme(repo):
     ("radar_agent.kg_manifest", ["--check"]),
     ("radar_agent.kg_source", ["--check"]),
     ("radar_agent.kg_rules", ["來回行走", "5.4"]),
+    ("radar_agent.caregiver", ["data/samples_demo/bathroom_morning.jsonl", "--place", "1 號廁所"]),
+    ("radar_agent.field_data", ["inspect", "data/samples_demo/bathroom_morning.jsonl"]),
 ])
 def test_modules_run_as_scripts(repo, module, args):
     """python -m <模組> 的進入點（if __name__ == '__main__'）真的能跑，結束碼為 0。"""

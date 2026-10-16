@@ -31,3 +31,5 @@ jobs:
           radar-kg-build --check
           radar-kg-manifest --check
           radar-kg-level 來回行走 5.4
+          radar-caregiver data/samples_demo/bathroom_morning.jsonl --place "1 號廁所"   # Demo 模擬資料（決策單 D-6）
+          radar-field-data inspect data/samples_demo/bathroom_morning.jsonl             # 實測資料檢查（docs/11），先用模擬資料

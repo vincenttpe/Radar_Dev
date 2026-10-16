@@ -31,7 +31,13 @@
 2. `docs/02_目標架構.md`：新系統的方向。
 3. `docs/03_待確認事項.md`：開始寫程式前要先確認的事。
 4. `docs/08_KPI與查核點.md`：結案驗收的 KPI、查核點時程，以及規格與本 repo 現況的落差。
-5. `REVIEW.md`：送 PR 前要知道的審查規範，特別是第 2 節的單向門。
+5. `docs/09_換算規則草稿.md`：雷達資料能不能換算成知識圖譜五項指標（目前都不能）與若由雷達量測時的規則草稿。
+6. `docs/11_Demo規劃.md`：Demo 以計畫書為主軸要展示什麼、本 repo 對應到哪裡、還缺什麼。
+   `docs/12_Demo預演.md`：講稿與時間、問答準備、當天檢查清單。
+   `docs/13_內部演示流程.md`：對團隊的演示流程、從現在的資料換到 Jetson 輸出要改什麼、10/19 確認 Dashboard 架構的題目。
+   `docs/14_週一資訊需求_2026-10-19.md`：週一會議要讓研發人員知道還缺哪些資訊、要誰提供、何時要。
+7. `docs/10_會議決策單_2026-10-16.md`：目前卡住開發的決定，每題附選項與影響，開會時逐題勾選。
+8. `REVIEW.md`：送 PR 前要知道的審查規範，特別是第 2 節的單向門。
 
 ## 安裝與使用
 
@@ -49,6 +55,11 @@ pip install -e ".[dev]"          # 必須是可編輯安裝（-e），程式會�
 radar-kg-build --check                                                            # 檢查 metrics.json、thresholds.json 是否與 graph.cypher 一致
 radar-kg-manifest --check                                                         # 檢查知識圖譜發布清單
 radar-kg-level 來回行走 5.4                                                       # 量測值 → 知識圖譜等級與建議（--list 列出門檻）
+radar-caregiver 事件.jsonl --place "1 號廁所"                                     # 一台裝置的事件 → 居服員看的場域摘要（輸出檢查沒過就不輸出）
+radar-field-data inspect 實測.json                                                 # 實測資料的格式、時間範圍、事件數與每小時分布（不印出 MAC）
+radar-field-data mask 實測.json --out-dir outputs/field                            # 裝置識別換成 FIELD-01…，每台一個檔案；只能寫到 outputs/
+radar-field-data sheet > 操演紀錄.csv                                              # 實機操演紀錄表（10 項，現場填手錶時間）
+radar-field-data compare 操演紀錄.csv outputs/field/FIELD-01.jsonl --date 2026-10-19  # 紀錄表與資料逐項比對、判斷時區
 ```
 
 `git pull` 之後如果 `pyproject.toml` 有變動，再執行一次 `pip install -e ".[dev]"`。
