@@ -1,0 +1,1836 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>知識圖譜 Demo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 版面：模擬資料橫幅 → 五步流程（事件 → 換算 → 量測值 → 門檻 → 句子）→ 對話 → 五項指標的狀態 → 邊界情境 → 還缺什麼 → 事件明細。色彩與字型沿用 demo/template.html */
+:root {
+  --bg: #eef2f3; --surface: #ffffff; --ink: #16232a; --muted: #56676f; --line: #d3dce0;
+  --accent: #1c6a72; --accent-soft: #d5e8ea;
+  --check: #925f00; --check-bg: #faf0d9; --device: #4f5d65; --device-bg: #e3e8eb; --ok: #2a7548; --ok-bg: #e2f2e8;
+  --sim-bg: #2b2438; --sim-ink: #f4effa; --draft: #7a4fb0; --draft-bg: #efe7f8;
+  --f-display: "Noto Serif TC", "Songti TC", serif;
+  --f-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f161a; --surface: #172227; --ink: #e2eaed; --muted: #94a5ad; --line: #2a3940;
+  --accent: #66b6be; --accent-soft: #1d3a3e;
+  --check: #e2b45c; --check-bg: #342a18; --device: #a9b6bd; --device-bg: #222e34; --ok: #7fd09f; --ok-bg: #1a3325;
+  --sim-bg: #3a3150; --sim-ink: #f4effa; --draft: #c4a5ee; --draft-bg: #2c2340; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #0f161a; --surface: #172227; --ink: #e2eaed; --muted: #94a5ad; --line: #2a3940;
+  --accent: #66b6be; --accent-soft: #1d3a3e;
+  --check: #e2b45c; --check-bg: #342a18; --device: #a9b6bd; --device-bg: #222e34; --ok: #7fd09f; --ok-bg: #1a3325;
+  --sim-bg: #3a3150; --sim-ink: #f4effa; --draft: #c4a5ee; --draft-bg: #2c2340; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.65 var(--f-body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--sim-bg); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.sim { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--sim-bg); color: var(--sim-ink); font-size: 13px; }
+.sim .wrap { display: flex; flex-wrap: wrap; gap: 4px 16px; padding-block: 8px; align-items: baseline; }
+.sim strong { letter-spacing: .08em; }
+header.top .wrap { padding-block: 28px 8px; display: grid; gap: 6px; }
+.eyebrow { font-size: 12px; letter-spacing: .12em; color: var(--muted); }
+h1 { font: 600 clamp(24px, 4vw, 32px)/1.25 var(--f-display); margin: 0; text-wrap: balance; }
+h2 { font: 600 19px/1.3 var(--f-display); margin: 0; text-wrap: balance; }
+h3 { font: 700 13px/1.4 var(--f-body); letter-spacing: .06em; color: var(--muted); margin: 0; }
+.lede { color: var(--muted); margin: 0; max-width: 66ch; }
+main .wrap { display: grid; gap: 32px; padding-block: 16px 56px; }
+section { display: grid; gap: 12px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.hint { font-size: 13px; color: var(--muted); }
+.head-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.chip { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em; padding: 1px 8px; border-radius: 999px; }
+td .chip { white-space: nowrap; }
+.chip.draft { background: var(--draft-bg); color: var(--draft); }
+.chip.pending { background: var(--check-bg); color: var(--check); }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+.chip.off { background: var(--device-bg); color: var(--device); }
+
+/* 五步流程 */
+.flow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; counter-reset: step; }
+@media (max-width: 900px) { .flow { grid-template-columns: minmax(0, 1fr); } }
+.step { overflow-wrap: anywhere; display: grid; gap: 8px; align-content: start; padding: 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); min-width: 0; }
+.step h3::before { counter-increment: step; content: counter(step) " · "; font-family: var(--f-mono); color: var(--accent); }
+.step .big { font: 500 26px/1.1 var(--f-mono); font-variant-numeric: tabular-nums; }
+.step .big small { font: 13px var(--f-body); color: var(--muted); margin-left: 4px; }
+.step p, .step ul { margin: 0; font-size: 13.5px; }
+.step ul { padding-left: 1.1em; display: grid; gap: 2px; color: var(--muted); }
+.step.draft { border-color: var(--draft); border-style: dashed; }
+.says { white-space: pre-line; font-size: 14px; }
+
+/* 讀者切換與問題選單 */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab { font: 500 14px var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.tab:focus-visible, .ask:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.qa { display: grid; gap: 14px; }
+.menu { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-top: 12px; border-top: 1px solid var(--line); }
+.menu .label { font-size: 12.5px; color: var(--muted); margin-right: 4px; }
+.ask { font: 500 14px var(--f-body); color: var(--accent); background: var(--accent-soft); border: 1px solid transparent; border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.ask:hover { border-color: var(--accent); }
+.ask.out { color: var(--muted); background: var(--bg); }
+.ask.reset { color: var(--muted); background: transparent; border-color: var(--line); margin-left: auto; }
+.refused { margin: 0; padding: 12px 14px; border-radius: 10px; background: var(--device-bg); color: var(--device); }
+details.basis-box summary { font-size: 12.5px; color: var(--muted); }
+/* 對話 */
+.chat { display: grid; gap: 14px; max-width: 760px; }
+.turn { display: grid; gap: 6px; }
+.q { justify-self: end; max-width: 85%; background: var(--accent); color: var(--surface); padding: 8px 14px; border-radius: 14px 14px 4px 14px; font-weight: 500; }
+.a { justify-self: start; max-width: 92%; background: var(--surface); border: 1px solid var(--line); padding: 12px 14px; border-radius: 14px 14px 14px 4px; display: grid; gap: 8px; min-width: 0; }
+.a .text { white-space: pre-line; }
+.a .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; color: var(--muted); }
+.a .meta .layer { font-family: var(--f-mono); }
+.basis { margin: 0; padding: 8px 0 0; border-top: 1px dashed var(--line); list-style: none; display: grid; gap: 2px; font-size: 12.5px; color: var(--muted); }
+.basis li::before { content: "依據　"; color: var(--accent); font-weight: 700; }
+
+/* 表格 */
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+th { font-size: 12px; letter-spacing: .06em; color: var(--muted); font-weight: 500; }
+.metrics { min-width: 560px; }
+.needs { min-width: 680px; }
+.events { min-width: 620px; font-size: 13px; }
+.events td { font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.events tr.skip td { color: var(--muted); }
+details summary { cursor: pointer; font-weight: 500; }
+details summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: var(--bg); padding: 12px; border-radius: 8px; }
+.notes { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 14px; display: grid; gap: 4px; max-width: 72ch; }
+</style>
+
+<div class="sim"><div class="wrap">
+  <strong>模擬資料・內部用</strong>
+  <span id="sim-note"></span>
+</div></div>
+
+<header class="top"><div class="wrap">
+  <div class="eyebrow">雷達照護助理・知識圖譜 Demo（內部確認功能用）</div>
+  <h1>一位長者一週的行走，怎麼變成一段回答</h1>
+  <p class="lede">老人公寓一台雷達只看一個人。假設雷達能輸出行走與坐→站事件，資料依序經過換算規則、知識圖譜門檻與改寫，最後回答照護人員的問題。每個回答都說得出依據哪一版規則、哪一版知識圖譜、哪幾筆事件。</p>
+</div></header>
+
+<main><div class="wrap">
+  <section aria-labelledby="h-flow">
+    <div class="head-row"><h2 id="h-flow">流程</h2><span class="hint">虛線框是還沒定案的部分</span></div>
+    <div class="flow" id="flow"></div>
+  </section>
+
+  <section aria-labelledby="h-chat">
+    <div class="head-row"><h2 id="h-chat">誰在問，能問什麼</h2><span class="hint">每種讀者一組固定問題，點選提問；回答只用上面的事實</span></div>
+    <div class="tabs" role="tablist" aria-label="讀者" id="tabs"></div>
+    <div class="panel qa">
+      <p class="hint" id="profile-note" style="margin:0"></p>
+      <div class="chat" id="chat" aria-live="polite"></div>
+      <div class="menu" id="menu"></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-metrics">
+      <h2 id="h-metrics">五項指標，這週能評估的只有一項</h2>
+      <div class="panel table-wrap"><table class="metrics">
+        <thead><tr><th>指標</th><th>狀態</th><th>說明</th></tr></thead>
+        <tbody id="metrics"></tbody>
+      </table></div>
+  </section>
+  <section aria-labelledby="h-edge">
+      <h2 id="h-edge">邊界情境：中位數剛好是 <span class="mono" id="edge-value"></span></h2>
+      <div class="panel" style="display:grid;gap:10px">
+        <p class="says" id="edge-says" style="margin:0"></p>
+        <p class="hint" id="edge-reason" style="margin:0"></p>
+      </div>
+  </section>
+
+  <section aria-labelledby="h-needs">
+    <h2 id="h-needs">要換成真實資料，還缺什麼</h2>
+    <div class="panel table-wrap"><table class="needs">
+      <thead><tr><th>缺的資訊</th><th>誰提供</th><th>這一頁哪裡是假設的</th><th>週一清單</th></tr></thead>
+      <tbody>
+        <tr><td>雷達能不能輸出行走（含距離）與坐→站事件，有沒有開始與結束時間、信心值</td><td>雷達負責人</td><td>第 1 步的事件全部是照事件格式草案產生的</td><td>事件格式</td></tr>
+        <tr><td>行走事件換算成步行速度的規則：門檻、取中位數還是平均、一週至少幾次</td><td>PT／知識圖譜審核人</td><td>第 2 步的換算規則草案</td><td>K-1</td></tr>
+        <tr><td>日常的坐→站要不要做下肢肌力的替代量</td><td>PT／知識圖譜審核人</td><td>下肢肌力目前不出等級</td><td>K-1</td></tr>
+        <tr><td>知識圖譜 v1 核准，門檻重疊（例如 0.8 m/s）怎麼歸屬</td><td>知識圖譜審核人</td><td>第 4 步的等級都標「僅供測試」；邊界情境無法評估</td><td>K-2</td></tr>
+        <tr><td>裝置對應到長者代號</td><td>Dashboard 負責人、現場</td><td>代號是模擬的</td><td>4-9、4-10</td></tr>
+        <tr><td>在地模型與改寫的檢查</td><td>公司研發</td><td>第 5 步目前是範本</td><td>K-3、Jetson</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="h-events">
+    <h2 id="h-events">事件明細</h2>
+    <details class="panel">
+      <summary id="events-summary"></summary>
+      <div class="table-wrap" style="margin-top:12px"><table class="events">
+        <thead><tr><th>事件編號</th><th>種類</th><th>開始</th><th>秒數</th><th>距離 m</th><th>信心值</th><th>換算</th></tr></thead>
+        <tbody id="events"></tbody>
+      </table></div>
+    </details>
+    <details class="panel">
+      <summary>一筆事件的原始格式（schemas/event.v0.draft.json）</summary>
+      <pre id="sample" style="margin-top:12px"></pre>
+    </details>
+  </section>
+
+  <section aria-labelledby="h-notes">
+    <h2 id="h-notes">展示時要說明</h2>
+    <ul class="notes">
+      <li>全部是模擬資料。現有的 10/19 實測資料是浴廁裝置事件，換算不出知識圖譜的五項量測值，所以這一頁不用它。</li>
+      <li>等級只由知識圖譜的門檻決定，模型不決定等級；換算規則審核前不會用在正式報告。</li>
+      <li>居服員看到的句子來自正式的範本並通過輸出檢查；接上在地模型之前不稱為「LLM 產生」。</li>
+      <li>量不到、沒有規則、落在門檻重疊的情況，一律寫「無法評估」，不猜一個等級。</li>
+      <li>不同讀者看到不同的問題；主管機關不能看個人資料，所以沒有題目。居服員以外的句子是草案，題目與範本都要經過審核。</li>
+      <li>沒有輸入框：在地模型能力有限，問題固定，答案可以事先算好、逐題檢查。超出範圍的問題（「其他問題」）系統不回答。</li>
+    </ul>
+  </section>
+</div></main>
+
+<script>
+const DATA = {
+ "device": "DEMO-SIM-KG-01",
+ "subject": "DEMO-ELDER-01",
+ "period": "10/8–10/14",
+ "kg": {
+  "version": "v1",
+  "approval": "pending",
+  "approved": false
+ },
+ "rule": {
+  "id": "DEMO-DRAFT-0",
+  "status": "草案，未經 PT 審核",
+  "text": [
+   "只用 activity／walking 事件，信心值 0.8 以上、持續 5 秒以上、距離 3 公尺以上（排除室內短距離移動）",
+   "每次步速 = 距離 ÷ 持續秒數",
+   "一週取中位數，四捨五入到小數 2 位",
+   "合格的行走少於 10 次：本週無法評估"
+  ]
+ },
+ "events": [
+  {
+   "id": "SIM-KG-0001",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.88,
+   "start": "2026-10-08T07:31:11+08:00",
+   "seconds": "10.0",
+   "meters": 8.9,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0002",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.83,
+   "start": "2026-10-08T09:04:11+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0003",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.95,
+   "start": "2026-10-08T10:07:20+08:00",
+   "seconds": "9.0",
+   "meters": 7.8,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0004",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.94,
+   "start": "2026-10-08T11:47:20+08:00",
+   "seconds": "3.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0005",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.84,
+   "start": "2026-10-08T12:37:35+08:00",
+   "seconds": "2.0",
+   "meters": 1.7,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0006",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.94,
+   "start": "2026-10-08T14:28:57+08:00",
+   "seconds": "3.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0007",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.85,
+   "start": "2026-10-08T15:16:15+08:00",
+   "seconds": "6.0",
+   "meters": 5.8,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0008",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.94,
+   "start": "2026-10-08T15:54:23+08:00",
+   "seconds": "1.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0009",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.84,
+   "start": "2026-10-08T15:56:36+08:00",
+   "seconds": "2.0",
+   "meters": 2.0,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0010",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.91,
+   "start": "2026-10-08T16:03:24+08:00",
+   "seconds": "1.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0011",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.91,
+   "start": "2026-10-08T16:26:19+08:00",
+   "seconds": "3.0",
+   "meters": 2.5,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0012",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.92,
+   "start": "2026-10-08T16:28:29+08:00",
+   "seconds": "1.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0013",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.98,
+   "start": "2026-10-08T17:01:00+08:00",
+   "seconds": "8.0",
+   "meters": 7.8,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0014",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.82,
+   "start": "2026-10-08T18:19:08+08:00",
+   "seconds": "1.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0015",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.77,
+   "start": "2026-10-08T19:51:11+08:00",
+   "seconds": "8.0",
+   "meters": 7.3,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0016",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.97,
+   "start": "2026-10-08T20:32:39+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0017",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.76,
+   "start": "2026-10-09T07:48:18+08:00",
+   "seconds": "8.0",
+   "meters": 6.7,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0018",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.8,
+   "start": "2026-10-09T08:14:06+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0019",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.83,
+   "start": "2026-10-09T08:17:57+08:00",
+   "seconds": "3.0",
+   "meters": 2.5,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0020",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.87,
+   "start": "2026-10-09T08:19:32+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0021",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.98,
+   "start": "2026-10-09T08:54:25+08:00",
+   "seconds": "2.0",
+   "meters": 2.2,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0022",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.8,
+   "start": "2026-10-09T09:37:19+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0023",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.8,
+   "start": "2026-10-09T10:02:31+08:00",
+   "seconds": "5.0",
+   "meters": 4.7,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0024",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.8,
+   "start": "2026-10-09T10:48:41+08:00",
+   "seconds": "3.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0025",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.88,
+   "start": "2026-10-09T13:25:37+08:00",
+   "seconds": "2.0",
+   "meters": 2.3,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0026",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.93,
+   "start": "2026-10-09T13:46:28+08:00",
+   "seconds": "1.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0027",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.9,
+   "start": "2026-10-09T14:43:25+08:00",
+   "seconds": "10.0",
+   "meters": 7.8,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0028",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.84,
+   "start": "2026-10-09T15:42:22+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0029",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.95,
+   "start": "2026-10-09T16:23:12+08:00",
+   "seconds": "4.0",
+   "meters": 4.5,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0030",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.9,
+   "start": "2026-10-09T17:27:23+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0031",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.86,
+   "start": "2026-10-09T18:45:23+08:00",
+   "seconds": "8.0",
+   "meters": 7.1,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0032",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.89,
+   "start": "2026-10-09T19:53:08+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0033",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.92,
+   "start": "2026-10-10T07:09:23+08:00",
+   "seconds": "7.0",
+   "meters": 6.6,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0034",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.82,
+   "start": "2026-10-10T07:21:23+08:00",
+   "seconds": "3.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0035",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.79,
+   "start": "2026-10-10T08:29:08+08:00",
+   "seconds": "5.0",
+   "meters": 5.0,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0036",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.86,
+   "start": "2026-10-10T11:53:50+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0037",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.89,
+   "start": "2026-10-10T11:55:29+08:00",
+   "seconds": "7.0",
+   "meters": 6.3,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0038",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.88,
+   "start": "2026-10-10T13:02:29+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0039",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.94,
+   "start": "2026-10-10T13:07:59+08:00",
+   "seconds": "7.0",
+   "meters": 6.0,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0040",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.84,
+   "start": "2026-10-10T14:36:27+08:00",
+   "seconds": "1.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0041",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.86,
+   "start": "2026-10-10T14:41:55+08:00",
+   "seconds": "8.0",
+   "meters": 7.0,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0042",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.84,
+   "start": "2026-10-10T15:26:59+08:00",
+   "seconds": "3.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0043",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.93,
+   "start": "2026-10-10T15:45:14+08:00",
+   "seconds": "6.0",
+   "meters": 6.1,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0044",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.83,
+   "start": "2026-10-10T15:52:19+08:00",
+   "seconds": "3.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0045",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.96,
+   "start": "2026-10-10T16:46:26+08:00",
+   "seconds": "8.0",
+   "meters": 7.4,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0046",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.97,
+   "start": "2026-10-10T17:58:20+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0047",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.84,
+   "start": "2026-10-10T19:33:55+08:00",
+   "seconds": "1.0",
+   "meters": 1.6,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0048",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.91,
+   "start": "2026-10-10T20:11:05+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0049",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.78,
+   "start": "2026-10-11T07:21:13+08:00",
+   "seconds": "8.0",
+   "meters": 8.2,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0050",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.84,
+   "start": "2026-10-11T07:25:33+08:00",
+   "seconds": "1.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0051",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.77,
+   "start": "2026-10-11T07:36:52+08:00",
+   "seconds": "8.0",
+   "meters": 7.4,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0052",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.93,
+   "start": "2026-10-11T07:57:11+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0053",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.93,
+   "start": "2026-10-11T11:06:28+08:00",
+   "seconds": "2.0",
+   "meters": 1.9,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0054",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.9,
+   "start": "2026-10-11T12:55:53+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0055",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.96,
+   "start": "2026-10-11T13:33:41+08:00",
+   "seconds": "2.0",
+   "meters": 1.9,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0056",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.9,
+   "start": "2026-10-11T14:24:22+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0057",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.8,
+   "start": "2026-10-11T14:46:43+08:00",
+   "seconds": "9.0",
+   "meters": 8.2,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0058",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.87,
+   "start": "2026-10-11T14:55:07+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0059",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.94,
+   "start": "2026-10-11T15:33:58+08:00",
+   "seconds": "7.0",
+   "meters": 6.0,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0060",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.93,
+   "start": "2026-10-11T16:01:20+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0061",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.82,
+   "start": "2026-10-11T18:26:14+08:00",
+   "seconds": "5.0",
+   "meters": 4.8,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0062",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.82,
+   "start": "2026-10-11T19:11:35+08:00",
+   "seconds": "3.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0063",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.85,
+   "start": "2026-10-11T20:28:05+08:00",
+   "seconds": "1.0",
+   "meters": 1.5,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0064",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.83,
+   "start": "2026-10-11T20:58:57+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0065",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.81,
+   "start": "2026-10-12T07:03:53+08:00",
+   "seconds": "2.0",
+   "meters": 2.2,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0066",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.85,
+   "start": "2026-10-12T07:21:25+08:00",
+   "seconds": "3.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0067",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.82,
+   "start": "2026-10-12T08:01:08+08:00",
+   "seconds": "5.0",
+   "meters": 4.5,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0068",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.83,
+   "start": "2026-10-12T08:21:06+08:00",
+   "seconds": "3.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0069",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.97,
+   "start": "2026-10-12T08:36:01+08:00",
+   "seconds": "5.0",
+   "meters": 4.5,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0070",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.83,
+   "start": "2026-10-12T09:34:03+08:00",
+   "seconds": "3.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0071",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.92,
+   "start": "2026-10-12T11:27:13+08:00",
+   "seconds": "9.0",
+   "meters": 8.8,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0072",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.86,
+   "start": "2026-10-12T13:23:23+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0073",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.9,
+   "start": "2026-10-12T14:10:05+08:00",
+   "seconds": "11.0",
+   "meters": 8.5,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0074",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.91,
+   "start": "2026-10-12T14:15:35+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0075",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.82,
+   "start": "2026-10-12T15:12:49+08:00",
+   "seconds": "6.0",
+   "meters": 5.9,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0076",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.88,
+   "start": "2026-10-12T15:15:47+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0077",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.94,
+   "start": "2026-10-12T17:07:58+08:00",
+   "seconds": "6.0",
+   "meters": 5.1,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0078",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.95,
+   "start": "2026-10-12T18:26:01+08:00",
+   "seconds": "1.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0079",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.89,
+   "start": "2026-10-12T18:53:21+08:00",
+   "seconds": "2.0",
+   "meters": 2.1,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0080",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.96,
+   "start": "2026-10-12T19:42:49+08:00",
+   "seconds": "3.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0081",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.81,
+   "start": "2026-10-13T07:43:42+08:00",
+   "seconds": "2.0",
+   "meters": 2.4,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0082",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.98,
+   "start": "2026-10-13T07:47:31+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0083",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.94,
+   "start": "2026-10-13T08:23:28+08:00",
+   "seconds": "9.0",
+   "meters": 8.5,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0084",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.92,
+   "start": "2026-10-13T08:31:47+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0085",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.77,
+   "start": "2026-10-13T09:24:41+08:00",
+   "seconds": "6.0",
+   "meters": 6.0,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0086",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.84,
+   "start": "2026-10-13T10:19:10+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0087",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.98,
+   "start": "2026-10-13T10:26:32+08:00",
+   "seconds": "6.0",
+   "meters": 4.7,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0088",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.84,
+   "start": "2026-10-13T10:42:53+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0089",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.94,
+   "start": "2026-10-13T12:04:27+08:00",
+   "seconds": "7.0",
+   "meters": 6.9,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0090",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.93,
+   "start": "2026-10-13T15:32:10+08:00",
+   "seconds": "1.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0091",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.95,
+   "start": "2026-10-13T16:52:13+08:00",
+   "seconds": "8.0",
+   "meters": 7.3,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0092",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.84,
+   "start": "2026-10-13T18:39:29+08:00",
+   "seconds": "3.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0093",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.82,
+   "start": "2026-10-13T18:53:14+08:00",
+   "seconds": "8.0",
+   "meters": 6.9,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0094",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.84,
+   "start": "2026-10-13T20:05:41+08:00",
+   "seconds": "1.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0095",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.94,
+   "start": "2026-10-13T20:26:52+08:00",
+   "seconds": "8.0",
+   "meters": 6.8,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0096",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.83,
+   "start": "2026-10-13T20:27:44+08:00",
+   "seconds": "3.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0097",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.78,
+   "start": "2026-10-14T07:42:51+08:00",
+   "seconds": "9.0",
+   "meters": 8.5,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0098",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.9,
+   "start": "2026-10-14T08:47:55+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0099",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.9,
+   "start": "2026-10-14T09:48:20+08:00",
+   "seconds": "1.0",
+   "meters": 1.5,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0100",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.92,
+   "start": "2026-10-14T09:54:40+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0101",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.96,
+   "start": "2026-10-14T12:06:31+08:00",
+   "seconds": "5.0",
+   "meters": 5.1,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0102",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.96,
+   "start": "2026-10-14T13:25:36+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0103",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.95,
+   "start": "2026-10-14T13:46:20+08:00",
+   "seconds": "6.0",
+   "meters": 4.8,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0104",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.86,
+   "start": "2026-10-14T14:01:20+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0105",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.88,
+   "start": "2026-10-14T14:12:16+08:00",
+   "seconds": "10.0",
+   "meters": 9.0,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0106",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.81,
+   "start": "2026-10-14T14:59:05+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0107",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.93,
+   "start": "2026-10-14T15:19:07+08:00",
+   "seconds": "9.0",
+   "meters": 8.3,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0108",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.86,
+   "start": "2026-10-14T16:33:21+08:00",
+   "seconds": "3.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0109",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.85,
+   "start": "2026-10-14T17:31:31+08:00",
+   "seconds": "5.0",
+   "meters": 4.4,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0110",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.81,
+   "start": "2026-10-14T19:27:39+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  },
+  {
+   "id": "SIM-KG-0111",
+   "type": "activity",
+   "label": "walking",
+   "confidence": 0.81,
+   "start": "2026-10-14T20:26:36+08:00",
+   "seconds": "7.0",
+   "meters": 6.4,
+   "used": true
+  },
+  {
+   "id": "SIM-KG-0112",
+   "type": "posture",
+   "label": "sit_to_stand",
+   "confidence": 0.95,
+   "start": "2026-10-14T20:36:45+08:00",
+   "seconds": "2.0",
+   "meters": null,
+   "used": false
+  }
+ ],
+ "speed": {
+  "value": "0.90",
+  "walks": 56,
+  "used": [
+   "SIM-KG-0001",
+   "SIM-KG-0003",
+   "SIM-KG-0007",
+   "SIM-KG-0013",
+   "SIM-KG-0023",
+   "SIM-KG-0027",
+   "SIM-KG-0031",
+   "SIM-KG-0033",
+   "SIM-KG-0037",
+   "SIM-KG-0039",
+   "SIM-KG-0041",
+   "SIM-KG-0043",
+   "SIM-KG-0045",
+   "SIM-KG-0057",
+   "SIM-KG-0059",
+   "SIM-KG-0061",
+   "SIM-KG-0067",
+   "SIM-KG-0069",
+   "SIM-KG-0071",
+   "SIM-KG-0073",
+   "SIM-KG-0075",
+   "SIM-KG-0077",
+   "SIM-KG-0083",
+   "SIM-KG-0087",
+   "SIM-KG-0089",
+   "SIM-KG-0091",
+   "SIM-KG-0093",
+   "SIM-KG-0095",
+   "SIM-KG-0101",
+   "SIM-KG-0103",
+   "SIM-KG-0105",
+   "SIM-KG-0107",
+   "SIM-KG-0109",
+   "SIM-KG-0111"
+  ],
+  "short": [
+   "SIM-KG-0005",
+   "SIM-KG-0009",
+   "SIM-KG-0011",
+   "SIM-KG-0019",
+   "SIM-KG-0021",
+   "SIM-KG-0025",
+   "SIM-KG-0029",
+   "SIM-KG-0047",
+   "SIM-KG-0053",
+   "SIM-KG-0055",
+   "SIM-KG-0063",
+   "SIM-KG-0065",
+   "SIM-KG-0079",
+   "SIM-KG-0081",
+   "SIM-KG-0099"
+  ],
+  "unsure": [
+   "SIM-KG-0015",
+   "SIM-KG-0017",
+   "SIM-KG-0035",
+   "SIM-KG-0049",
+   "SIM-KG-0051",
+   "SIM-KG-0085",
+   "SIM-KG-0097"
+  ]
+ },
+ "assessment": {
+  "metric": "步行速度",
+  "value": "0.90",
+  "unit": "m/s",
+  "score": 2,
+  "rank": "普通",
+  "source_text": "步行速度 0.8~1.0 m/s",
+  "suggestion": "步行速度普通，建議增加日常步行量，並搭配下肢肌力與平衡訓練，逐步提升行走穩定性與速度。",
+  "recommended_dose": "每週 105-135 分鐘；每次 15-25 分鐘；步速 0.7 m/s"
+ },
+ "caregiver": "步行速度 0.90 m/s，屬於「普通」（2 分）。\n建議：步行速度普通，建議增加日常步行量，並搭配下肢肌力與平衡訓練，逐步提升行走穩定性與速度。\n建議量：每週 105-135 分鐘；每次 15-25 分鐘；步速 0.7 m/s\n（知識圖譜尚未核准，僅供測試）",
+ "boundary": {
+  "value": "0.80",
+  "reason": "數值 0.80 同時屬於 1 分「稍差」、2 分「普通」（門檻重疊，邊界歸屬待審核人決定，會議清單 E5）",
+  "caregiver": "步行速度 0.80 m/s：目前無法評估，已交由審核人確認。\n（知識圖譜尚未核准，僅供測試）"
+ },
+ "not_assessed": [
+  {
+   "metric": "下肢肌力",
+   "state": "no_rule",
+   "why": "有坐→站事件，但標準施測是「30 秒內反覆起站」，日常生活的坐→站不能直接換算；要不要做替代量待決定（K-1）"
+  },
+  {
+   "metric": "單腳站立",
+   "state": "unmeasurable",
+   "why": "雷達量不到"
+  },
+  {
+   "metric": "來回行走",
+   "state": "unmeasurable",
+   "why": "2.44 公尺來回是施測動作，日常生活不會出現"
+  },
+  {
+   "metric": "心肺耐力",
+   "state": "unmeasurable",
+   "why": "2 分鐘原地抬腳是施測動作，日常生活不會出現"
+  }
+ ],
+ "profiles": [
+  {
+   "profile": "居服員",
+   "refused": [],
+   "basis_open": true,
+   "questions": [
+    {
+     "id": "walk",
+     "q": "這週走路的狀況怎麼樣？",
+     "a": "步行速度 0.90 m/s，屬於「普通」（2 分）。\n建議：步行速度普通，建議增加日常步行量，並搭配下肢肌力與平衡訓練，逐步提升行走穩定性與速度。\n建議量：每週 105-135 分鐘；每次 15-25 分鐘；步速 0.7 m/s\n（知識圖譜尚未核准，僅供測試）",
+     "layer": "rewrite() 範本",
+     "basis": [
+      "換算規則 DEMO-DRAFT-0（草案，未經 PT 審核）",
+      "知識圖譜 v1（尚未核准，僅供測試）",
+      "行走事件 SIM-KG-0001…SIM-KG-0111 中的 34 筆"
+     ],
+     "follow": [
+      "how",
+      "others"
+     ],
+     "draft": false,
+     "checked": true
+    },
+    {
+     "id": "how",
+     "q": "0.90 是怎麼算出來的？",
+     "a": "10/8–10/14 共有 56 次行走，其中 34 次符合換算規則（排除 15 次短距離移動、7 次信心值不足），取每次步速的中位數為 0.90 m/s。換算規則是草案，還沒有經過 PT 審核。",
+     "layer": "依據說明（固定句型）",
+     "basis": [
+      "換算規則 DEMO-DRAFT-0（草案，未經 PT 審核）",
+      "使用 行走事件 SIM-KG-0001…SIM-KG-0111 中的 34 筆；排除 22 筆"
+     ],
+     "follow": [
+      "others"
+     ],
+     "draft": false,
+     "checked": false
+    },
+    {
+     "id": "others",
+     "q": "起身和平衡的狀況呢？",
+     "a": "這週有 56 次從坐到站，但還沒有從日常起身換算下肢肌力的規則，本週無法評估。單腳站立、來回行走、心肺耐力雷達量不到，本週無法評估。",
+     "layer": "固定句型",
+     "basis": [
+      "知識圖譜 v1（尚未核准，僅供測試）",
+      "坐→站事件 56 筆（只計數，不出等級）"
+     ],
+     "follow": [
+      "walk"
+     ],
+     "draft": false,
+     "checked": false
+    },
+    {
+     "id": "out",
+     "q": "其他問題",
+     "a": "這個問題系統不回答：等級只依知識圖譜的門檻，不做醫療判斷。如果擔心，請和護理人員討論。",
+     "layer": "固定句型（超出範圍）",
+     "basis": [
+      "超出系統範圍的問題一律不回答（非醫療器材）"
+     ],
+     "follow": [],
+     "draft": false,
+     "checked": false
+    }
+   ]
+  },
+  {
+   "profile": "醫師",
+   "refused": [],
+   "basis_open": true,
+   "questions": [
+    {
+     "id": "value",
+     "q": "量測值與門檻原文",
+     "a": "步行速度 0.90 m/s（34 次行走的中位數），落在知識圖譜門檻「步行速度 0.8~1.0 m/s」，2 分「普通」。（知識圖譜尚未核准，僅供測試）",
+     "layer": "Demo 草案範本",
+     "basis": [
+      "換算規則 DEMO-DRAFT-0（草案，未經 PT 審核）",
+      "知識圖譜 v1（尚未核准，僅供測試）",
+      "行走事件 SIM-KG-0001…SIM-KG-0111 中的 34 筆"
+     ],
+     "follow": [
+      "data",
+      "rule"
+     ],
+     "draft": true,
+     "checked": false
+    },
+    {
+     "id": "data",
+     "q": "資料夠不夠？",
+     "a": "10/8–10/14 共有 56 次行走，其中 34 次符合換算規則（排除 15 次短距離移動、7 次信心值不足），取每次步速的中位數為 0.90 m/s。換算規則是草案，還沒有經過 PT 審核。",
+     "layer": "依據說明（固定句型）",
+     "basis": [
+      "使用 行走事件 SIM-KG-0001…SIM-KG-0111 中的 34 筆；排除 22 筆",
+      "規則要求至少 10 次"
+     ],
+     "follow": [
+      "rule"
+     ],
+     "draft": true,
+     "checked": false
+    },
+    {
+     "id": "rule",
+     "q": "依據哪一版規則？",
+     "a": "換算規則 DEMO-DRAFT-0（草案，未經 PT 審核）：只用 activity／walking 事件，信心值 0.8 以上、持續 5 秒以上、距離 3 公尺以上（排除室內短距離移動）；每次步速 = 距離 ÷ 持續秒數；一週取中位數，四捨五入到小數 2 位；合格的行走少於 10 次：本週無法評估。",
+     "layer": "固定句型",
+     "basis": [
+      "換算規則 DEMO-DRAFT-0（草案，未經 PT 審核）",
+      "知識圖譜 v1（尚未核准，僅供測試）"
+     ],
+     "follow": [
+      "unassessed"
+     ],
+     "draft": true,
+     "checked": false
+    },
+    {
+     "id": "unassessed",
+     "q": "哪些項目無法評估、為什麼？",
+     "a": "這週有 56 次從坐到站，但還沒有從日常起身換算下肢肌力的規則，本週無法評估。單腳站立、來回行走、心肺耐力雷達量不到，本週無法評估。另外，步速剛好 0.80 m/s 時無法評估：數值 0.80 同時屬於 1 分「稍差」、2 分「普通」（門檻重疊，邊界歸屬待審核人決定，會議清單 E5）。",
+     "layer": "固定句型（含審核用的原因）",
+     "basis": [
+      "知識圖譜 v1（尚未核准，僅供測試）"
+     ],
+     "follow": [
+      "value"
+     ],
+     "draft": true,
+     "checked": false
+    },
+    {
+     "id": "out",
+     "q": "其他問題",
+     "a": "這個問題系統不回答：等級只依知識圖譜的門檻，不做醫療判斷。如果擔心，請和護理人員討論。",
+     "layer": "固定句型（超出範圍）",
+     "basis": [
+      "超出系統範圍的問題一律不回答（非醫療器材）"
+     ],
+     "follow": [],
+     "draft": false,
+     "checked": false
+    }
+   ]
+  },
+  {
+   "profile": "家屬",
+   "refused": [],
+   "basis_open": false,
+   "questions": [
+    {
+     "id": "walk",
+     "q": "這週活動的狀況如何？",
+     "a": "這週走路的速度屬於「普通」。（知識圖譜尚未核准，僅供測試）",
+     "layer": "Demo 草案範本",
+     "basis": [
+      "知識圖譜 v1（尚未核准，僅供測試）"
+     ],
+     "follow": [
+      "advice",
+      "compare"
+     ],
+     "draft": true,
+     "checked": true
+    },
+    {
+     "id": "advice",
+     "q": "可以怎麼陪伴活動？",
+     "a": "建議：步行速度普通，建議增加日常步行量，並搭配下肢肌力與平衡訓練，逐步提升行走穩定性與速度。\n建議量：每週 105-135 分鐘；每次 15-25 分鐘；步速 0.7 m/s\n（知識圖譜尚未核准，僅供測試）",
+     "layer": "知識圖譜原文照抄",
+     "basis": [
+      "知識圖譜 v1（尚未核准，僅供測試）"
+     ],
+     "follow": [
+      "walk"
+     ],
+     "draft": true,
+     "checked": true
+    },
+    {
+     "id": "compare",
+     "q": "和上週比起來呢？",
+     "a": "目前只有一週的資料，還不能和上週比較，本週無法評估變化。",
+     "layer": "固定句型",
+     "basis": [
+      "只有一週資料"
+     ],
+     "follow": [
+      "walk"
+     ],
+     "draft": true,
+     "checked": false
+    },
+    {
+     "id": "out",
+     "q": "其他問題",
+     "a": "這個問題系統不回答：等級只依知識圖譜的門檻，不做醫療判斷。如果擔心，請和護理人員討論。",
+     "layer": "固定句型（超出範圍）",
+     "basis": [
+      "超出系統範圍的問題一律不回答（非醫療器材）"
+     ],
+     "follow": [],
+     "draft": false,
+     "checked": false
+    }
+   ]
+  },
+  {
+   "profile": "長者本人",
+   "refused": [],
+   "basis_open": false,
+   "questions": [
+    {
+     "id": "walk",
+     "q": "我這週走得怎麼樣？",
+     "a": "您這週走路的速度屬於「普通」。（知識圖譜尚未核准，僅供測試）",
+     "layer": "Demo 草案範本",
+     "basis": [
+      "知識圖譜 v1（尚未核准，僅供測試）"
+     ],
+     "follow": [
+      "advice"
+     ],
+     "draft": true,
+     "checked": true
+    },
+    {
+     "id": "advice",
+     "q": "我可以做什麼運動？",
+     "a": "建議：步行速度普通，建議增加日常步行量，並搭配下肢肌力與平衡訓練，逐步提升行走穩定性與速度。\n建議量：每週 105-135 分鐘；每次 15-25 分鐘；步速 0.7 m/s\n（知識圖譜尚未核准，僅供測試）",
+     "layer": "知識圖譜原文照抄",
+     "basis": [
+      "知識圖譜 v1（尚未核准，僅供測試）"
+     ],
+     "follow": [
+      "walk"
+     ],
+     "draft": true,
+     "checked": true
+    },
+    {
+     "id": "out",
+     "q": "其他問題",
+     "a": "這個問題系統不回答：等級只依知識圖譜的門檻，不做醫療判斷。如果擔心，請和護理人員討論。",
+     "layer": "固定句型（超出範圍）",
+     "basis": [
+      "超出系統範圍的問題一律不回答（非醫療器材）"
+     ],
+     "follow": [],
+     "draft": false,
+     "checked": false
+    }
+   ]
+  },
+  {
+   "profile": "主管機關",
+   "refused": [
+    "主管機關不能看個人資料（docs/02「輸出的對象：場域與個人」）"
+   ],
+   "basis_open": false,
+   "questions": []
+  }
+ ],
+ "sample_event": {
+  "schema_version": "0-draft",
+  "event_id": "SIM-KG-0001",
+  "device_id": "DEMO-SIM-KG-01",
+  "subject_id": "DEMO-ELDER-01",
+  "event_type": "activity",
+  "label": "walking",
+  "confidence": 0.88,
+  "measurements": [
+   {
+    "name": "distance",
+    "value": 8.9,
+    "unit": "m"
+   }
+  ],
+  "timestamps": {
+   "detected": "2026-10-08T07:31:21+08:00",
+   "started": "2026-10-08T07:31:11+08:00",
+   "ended": "2026-10-08T07:31:21+08:00"
+  }
+ }
+};
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const kgChip = () => el("span", DATA.kg.approved ? "chip ok" : "chip pending", DATA.kg.approved ? `知識圖譜 ${DATA.kg.version} 已核准` : `知識圖譜 ${DATA.kg.version} 未核准・僅供測試`);
+const sp = DATA.speed, a = DATA.assessment;
+const walks = DATA.events.filter(e => e.label === "walking").length;
+const sits = DATA.events.length - walks;
+
+$("sim-note").textContent = `非真實裝置紀錄；裝置 ${DATA.device}、長者代號 ${DATA.subject} 都是模擬的。換算規則是草案，句子由範本產生，尚未接上在地模型。`;
+
+// 五步流程
+const steps = [
+  { title: "雷達事件", draft: true, big: [DATA.events.length, "筆"], body: [`${DATA.period}，行走 ${walks} 筆、坐→站 ${sits} 筆`, "照事件格式草案產生"] },
+  { title: "換算規則", draft: true, chip: el("span", "chip draft", `${DATA.rule.id}・${DATA.rule.status}`), list: DATA.rule.text },
+  { title: "量測值", big: [sp.value, a.unit], body: [`用了 ${sp.used.length} 筆，排除短距離 ${sp.short.length} 筆、信心值不足 ${sp.unsure.length} 筆`] },
+  { title: "知識圖譜門檻", chip: kgChip(), big: [`${a.score} 分`, a.rank], body: [`門檻原文：${a.source_text}`] },
+  { title: "居服員看到的句子", says: DATA.caregiver, body: ["rewrite() 範本，已通過輸出檢查"] },
+];
+for (const s of steps) {
+  const box = el("div", "step" + (s.draft ? " draft" : ""));
+  box.append(el("h3", null, s.title));
+  if (s.chip) box.append(s.chip);
+  if (s.big) { const b = el("div", "big", s.big[0]); b.append(el("small", null, s.big[1])); box.append(b); }
+  if (s.list) { const ul = el("ul"); s.list.forEach(t => ul.append(el("li", null, t))); box.append(ul); }
+  if (s.says) box.append(el("p", "says", s.says));
+  (s.body || []).forEach(t => box.append(el("p", "hint", t)));
+  $("flow").append(box);
+}
+
+// 讀者切換：每個 Profile 一組固定問題；答完再列出延伸問題
+const tabs = $("tabs"), chat = $("chat"), menu = $("menu");
+let current = DATA.profiles[0], asked = [];
+function answer(q) {
+  const turn = el("div", "turn");
+  turn.append(el("div", "q", q.q));
+  const ans = el("div", "a");
+  ans.append(el("div", "text", q.a));
+  const meta = el("div", "meta"); meta.append(el("span", "layer", q.layer));
+  if (q.draft) meta.append(el("span", "chip draft", "範本草案"));
+  ans.append(meta);
+  const ul = el("ul", "basis"); q.basis.forEach(b => ul.append(el("li", null, b)));
+  if (current.basis_open) ans.append(ul);
+  else { const d = el("details", "basis-box"); d.append(el("summary", null, "依據"), ul); ans.append(d); }
+  turn.append(ans); chat.append(turn);
+}
+function renderMenu() {
+  menu.replaceChildren();
+  if (current.refused.length) return;
+  const last = asked.length ? current.questions.find(q => q.id === asked[asked.length - 1]) : null;
+  const ids = last ? [...last.follow, "out"] : current.questions.map(q => q.id);
+  menu.append(el("span", "label", last ? "接著問" : "可以問"));
+  for (const id of ids) {
+    const q = current.questions.find(x => x.id === id);
+    const b = el("button", "ask" + (id === "out" ? " out" : ""), q.q); b.type = "button";
+    b.onclick = () => { asked.push(id); answer(q); renderMenu(); };
+    menu.append(b);
+  }
+  if (last) {
+    const all = el("button", "ask reset", "全部問題"); all.type = "button";
+    all.onclick = () => { asked = []; chat.replaceChildren(); renderMenu(); };
+    menu.append(all);
+  }
+}
+function select(p) {
+  current = p; asked = [];
+  tabs.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.p === p.profile)));
+  chat.replaceChildren();
+  if (p.refused.length) {
+    $("profile-note").textContent = "";
+    chat.append(el("p", "refused", `沒有題目：${p.refused.join("；")}。主管機關只看場域統計（原型頁的事件摘要與使用趨勢）。`));
+  } else {
+    const draft = p.questions.some(q => q.draft);
+    $("profile-note").textContent = `${p.profile}：${p.questions.length - 1} 個問題加「其他問題」。` +
+      (draft ? "這個讀者還沒有正式範本，句子是 Demo 草案。" : "等級的句子是正式範本（rewrite()）。") +
+      (p.basis_open ? "依據預設展開。" : "依據預設收起。");
+    asked.push(p.questions[0].id); answer(p.questions[0]);
+  }
+  renderMenu();
+}
+for (const p of DATA.profiles) {
+  const t = el("button", "tab", p.profile); t.type = "button"; t.dataset.p = p.profile; t.setAttribute("role", "tab");
+  t.onclick = () => select(p); tabs.append(t);
+}
+select(DATA.profiles[0]);
+
+// 五項指標
+const row = (metric, chip, text) => { const tr = el("tr"); tr.append(el("td", null, metric)); const td = el("td"); td.append(chip); tr.append(td, el("td", null, text)); $("metrics").append(tr); };
+row(a.metric, el("span", "chip ok", `${a.score} 分「${a.rank}」`), `${sp.value} ${a.unit}，由行走事件換算（規則草案）`);
+const STATE = { no_rule: ["chip draft", "沒有換算規則"], unmeasurable: ["chip off", "雷達量不到"] };
+for (const n of DATA.not_assessed) row(n.metric, el("span", STATE[n.state][0], STATE[n.state][1]), n.why + "；本週無法評估");
+
+// 邊界情境
+$("edge-value").textContent = `${DATA.boundary.value} m/s`;
+$("edge-says").textContent = DATA.boundary.caregiver;
+$("edge-reason").textContent = `審核用的原因（不給居服員）：${DATA.boundary.reason}`;
+
+// 事件明細
+$("events-summary").textContent = `${DATA.events.length} 筆事件（換算用到 ${sp.used.length} 筆行走；灰色是沒用到的）`;
+for (const e of DATA.events) {
+  const tr = el("tr", e.used ? null : "skip");
+  const why = e.label !== "walking" ? "只計數" : e.used ? "使用" : sp.short.includes(e.id) ? "排除：短距離" : "排除：信心值";
+  [e.id, e.label, e.start.slice(5, 16).replace("T", " "), e.seconds, e.meters ?? "—", e.confidence.toFixed(2), why].forEach(v => tr.append(el("td", null, String(v))));
+  $("events").append(tr);
+}
+$("sample").textContent = JSON.stringify(DATA.sample_event, null, 2);
+</script>
+</html>
