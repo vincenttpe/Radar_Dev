@@ -28,6 +28,7 @@ radar-kg-build = "radar_agent.kg_source:main"
 radar-kg-level = "radar_agent.kg_rules:main"
 radar-caregiver = "radar_agent.caregiver:main"
 radar-field-data = "radar_agent.field_data:main"
+radar-model-eval = "radar_agent.model_eval:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
