@@ -65,6 +65,20 @@ td .chip { white-space: nowrap; }
 .step.draft { border-color: var(--draft); border-style: dashed; }
 .says { white-space: pre-line; font-size: 14px; }
 
+/* 讀者切換與問題選單 */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab { font: 500 14px var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.tab:focus-visible, .ask:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.qa { display: grid; gap: 14px; }
+.menu { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-top: 12px; border-top: 1px solid var(--line); }
+.menu .label { font-size: 12.5px; color: var(--muted); margin-right: 4px; }
+.ask { font: 500 14px var(--f-body); color: var(--accent); background: var(--accent-soft); border: 1px solid transparent; border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.ask:hover { border-color: var(--accent); }
+.ask.out { color: var(--muted); background: var(--bg); }
+.ask.reset { color: var(--muted); background: transparent; border-color: var(--line); margin-left: auto; }
+.refused { margin: 0; padding: 12px 14px; border-radius: 10px; background: var(--device-bg); color: var(--device); }
+details.basis-box summary { font-size: 12.5px; color: var(--muted); }
 /* 對話 */
 .chat { display: grid; gap: 14px; max-width: 760px; }
 .turn { display: grid; gap: 6px; }
@@ -110,8 +124,13 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
   </section>
 
   <section aria-labelledby="h-chat">
-    <div class="head-row"><h2 id="h-chat">照護人員問，系統答</h2><span class="hint">固定的問題；回答只用上面的事實</span></div>
-    <div class="chat" id="chat"></div>
+    <div class="head-row"><h2 id="h-chat">誰在問，能問什麼</h2><span class="hint">每種讀者一組固定問題，點選提問；回答只用上面的事實</span></div>
+    <div class="tabs" role="tablist" aria-label="讀者" id="tabs"></div>
+    <div class="panel qa">
+      <p class="hint" id="profile-note" style="margin:0"></p>
+      <div class="chat" id="chat" aria-live="polite"></div>
+      <div class="menu" id="menu"></div>
+    </div>
   </section>
 
   <section aria-labelledby="h-metrics">
@@ -166,7 +185,8 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
       <li>等級只由知識圖譜的門檻決定，模型不決定等級；換算規則審核前不會用在正式報告。</li>
       <li>居服員看到的句子來自正式的範本並通過輸出檢查；接上在地模型之前不稱為「LLM 產生」。</li>
       <li>量不到、沒有規則、落在門檻重疊的情況，一律寫「無法評估」，不猜一個等級。</li>
-      <li>超出範圍的問題（例如要不要就醫）系統不回答。</li>
+      <li>不同讀者看到不同的問題；主管機關不能看個人資料，所以沒有題目。居服員以外的句子是草案，題目與範本都要經過審核。</li>
+      <li>沒有輸入框：在地模型能力有限，問題固定，答案可以事先算好、逐題檢查。超出範圍的問題（「其他問題」）系統不回答。</li>
     </ul>
   </section>
 </div></main>
@@ -201,16 +221,61 @@ for (const s of steps) {
   $("flow").append(box);
 }
 
-// 對話
-for (const t of DATA.dialogue) {
+// 讀者切換：每個 Profile 一組固定問題；答完再列出延伸問題
+const tabs = $("tabs"), chat = $("chat"), menu = $("menu");
+let current = DATA.profiles[0], asked = [];
+function answer(q) {
   const turn = el("div", "turn");
-  turn.append(el("div", "q", t.q));
+  turn.append(el("div", "q", q.q));
   const ans = el("div", "a");
-  ans.append(el("div", "text", t.a));
-  const meta = el("div", "meta"); meta.append(el("span", "layer", t.layer)); ans.append(meta);
-  const ul = el("ul", "basis"); t.basis.forEach(b => ul.append(el("li", null, b))); ans.append(ul);
-  turn.append(ans); $("chat").append(turn);
+  ans.append(el("div", "text", q.a));
+  const meta = el("div", "meta"); meta.append(el("span", "layer", q.layer));
+  if (q.draft) meta.append(el("span", "chip draft", "範本草案"));
+  ans.append(meta);
+  const ul = el("ul", "basis"); q.basis.forEach(b => ul.append(el("li", null, b)));
+  if (current.basis_open) ans.append(ul);
+  else { const d = el("details", "basis-box"); d.append(el("summary", null, "依據"), ul); ans.append(d); }
+  turn.append(ans); chat.append(turn);
 }
+function renderMenu() {
+  menu.replaceChildren();
+  if (current.refused.length) return;
+  const last = asked.length ? current.questions.find(q => q.id === asked[asked.length - 1]) : null;
+  const ids = last ? [...last.follow, "out"] : current.questions.map(q => q.id);
+  menu.append(el("span", "label", last ? "接著問" : "可以問"));
+  for (const id of ids) {
+    const q = current.questions.find(x => x.id === id);
+    const b = el("button", "ask" + (id === "out" ? " out" : ""), q.q); b.type = "button";
+    b.onclick = () => { asked.push(id); answer(q); renderMenu(); };
+    menu.append(b);
+  }
+  if (last) {
+    const all = el("button", "ask reset", "全部問題"); all.type = "button";
+    all.onclick = () => { asked = []; chat.replaceChildren(); renderMenu(); };
+    menu.append(all);
+  }
+}
+function select(p) {
+  current = p; asked = [];
+  tabs.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.p === p.profile)));
+  chat.replaceChildren();
+  if (p.refused.length) {
+    $("profile-note").textContent = "";
+    chat.append(el("p", "refused", `沒有題目：${p.refused.join("；")}。主管機關只看場域統計（原型頁的事件摘要與使用趨勢）。`));
+  } else {
+    const draft = p.questions.some(q => q.draft);
+    $("profile-note").textContent = `${p.profile}：${p.questions.length - 1} 個問題加「其他問題」。` +
+      (draft ? "這個讀者還沒有正式範本，句子是 Demo 草案。" : "等級的句子是正式範本（rewrite()）。") +
+      (p.basis_open ? "依據預設展開。" : "依據預設收起。");
+    asked.push(p.questions[0].id); answer(p.questions[0]);
+  }
+  renderMenu();
+}
+for (const p of DATA.profiles) {
+  const t = el("button", "tab", p.profile); t.type = "button"; t.dataset.p = p.profile; t.setAttribute("role", "tab");
+  t.onclick = () => select(p); tabs.append(t);
+}
+select(DATA.profiles[0]);
 
 // 五項指標
 const row = (metric, chip, text) => { const tr = el("tr"); tr.append(el("td", null, metric)); const td = el("td"); td.append(chip); tr.append(td, el("td", null, text)); $("metrics").append(tr); };

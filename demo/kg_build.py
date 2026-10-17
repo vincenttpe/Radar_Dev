@@ -1,7 +1,7 @@
 """產生知識圖譜 Demo 頁 demo/kg_demo.html（**模擬資料**，內部確認 Demo 功能用；docs/11「知識圖譜 Demo」）。
 
 一位長者一週的模擬姿態與活動事件 → 換算規則（**草案**）→ 量測值 → 知識圖譜門檻（radar-kg-level 的
-`assess`）→ 居服員看的等級與建議（`rewrite()`，目前是範本）→ 幾個固定問題的回答，每個回答都附依據
+`assess`）→ 居服員看的等級與建議（`rewrite()`，目前是範本）→ 依讀者（Profile）切換的固定問題與回答，每個回答都附依據
 （規則版本、知識圖譜版本、事件編號）。
 
 為什麼是模擬：10/19 的實測資料只有浴廁裝置事件（進出、久待、跌倒、呼救、斷線），換算不出知識圖譜的
@@ -30,7 +30,8 @@ from typing import Any
 
 from radar_agent.caregiver import FORBIDDEN, check_output
 from radar_agent.event_validation import validate_event
-from radar_agent.kg_rules import Assessment, assess, load
+from radar_agent.audience import ALLOWED, check_audience
+from radar_agent.kg_rules import Assessment, KgInfo, assess, load
 from radar_agent.rewrite import rewrite
 
 HERE = Path(__file__).resolve().parent
@@ -155,6 +156,95 @@ def _personal(a: Assessment) -> str:
     return text
 
 
+# 各 Profile 的固定問題（docs/02「輸出的對象」、audience.py）。居服員的等級句子來自 rewrite()；
+# 其他 Profile 還沒有正式範本，句子是 Demo 草案（標 draft），題目與範本要經審核（單向門「給讀者的輸出與用語」）。
+OUT_OF_SCOPE = "這個問題系統不回答：等級只依知識圖譜的門檻，不做醫療判斷。如果擔心，請和護理人員討論。"
+BASIS_OPEN = {"居服員": True, "醫師": True, "家屬": False, "長者本人": False, "主管機關": False}
+
+
+def _q(qid: str, q: str, a: str, layer: str, basis: list[str], follow: tuple[str, ...] = (),
+       *, draft: bool = False, checked: bool = False) -> dict[str, Any]:
+    return {"id": qid, "q": q, "a": a, "layer": layer, "basis": basis, "follow": list(follow),
+            "draft": draft, "checked": checked}
+
+
+def profile_menus(kg_info: KgInfo, speed: dict[str, Any], a: Assessment, boundary: Assessment,
+                  period: str, sit: int) -> list[dict[str, Any]]:
+    """每個 Profile 的題目選單。權限照 audience.ALLOWED：不能看個人資料的 Profile 沒有題目，只寫原因。"""
+    kg_note = f"知識圖譜 {kg_info['version']}（{'已核准' if kg_info['approved'] else '尚未核准，僅供測試'}）"
+    test_only = "" if kg_info["approved"] else "（知識圖譜尚未核准，僅供測試）"
+    rule_note = f"換算規則 {RULE.id}（{RULE.status}）"
+    used, dropped = len(speed["used"]), len(speed["short"]) + len(speed["unsure"])
+    walk_ids = f"行走事件 {speed['used'][0]}…{speed['used'][-1]} 中的 {used} 筆"
+    value = f"{speed['value']} {a['unit']}"
+    unmeasurable = "、".join(n["metric"] for n in NOT_ASSESSED if n["state"] == "unmeasurable")
+    how = (f"{period} 共有 {speed['walks']} 次行走，其中 {used} 次符合換算規則"
+           f"（排除 {len(speed['short'])} 次短距離移動、{len(speed['unsure'])} 次信心值不足），"
+           f"取每次步速的中位數為 {value}。換算規則是草案，還沒有經過 PT 審核。")
+    others = (f"這週有 {sit} 次從坐到站，但還沒有從日常起身換算下肢肌力的規則，本週無法評估。"
+              f"{unmeasurable}雷達量不到，本週無法評估。")
+    advice = f"建議：{a['suggestion']}\n建議量：{a['recommended_dose']}\n{test_only}".rstrip()
+    no_compare = "目前只有一週的資料，還不能和上週比較，本週無法評估變化。"
+    out = _q("out", "其他問題", OUT_OF_SCOPE, "固定句型（超出範圍）", ["超出系統範圍的問題一律不回答（非醫療器材）"])
+
+    menus: dict[str, list[dict[str, Any]]] = {
+        "居服員": [
+            _q("walk", "這週走路的狀況怎麼樣？", _personal(a), "rewrite() 範本",
+               [rule_note, kg_note, walk_ids], ("how", "others"), checked=True),
+            _q("how", f"{speed['value']} 是怎麼算出來的？", how, "依據說明（固定句型）",
+               [rule_note, f"使用 {walk_ids}；排除 {dropped} 筆"], ("others",)),
+            _q("others", "起身和平衡的狀況呢？", others, "固定句型",
+               [kg_note, f"坐→站事件 {sit} 筆（只計數，不出等級）"], ("walk",)),
+            out,
+        ],
+        "家屬": [
+            _q("walk", "這週活動的狀況如何？",
+               f"這週走路的速度屬於「{a['rank']}」。{test_only}", "Demo 草案範本",
+               [kg_note], ("advice", "compare"), draft=True, checked=True),
+            _q("advice", "可以怎麼陪伴活動？", advice, "知識圖譜原文照抄", [kg_note], ("walk",),
+               draft=True, checked=True),
+            _q("compare", "和上週比起來呢？", no_compare, "固定句型", ["只有一週資料"], ("walk",), draft=True),
+            out,
+        ],
+        "醫師": [
+            _q("value", "量測值與門檻原文", (
+                f"{a['metric']} {value}（{used} 次行走的中位數），落在知識圖譜門檻「{a['source_text']}」，"
+                f"{a['score']} 分「{a['rank']}」。{test_only}"),
+               "Demo 草案範本", [rule_note, kg_note, walk_ids], ("data", "rule"), draft=True),
+            _q("data", "資料夠不夠？", how, "依據說明（固定句型）",
+               [f"使用 {walk_ids}；排除 {dropped} 筆", f"規則要求至少 {RULE.min_walks} 次"], ("rule",), draft=True),
+            _q("rule", "依據哪一版規則？", f"{rule_note}：" + "；".join(RULE_TEXT) + "。",
+               "固定句型", [rule_note, kg_note], ("unassessed",), draft=True),
+            _q("unassessed", "哪些項目無法評估、為什麼？",
+               f"{others}另外，步速剛好 {boundary['value']} {a['unit']} 時無法評估：{boundary['reason']}。",
+               "固定句型（含審核用的原因）", [kg_note], ("value",), draft=True),
+            out,
+        ],
+        "長者本人": [
+            _q("walk", "我這週走得怎麼樣？",
+               f"您這週走路的速度屬於「{a['rank']}」。{test_only}", "Demo 草案範本", [kg_note], ("advice",),
+               draft=True, checked=True),
+            _q("advice", "我可以做什麼運動？", advice, "知識圖譜原文照抄", [kg_note], ("walk",),
+               draft=True, checked=True),
+            out,
+        ],
+    }
+    result = []
+    for profile in ALLOWED:
+        refused = check_audience(profile, a)
+        questions = [] if refused else menus[profile]
+        for q in questions:
+            problems = _wording(q["a"]) if not q["checked"] else check_output(q["a"], a)
+            if problems:
+                raise ValueError(f"{profile}「{q['q']}」的回答：{problems}")
+            ids = {x["id"] for x in questions}
+            if not set(q["follow"]) <= ids:
+                raise ValueError(f"{profile}「{q['q']}」的延伸問題不在選單裡")
+        result.append({"profile": profile, "refused": refused, "basis_open": BASIS_OPEN[profile],
+                       "questions": questions})
+    return result
+
+
 def kg_data() -> dict[str, Any]:
     events = simulated_events()
     for e in events:
@@ -175,30 +265,7 @@ def kg_data() -> dict[str, Any]:
     last = FIRST_DAY + timedelta(days=DAYS - 1)
     period = f"{FIRST_DAY.month}/{FIRST_DAY.day}–{last.month}/{last.day}"
     sit = sum(e["label"] == "sit_to_stand" for e in events)
-    kg_note = f"知識圖譜 {kg.info['version']}（{'已核准' if kg.info['approved'] else '尚未核准，僅供測試'}）"
-    rule_note = f"換算規則 {RULE.id}（{RULE.status}）"
-    walk_ids = f"{speed['used'][0]}…{speed['used'][-1]} 中的 {len(speed['used'])} 筆"
-    unmeasurable = "、".join(n["metric"] for n in NOT_ASSESSED if n["state"] == "unmeasurable")
-    dialogue: list[dict[str, Any]] = [
-        {"q": "這週走路的狀況怎麼樣？", "layer": "rewrite() 範本", "a": _personal(result),
-         "basis": [rule_note, kg_note, f"行走事件 {walk_ids}"]},
-        {"q": f"{speed['value']} 是怎麼算出來的？", "layer": "依據說明（固定句型）",
-         "a": (f"{period} 共有 {speed['walks']} 次行走，其中 {len(speed['used'])} 次符合換算規則"
-               f"（排除 {len(speed['short'])} 次短距離移動、{len(speed['unsure'])} 次信心值不足），"
-               f"取每次步速的中位數為 {speed['value']} m/s。換算規則是草案，還沒有經過 PT 審核。"),
-         "basis": [rule_note, f"使用 {walk_ids}；排除 {len(speed['short']) + len(speed['unsure'])} 筆"]},
-        {"q": "起身和平衡的狀況呢？", "layer": "固定句型",
-         "a": (f"這週有 {sit} 次從坐到站，但還沒有從日常起身換算下肢肌力的規則，本週無法評估。"
-               f"{unmeasurable}雷達量不到，本週無法評估。"),
-         "basis": [kg_note, f"坐→站事件 {sit} 筆（只計數，不出等級）"]},
-        {"q": "要不要安排就醫？", "layer": "固定句型（超出範圍）",
-         "a": "這個問題系統不回答：等級只依知識圖譜的門檻，不做醫療判斷。如果擔心，請和護理人員或主管討論。",
-         "basis": ["超出系統範圍的問題一律不回答（非醫療器材）"]},
-    ]
-    for turn in dialogue[1:]:
-        problems = _wording(turn["a"])
-        if problems:
-            raise ValueError(f"「{turn['q']}」的回答：{problems}")
+    menus = profile_menus(kg.info, speed, result, boundary, period, sit)
 
     return {
         "device": DEVICE, "subject": SUBJECT, "period": period,
@@ -216,7 +283,7 @@ def kg_data() -> dict[str, Any]:
         "caregiver": _personal(result),
         "boundary": {"value": BOUNDARY_VALUE, "reason": boundary["reason"], "caregiver": _personal(boundary)},
         "not_assessed": NOT_ASSESSED,
-        "dialogue": dialogue,
+        "profiles": menus,
         "sample_event": events[0],
     }
 

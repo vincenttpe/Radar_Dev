@@ -11,6 +11,7 @@ from decimal import Decimal
 
 import pytest
 
+from radar_agent.audience import ALLOWED
 from radar_agent.caregiver import FORBIDDEN, check_output
 from radar_agent.event_validation import validate_event
 from radar_agent.kg_rules import assess, load
@@ -70,7 +71,7 @@ def test_level_comes_from_the_knowledge_graph(data):
 
 def test_caregiver_text_is_rewrite_output_and_passes_checks(data):
     result = assess(load(), "步行速度", data["speed"]["value"])
-    assert data["caregiver"] == rewrite(result).text == data["dialogue"][0]["a"]
+    assert data["caregiver"] == rewrite(result).text == _menu(data, "居服員")[0]["a"]
     assert check_output(data["caregiver"], result) == []
     assert "僅供測試" in data["caregiver"]
 
@@ -82,14 +83,46 @@ def test_boundary_value_is_not_assessed(data):
     assert "重疊" not in boundary["caregiver"], "缺口、重疊等審核用語不給居服員"
 
 
-def test_every_answer_has_basis_and_no_forbidden_words(data):
-    assert len(data["dialogue"]) == 4
-    for turn in data["dialogue"]:
-        assert turn["basis"]
-        assert not [w for w in FORBIDDEN if w in turn["a"]]
-    assert "草案" in data["dialogue"][1]["a"]
-    assert data["dialogue"][2]["a"].count("無法評估") == 2
-    assert "不回答" in data["dialogue"][3]["a"]
+def _menu(data, profile):
+    return next(p for p in data["profiles"] if p["profile"] == profile)["questions"]
+
+
+def test_profiles_follow_audience_permissions(data):
+    assert [p["profile"] for p in data["profiles"]] == list(ALLOWED)
+    for p in data["profiles"]:
+        if "個人" in ALLOWED[p["profile"]]:
+            assert not p["refused"] and p["questions"]
+        else:
+            assert p["refused"] and not p["questions"], "不能看個人資料的讀者不能有題目"
+
+
+def test_every_answer_has_basis_follow_ups_and_no_forbidden_words(data):
+    for p in data["profiles"]:
+        ids = {q["id"] for q in p["questions"]}
+        for q in p["questions"]:
+            assert q["basis"] and set(q["follow"]) <= ids
+            assert not [w for w in FORBIDDEN if w in q["a"]]
+        if p["questions"]:
+            assert p["questions"][-1]["id"] == "out" and "不回答" in p["questions"][-1]["a"]
+
+
+def test_only_caregiver_uses_the_formal_template(data):
+    result = assess(load(), "步行速度", data["speed"]["value"])
+    for p in data["profiles"]:
+        for q in p["questions"]:
+            if q["checked"]:
+                assert check_output(q["a"], result) == []
+            if p["profile"] != "居服員" and q["id"] != "out":
+                assert q["draft"], f"{p['profile']}還沒有正式範本，要標草案"
+    caregiver = _menu(data, "居服員")
+    assert not any(q["draft"] for q in caregiver)
+    assert "草案" in caregiver[1]["a"] and caregiver[2]["a"].count("無法評估") == 2
+
+
+def test_review_wording_only_reaches_doctors(data):
+    for p in data["profiles"]:
+        mentions = any("重疊" in q["a"] for q in p["questions"])
+        assert mentions == (p["profile"] == "醫師"), "門檻重疊等審核用語只給醫師"
 
 
 def test_draft_rule_change_must_keep_page_in_sync(build, monkeypatch):
