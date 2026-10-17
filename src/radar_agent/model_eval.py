@@ -10,6 +10,8 @@ radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model qwen2.5-7b-instruct
     OpenAI 相容的 chat completions（llama.cpp server、Ollama 等）。只連本機或區網，不經過 proxy。
 radar-model-eval --cmd "某個指令"
     任意指令，prompt 從標準輸入送進去，標準輸出當成模型的回答。
+radar-model-eval --endpoint … --model … --questions
+    改量「提問對應」（ask.match_question）：打字提問能不能對到正確的固定問題。
 
 選型時對每個候選模型各跑一次，比較採用率、延遲與退回原因（會議清單 B1、F2）。
 """
@@ -30,6 +32,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from radar_agent import kg_rules
+from radar_agent.ask import Match, Question, match_question
 from radar_agent.device_events import Summary, summarize
 from radar_agent.kg_rules import Assessment
 from radar_agent.rewrite import Rewritten, rewrite
@@ -137,6 +140,80 @@ def kg_cases(kg: kg_rules.KnowledgeGraph | None = None) -> list[Case]:
 
 def all_cases() -> list[Case]:
     return event_cases() + kg_cases()
+
+
+# 提問對應的題組：固定問題清單（照 demo/kg_build.py 居服員與家屬的題目）與讀者可能的打法。
+# expected 為 None 的是清單沒有、應該回 0 的提問（醫療問題、閒聊）。
+ASK_MENU: list[Question] = [
+    Question("walk", "這週走路的狀況怎麼樣？"),
+    Question("how", "步速是怎麼算出來的？"),
+    Question("others", "起身和平衡的狀況呢？"),
+    Question("advice", "可以怎麼陪伴活動？"),
+    Question("compare", "和上週比起來呢？"),
+]
+
+
+@dataclass(frozen=True)
+class AskCase:
+    id: str
+    asked: str
+    expected: str | None
+
+
+ASK_CASES: list[AskCase] = [
+    AskCase("Q1", "他最近走路還穩嗎", "walk"),
+    AskCase("Q2", "這禮拜行走情況", "walk"),
+    AskCase("Q3", "0.9 這個數字哪來的", "how"),
+    AskCase("Q4", "速度是用什麼算的", "how"),
+    AskCase("Q5", "站起來會不會晃", "others"),
+    AskCase("Q6", "平衡感有沒有問題", "others"),
+    AskCase("Q7", "我回家可以帶他做什麼運動", "advice"),
+    AskCase("Q8", "家人能幫忙什麼", "advice"),
+    AskCase("Q9", "有比上禮拜進步嗎", "compare"),
+    AskCase("Q10", "是不是越來越差", "compare"),
+    AskCase("Q11", "要不要吃鈣片", None),
+    AskCase("Q12", "明天會下雨嗎", None),
+    AskCase("Q13", "他是不是失智了", None),
+]
+
+
+@dataclass
+class AskResult:
+    case: AskCase
+    match: Match
+    seconds: float
+
+    @property
+    def outcome(self) -> str:
+        got = self.match.question.id if self.match.question else None
+        if got == self.case.expected:
+            return "正確"
+        return "沒對應到" if got is None else "對錯題"
+
+
+def evaluate_asks(model: Any, cases: list[AskCase], *, clock: Callable[[], float] = time.perf_counter
+                  ) -> tuple[str, list[AskResult]]:
+    results = []
+    for case in cases:
+        started = clock()
+        match = match_question(case.asked, ASK_MENU, model=model)
+        results.append(AskResult(case, match, clock() - started))
+    return model.name, results
+
+
+def report_asks(run: tuple[str, list[AskResult]]) -> str:
+    name, rs = run
+    n = Counter(r.outcome for r in rs)
+    lines = [f"模型：{name}　題數：{len(rs)}　正確 {n['正確']}、對錯題 {n['對錯題']}、沒對應到 {n['沒對應到']}"]
+    for r in rs:
+        got = r.match.question.id if r.match.question else "無"
+        lines.append(f"[{r.outcome}] {r.case.id} 「{r.case.asked}」→ {got}（應為 {r.case.expected or '無'}，{r.seconds:.2f} 秒）")
+        lines.extend(f"    原因：{reason}" for reason in r.match.rejected)
+    if rs:
+        lines.append("")
+        lines.append(f"正確率 {n['正確'] / len(rs):.0%}；每題延遲 中位數 {statistics.median(r.seconds for r in rs):.2f} 秒")
+    lines.append("對錯題比沒對應到嚴重：讀者確認時沒看清楚，就會拿到別題的答案。沒對應到時改列選單，不影響回答。")
+    return "\n".join(lines)
 
 
 # ── 模型 ────────────────────────────────────────────────
@@ -273,6 +350,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--timeout", type=float, default=120, help="每題逾時秒數（預設 120）")
     ap.add_argument("--only", help="只跑這些題，逗號分隔，例如 E2,K7")
     ap.add_argument("--show", action="store_true", help="印出被採用的模型輸出")
+    ap.add_argument("--questions", action="store_true", help="改量提問對應（打字提問對到哪一個固定問題）")
     args = ap.parse_args(sys.argv[1:] if argv is None else argv)
 
     model: Any
@@ -285,6 +363,9 @@ def main(argv: list[str] | None = None) -> int:
         model = HttpChatModel(args.endpoint, args.model, timeout=args.timeout)
     else:
         model = CommandModel(args.cmd, timeout=args.timeout)
+    if args.questions:
+        print(report_asks(evaluate_asks(model, ASK_CASES)))
+        return 0
     cases = all_cases()
     if args.only:
         wanted = {s.strip() for s in args.only.split(",") if s.strip()}

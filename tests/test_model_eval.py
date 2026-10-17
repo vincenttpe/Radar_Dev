@@ -14,6 +14,8 @@ import pytest
 from radar_agent.caregiver import caregiver_text, check_output
 from radar_agent.device_events import Summary
 from radar_agent.model_eval import (
+    ASK_CASES,
+    ASK_MENU,
     PLACE,
     CommandModel,
     EchoModel,
@@ -21,7 +23,9 @@ from radar_agent.model_eval import (
     _reason_kind,
     all_cases,
     evaluate,
+    evaluate_asks,
     main,
+    report_asks,
     report_text,
 )
 
@@ -158,3 +162,56 @@ def test_cli(server, capsys):
     assert "--model" in capsys.readouterr().err
     assert main(["--echo", "--only", "E1,X9"]) == 2
     assert "X9" in capsys.readouterr().err
+
+
+# ── 提問對應（ask.match_question）────────────────────────
+
+
+
+class Oracle:
+    """照題組的標準答案回答：每題都對。"""
+
+    name = "oracle"
+
+    def __call__(self, prompt: str) -> str:
+        asked = prompt.rsplit("使用者的提問：", 1)[-1]
+        expected = next(c.expected for c in ASK_CASES if c.asked == asked)
+        ids = [q.id for q in ASK_MENU]
+        return str(ids.index(expected) + 1) if expected else "0"
+
+
+class AlwaysFirst:
+    name = "always-1"
+
+    def __call__(self, prompt: str) -> str:
+        return "1"
+
+
+def test_ask_cases_point_at_menu_questions_and_include_off_topic_ones():
+    ids = {q.id for q in ASK_MENU}
+    assert len({c.id for c in ASK_CASES}) == len(ASK_CASES)
+    assert all(c.expected is None or c.expected in ids for c in ASK_CASES)
+    assert {c.expected for c in ASK_CASES} == ids | {None}, "每一題、以及「不該對應」都要有題目"
+
+
+def test_perfect_model_scores_every_ask():
+    text = report_asks(evaluate_asks(Oracle(), ASK_CASES, clock=ticking(0.5)))
+    assert text.startswith(f"模型：oracle　題數：{len(ASK_CASES)}　正確 {len(ASK_CASES)}、對錯題 0、沒對應到 0")
+    assert "[對錯題]" not in text
+
+
+def test_wrong_question_is_counted_separately_from_no_match():
+    """對錯題比沒對應到嚴重：讀者若沒看清楚就按確認，會拿到別題的答案。"""
+    run = evaluate_asks(AlwaysFirst(), ASK_CASES, clock=ticking(0.5))
+    first = ASK_MENU[0].id
+    wrong = sum(1 for c in ASK_CASES if c.expected != first)
+    text = report_asks(run)
+    assert f"正確 {len(ASK_CASES) - wrong}、對錯題 {wrong}、沒對應到 0" in text
+    assert "[對錯題]" in text
+
+
+def test_cli_questions(capsys):
+    assert main(["--echo", "--questions"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith(f"模型：echo　題數：{len(ASK_CASES)}　正確 ")
+    assert "模型回答不是單一編號" in out
