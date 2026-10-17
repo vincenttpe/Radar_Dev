@@ -7,6 +7,7 @@
 | `prototype.html` | 產生出來的頁面，直接用瀏覽器開；不連網也能顯示（字型會改用系統字型） |
 | `template.html` | 頁面的版面、樣式與互動；改畫面請改這裡 |
 | `build.py` | 跑 `radar-caregiver` 的同一套函式，把輸出放進 `template.html`，產生 `prototype.html` |
+| `kg_demo.html`、`kg_template.html`、`kg_build.py` | 知識圖譜 Demo（模擬資料、換算規則草案，內部確認功能用）；`python demo/kg_build.py` 產生，見 `docs/11_Demo規劃.md`「知識圖譜 Demo」 |
 
 ```bash
 python demo/build.py    # 改了 template.html、caregiver.py 的用語或 data/samples_demo/ 之後都要重跑
