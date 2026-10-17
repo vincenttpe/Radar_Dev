@@ -78,8 +78,10 @@ def test_show_prints_adopted_output():
 
 
 @pytest.mark.parametrize("reason,kind", [
-    ("漏掉範本裡的數字 3", "漏掉範本裡的數字"), ("長度 300 字超過範本的 2 倍", "長度"),
-    ("模型錯誤：TimeoutError", "模型錯誤"), ("漏掉「無法判斷」", "漏掉「無法判斷」"),
+    ("漏掉範本裡的數字 3", "漏掉數字"), ("長度 300 字超過範本的 2 倍", "太長"),
+    ("模型錯誤：TimeoutError", "模型錯誤"), ("數字 3 不在事實裡", "多出事實沒有的數字"),
+    ("不能出現「治療」（非醫療器材）", "用了不能用的字"), ("不能寫「誤報」（C2）", "用了不能用的字"),
+    ("漏掉「無法判斷」", "漏掉「無法判斷」"),
 ])
 def test_reason_kinds(reason, kind):
     assert _reason_kind(reason) == kind

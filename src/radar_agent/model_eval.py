@@ -212,11 +212,22 @@ def evaluate(model: Any, cases: list[Case], *, clock: Callable[[], float] = time
     return run
 
 
+# 退回原因的開頭 → 統計時的類別（rewrite() 與 check_output() 的原因寫法）
+REASON_KINDS = (
+    ("漏掉範本裡的數字", "漏掉數字"),
+    ("長度", "太長"),
+    ("模型錯誤", "模型錯誤"),
+    ("數字", "多出事實沒有的數字"),
+    ("不能出現", "用了不能用的字"),
+    ("不能寫", "用了不能用的字"),
+)
+
+
 def _reason_kind(reason: str) -> str:
-    """把「漏掉範本裡的數字 3」這類原因歸成同一類，方便統計。"""
-    for prefix in ("漏掉範本裡的數字", "長度", "模型錯誤", "數字", "不能出現"):
+    """把「漏掉範本裡的數字 3」這類原因歸成同一類，方便統計；認不得的照原文。"""
+    for prefix, kind in REASON_KINDS:
         if reason.startswith(prefix):
-            return prefix
+            return kind
     return reason
 
 
