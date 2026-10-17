@@ -54,7 +54,14 @@ decode 速度主要受**記憶體頻寬**限制（每產生一個 token 要把�
 
 先買一台入門開發套件（Orin Nano Super 開發套件約 249 美元）做量測，再決定量產型號。
 
-1. **準備真實工作**：用 Profile 改寫的實際 prompt（結構化事實＋範本指示），不要用通用測試題。
+1. **準備真實工作**：用 Profile 改寫的實際 prompt（結構化事實＋範本指示），不要用通用測試題。**2026-10-17 已備妥**：`radar-model-eval` 內建 20 題（裝置事件 11 題、知識圖譜等級 9 題，全部是程式產生的模擬資料），每題走正式的 `rewrite()`，量採用率、每題延遲、token／秒，並統計退回原因。接法有三種：`--endpoint`（OpenAI 相容 API，例如 llama.cpp server、Ollama）、`--cmd`（任意指令，prompt 從標準輸入送入）、`--echo`（照抄原文的假模型，試跑用）。
+
+   ```bash
+   radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model qwen2.5-1.5b-instruct-q4_k_m
+   radar-model-eval --endpoint http://127.0.0.1:11434/v1 --model qwen2.5:3b --show   # 印出被採用的輸出，給人看品質
+   ```
+
+   題組裡知識圖譜的建議原文（例如 K2 的「由醫師或物理治療師評估」）照規則必須一字不改；這段原文是否合乎非醫療器材的用語，待知識圖譜審核（E4～E6）。
 2. **候選模型**：例如 Qwen2.5 0.5B／1.5B／3B，各試 4-bit 與 8-bit 量化（F2 確認選型與授權）。
 3. **量測項目**：
    - prefill 與 decode 的 token/s；

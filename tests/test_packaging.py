@@ -20,6 +20,7 @@ def test_declared_scripts(project):
         "radar-kg-level": "radar_agent.kg_rules:main",
         "radar-caregiver": "radar_agent.caregiver:main",
         "radar-field-data": "radar_agent.field_data:main",
+        "radar-model-eval": "radar_agent.model_eval:main",
     }
 
 
@@ -110,6 +111,7 @@ def test_coverage_gate_is_configured_and_matches_the_readme(repo):
     ("radar_agent.kg_rules", ["來回行走", "5.4"]),
     ("radar_agent.caregiver", ["data/samples_demo/bathroom_morning.jsonl", "--place", "1 號廁所"]),
     ("radar_agent.field_data", ["inspect", "data/samples_demo/bathroom_morning.jsonl"]),
+    ("radar_agent.model_eval", ["--echo"]),
 ])
 def test_modules_run_as_scripts(repo, module, args):
     """python -m <模組> 的進入點（if __name__ == '__main__'）真的能跑，結束碼為 0。"""

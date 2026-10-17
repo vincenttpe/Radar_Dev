@@ -60,6 +60,7 @@ radar-field-data inspect 實測.json                                            
 radar-field-data mask 實測.json --out-dir outputs/field                            # 裝置識別換成 FIELD-01…，每台一個檔案；只能寫到 outputs/
 radar-field-data sheet > 操演紀錄.csv                                              # 實機操演紀錄表（10 項，現場填手錶時間）
 radar-field-data compare 操演紀錄.csv outputs/field/FIELD-01.jsonl --date 2026-10-19  # 紀錄表與資料逐項比對、判斷時區
+radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model 模型名稱              # 在地模型評估：固定題組的採用率、延遲、退回原因（--echo 試跑）
 ```
 
 `git pull` 之後如果 `pyproject.toml` 有變動，再執行一次 `pip install -e ".[dev]"`。
