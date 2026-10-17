@@ -12,6 +12,9 @@ radar-model-eval --cmd "某個指令"
     任意指令，prompt 從標準輸入送進去，標準輸出當成模型的回答。
 radar-model-eval --endpoint … --model … --questions
     改量「提問對應」（ask.match_question）：打字提問能不能對到正確的固定問題。
+radar-model-eval --endpoint … --model … --records [--references 參考紀錄.json] [--style 機構格式樣本.txt]
+    改量「照護紀錄改寫」（care_record）：採用率；有參考紀錄時再算 BLEU、ROUGE 並對照 KPI 目標（docs/08）。
+    參考紀錄是 {"題號": "護理人員寫的紀錄"}，要由機構提供（會議清單 F13），樣本與參考都要先去識別。
 
 選型時對每個候選模型各跑一次，比較採用率、延遲與退回原因（會議清單 B1、F2）。
 """
@@ -25,6 +28,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from pathlib import Path
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -33,6 +37,9 @@ from typing import Any
 
 from radar_agent import kg_rules
 from radar_agent.ask import Match, Question, match_question
+from radar_agent.care_record import care_record
+from radar_agent.caregiver import event_notes
+from radar_agent.text_metrics import bleu, rouge_1, rouge_l
 from radar_agent.device_events import Summary, summarize
 from radar_agent.kg_rules import Assessment
 from radar_agent.rewrite import Rewritten, rewrite
@@ -216,6 +223,46 @@ def report_asks(run: tuple[str, list[AskResult]]) -> str:
     return "\n".join(lines)
 
 
+# 照護紀錄：有事件的模擬題目；LLM 文字指標的目標（docs/08「LLM 文字生成指標」）
+RECORD_TARGETS = {"BLEU-1": 44, "BLEU-4": 5, "ROUGE-1": 31, "ROUGE-L": 28}
+
+
+def record_cases() -> list[Case]:
+    return [c for c in event_cases() if isinstance(c.source, Summary) and event_notes(c.source, PLACE)]
+
+
+def evaluate_records(model: Any, cases: list[Case], *, style: str | None = None,
+                     clock: Callable[[], float] = time.perf_counter) -> Run:
+    run = Run(model.name)
+    for case in cases:
+        assert isinstance(case.source, Summary)
+        started = clock()
+        out = care_record(case.source, place=PLACE, model=model, style=style)
+        run.results.append(Result(case, out, clock() - started, getattr(model, "last_tokens", None)))
+    return run
+
+
+def report_records(run: Run, references: dict[str, str] | None) -> str:
+    rs = run.results
+    adopted = [r for r in rs if r.out.layer == "model"]
+    lines = [f"模型：{run.model}　照護紀錄題數：{len(rs)}　採用 {len(adopted)}、退回草稿 {len(rs) - len(adopted)}"]
+    for r in rs:
+        lines.append(f"[{'採用' if r.out.layer == 'model' else '退回'}] {r.case.id} {r.case.title}（{r.seconds:.2f} 秒）")
+        lines.extend(f"    原因：{reason}" for reason in r.out.rejected)
+    lines.append("")
+    pairs = [(r.out.text, references[r.case.id]) for r in rs if references and r.case.id in references]
+    if not pairs:
+        lines.append("沒有參考紀錄，不計算 BLEU、ROUGE（需要機構提供護理人員寫的紀錄，會議清單 F13）。")
+        return "\n".join(lines)
+    scores = {"BLEU-1": bleu(pairs, 1), "BLEU-4": bleu(pairs, 4), "ROUGE-1": rouge_1(pairs), "ROUGE-L": rouge_l(pairs)}
+    lines.append(f"有參考紀錄的題數：{len(pairs)}（以實際交給居服員的紀錄計算，退回草稿的也算）")
+    for name, value in scores.items():
+        target = RECORD_TARGETS[name]
+        lines.append(f"{name} {value:.1f}（目標 ≥ {target}，{'達標' if value >= target else '未達標'}）")
+    lines.append("BERTScore 需要另外的語言模型，這裡不計算。")
+    return "\n".join(lines)
+
+
 # ── 模型 ────────────────────────────────────────────────
 
 class EchoModel:
@@ -351,6 +398,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--only", help="只跑這些題，逗號分隔，例如 E2,K7")
     ap.add_argument("--show", action="store_true", help="印出被採用的模型輸出")
     ap.add_argument("--questions", action="store_true", help="改量提問對應（打字提問對到哪一個固定問題）")
+    ap.add_argument("--records", action="store_true", help="改量照護紀錄改寫")
+    ap.add_argument("--references", help="--records 用：參考紀錄 JSON（{題號: 紀錄}），有它才算 BLEU、ROUGE")
+    ap.add_argument("--style", help="--records 用：機構紀錄格式樣本（文字檔，需先去識別）")
     args = ap.parse_args(sys.argv[1:] if argv is None else argv)
 
     model: Any
@@ -365,6 +415,11 @@ def main(argv: list[str] | None = None) -> int:
         model = CommandModel(args.cmd, timeout=args.timeout)
     if args.questions:
         print(report_asks(evaluate_asks(model, ASK_CASES)))
+        return 0
+    if args.records:
+        refs = json.loads(Path(args.references).read_text(encoding="utf-8")) if args.references else None
+        style = Path(args.style).read_text(encoding="utf-8") if args.style else None
+        print(report_records(evaluate_records(model, record_cases(), style=style), refs))
         return 0
     cases = all_cases()
     if args.only:
