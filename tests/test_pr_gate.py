@@ -82,6 +82,7 @@ def test_docs_only_change_passes_with_none(template):
     ("src/radar_agent/kg_source.py", "數字與等級的判定"),
     ("src/radar_agent/kg_rules.py", "數字與等級的判定"),
     ("src/radar_agent/caregiver.py", "給讀者的輸出與用語"),
+    ("src/radar_agent/output_check.py", "給讀者的輸出與用語"),
     ("src/radar_agent/ask.py", "給讀者的輸出與用語"),
     ("src/radar_agent/care_record.py", "給讀者的輸出與用語"),
     ("data/samples_fall/2026-06-03.json", "個人資料的流向"),

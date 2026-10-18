@@ -1,6 +1,7 @@
 """整理裝置事件：把雲端外殼格式的紀錄整理成造訪等摘要（docs/adr/0001）。
 
-輸入是 {"timestamp", "topic", "resolution", "payload"} 的紀錄清單（docs/05 A2、A10）。
+輸入是 {"timestamp", "topic", "resolution", "payload"} 的紀錄清單（docs/05 A2、A10）；
+read_records 從紀錄檔（JSON 陣列或一行一筆）讀出這份清單。
 用語見 CONTEXT.md「雷達資料」。
 """
 from __future__ import annotations
