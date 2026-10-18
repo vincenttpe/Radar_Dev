@@ -16,7 +16,8 @@ git rev-parse --show-toplevel
 git remote get-url origin
 git fetch --quiet origin            # 失敗就註明「落後數可能不是最新」，繼續
 git status --porcelain=v1 --branch
-git rev-list --count origin/main..HEAD   # 0 表示分支上沒有 main 以外的 commit
+git rev-list --count origin/main..HEAD   # 分支上 main 以外的 commit 數
+git log origin/main --merges --format='%H %P %s' | grep -m1 "from [^ ]*/$(git branch --show-current)\$"
 git log -5 --format='%h %s（%cr）' origin/main
 ```
 
@@ -42,7 +43,8 @@ git log -5 --format='%h %s（%cr）' origin/main
 | 分支還沒推上 GitHub | `git push -u origin <分支>` |
 | 有未 commit 的檔案 | `git add`、`git commit` |
 | 有未 push 的 commit | `git push`，到 GitHub 開 PR（範本見 `.github/pull_request_template.md`） |
-| 不在 `main`、已推上 GitHub，而且 `rev-list` 為 0（分支已合併進 main） | 回 main 再 `git pull`；要繼續改就從最新的 main 開新分支 |
+| 分支已合併進 main：上面最後一個指令找到合併這個分支的 merge commit，它的第二個 parent（第 3 欄）等於 `git rev-parse HEAD`，而且沒有未 commit 的檔案 | 回 main 再 `git pull`；要繼續改就從最新的 main 開新分支 |
+| 不在 `main`、`rev-list` 為 0，但不符合上一列（例如剛從 main 開出來） | 分支上還沒有新的 commit，照常開始改 |
 
 最後列 `origin/main` 最近 5 個 commit。
 

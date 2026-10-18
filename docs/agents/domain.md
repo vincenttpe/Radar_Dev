@@ -1,51 +1,22 @@
-# Domain Docs
+# 領域文件
 
-How the engineering skills should consume this repo's domain documentation when exploring the codebase.
+engineering 技能探索程式碼時，怎麼使用這個 repo 的領域文件。
 
-## Before exploring, read these
+## 探索前先讀
 
-- **`CONTEXT.md`** at the repo root, or
-- **`CONTEXT-MAP.md`** at the repo root if it exists: it points at one `CONTEXT.md` per context. Read each one relevant to the topic.
-- **`docs/adr/`**: read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
+- 根目錄的 **`CONTEXT.md`**：名詞定義。
+- **`docs/adr/`**：讀跟這次要動的範圍有關的 ADR。
 
-If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
+本 repo 是 single-context：只有一份 `CONTEXT.md`，沒有 `CONTEXT-MAP.md`。
 
-## File structure
+## 使用名詞表的用語
 
-Single-context repo (most repos):
+輸出裡提到領域概念時（issue 標題、重構提案、假設、測試名稱），用 `CONTEXT.md` 定義的名詞，不要改用名詞表列在「避免」的同義詞。
 
-```
-/
-├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-event-sourced-orders.md
-│   └── 0002-postgres-for-write-model.md
-└── src/
-```
+需要的概念不在名詞表裡，代表兩種可能：自己發明了專案沒在用的說法（重新考慮），或名詞表真的有缺口（記下來，交給 `/domain-modeling`）。
 
-Multi-context repo (presence of `CONTEXT-MAP.md` at the root):
+## 明說與 ADR 的衝突
 
-```
-/
-├── CONTEXT-MAP.md
-├── docs/adr/                          ← system-wide decisions
-└── src/
-    ├── ordering/
-    │   ├── CONTEXT.md
-    │   └── docs/adr/                  ← context-specific decisions
-    └── billing/
-        ├── CONTEXT.md
-        └── docs/adr/
-```
+輸出跟現有 ADR 矛盾時，要明白寫出來，不要默默推翻：
 
-## Use the glossary's vocabulary
-
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
-
-If the concept you need isn't in the glossary yet, that's a signal: either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
-
-## Flag ADR conflicts
-
-If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
-
-> _Contradicts ADR-0007 (event-sourced orders), but worth reopening because…_
+> _與 ADR 0001（以裝置事件為主要輸入）矛盾，但值得重新討論，因為……_

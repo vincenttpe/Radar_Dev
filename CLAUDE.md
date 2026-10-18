@@ -6,12 +6,12 @@
 
 ### Issue tracker
 
-Issue 記在 GitHub Issues（`Deepfens-AI/Radar_Agent`）。See `docs/agents/issue-tracker.md`.
+Issue 記在 GitHub Issues（`Deepfens-AI/Radar_Agent`）。見 `docs/agents/issue-tracker.md`。
 
 ### Triage labels
 
-沿用五個預設標籤：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。See `docs/agents/triage-labels.md`.
+沿用五個預設標籤：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。見 `docs/agents/triage-labels.md`。
 
 ### Domain docs
 
-single-context：根目錄一份 `CONTEXT.md` 加 `docs/adr/`。See `docs/agents/domain.md`.
+single-context：根目錄一份 `CONTEXT.md` 加 `docs/adr/`。見 `docs/agents/domain.md`。
