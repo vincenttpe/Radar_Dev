@@ -24,7 +24,6 @@ from typing import Any
 
 from radar_agent.caregiver import (
     caregiver_report,
-    check_output,
     check_trend,
     event_notes,
     trend_text,
@@ -32,6 +31,7 @@ from radar_agent.caregiver import (
 )
 from radar_agent.device_events import summarize
 from radar_agent.field_data import MAC_LIKE, check_out_dir
+from radar_agent.output_check import check_output
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent

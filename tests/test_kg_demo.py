@@ -12,7 +12,7 @@ from decimal import Decimal
 import pytest
 
 from radar_agent.audience import ALLOWED
-from radar_agent.caregiver import FORBIDDEN, check_output
+from radar_agent.output_check import FORBIDDEN, check_output
 from radar_agent.event_validation import validate_event
 from radar_agent.kg_rules import assess, load
 from radar_agent.rewrite import rewrite
