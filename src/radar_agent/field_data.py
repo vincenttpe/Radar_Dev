@@ -35,8 +35,8 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
-from radar_agent.caregiver import _read_records, event_notes
-from radar_agent.device_events import HEARTBEAT_GAP, TIMESTAMP_FORMAT, Summary, summarize
+from radar_agent.caregiver import event_notes
+from radar_agent.device_events import HEARTBEAT_GAP, TIMESTAMP_FORMAT, Summary, read_records, summarize
 
 ALIAS_PREFIX = "FIELD-"
 MASKED = "MASKED-ID"
@@ -485,7 +485,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "compare":
         try:
             steps = read_sheet(args.sheet.read_text(encoding="utf-8"), args.date)
-            result = compare(steps, _read_records(args.events))
+            result = compare(steps, read_records(args.events))
         except (OSError, ValueError) as e:
             print(f"錯誤：{e}", file=sys.stderr)
             return 2
@@ -493,7 +493,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if all(c.status in ("符合", "沒有操演") for c in result.checks) else 1
 
     try:
-        records = _read_records(args.events)
+        records = read_records(args.events)
         layout = _layout(args.events)
     except (OSError, ValueError) as e:
         print(f"錯誤：{args.events}：{e}", file=sys.stderr)

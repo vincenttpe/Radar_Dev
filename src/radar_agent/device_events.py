@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -194,3 +195,27 @@ def _parse(
         parsed.append((when, payload, record))
     parsed.sort(key=lambda item: item[0])
     return parsed
+
+
+def read_records(path: Path) -> list[dict[str, Any]]:
+    """雲端格式的紀錄檔（docs/05 A2）：JSON 陣列，或一行一筆（JSON Lines）。
+
+    整行讀不懂就整份拒收並指出位置，不略過（REVIEW.md 3.1）；欄位讀不懂的紀錄交給 summarize 列為無法判讀。
+    """
+    text = path.read_text(encoding="utf-8")
+    records: list[Any]
+    if text.lstrip().startswith("["):
+        records = json.loads(text)
+    else:
+        records = []
+        for n, line in enumerate(text.splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError as e:
+                raise ValueError(f"第 {n} 行不是 JSON（{e.msg}）") from e
+    for n, record in enumerate(records, 1):
+        if not isinstance(record, dict):
+            raise ValueError(f"第 {n} 筆不是 {{timestamp, topic, resolution, payload}} 物件")
+    return records
