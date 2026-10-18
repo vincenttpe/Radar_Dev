@@ -126,14 +126,14 @@ def server():
 
 def test_openai_compatible_endpoint_with_token_rate(server, monkeypatch):
     monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9")   # 不能走 proxy
-    model = HttpChatModel(server, "qwen-test-q4")
+    model = HttpChatModel(server, "llama-test-q4")
     run = evaluate(model, all_cases()[:2], clock=ticking(4.0))
     assert [r.out.layer for r in run.results] == ["model", "model"]
     assert [r.tokens for r in run.results] == [40, 40]
     path, body = _Handler.seen[0]
-    assert path == "/v1/chat/completions" and body["model"] == "qwen-test-q4" and body["temperature"] == 0
+    assert path == "/v1/chat/completions" and body["model"] == "llama-test-q4" and body["temperature"] == 0
     text = report_text(run)
-    assert text.startswith("模型：qwen-test-q4") and "（4.00 秒，40 token）" in text
+    assert text.startswith("模型：llama-test-q4") and "（4.00 秒，40 token）" in text
     assert "輸出速度 約 10.0 token／秒" in text
 
 
@@ -255,3 +255,15 @@ def test_cli_records_with_references(tmp_path, capsys):
     assert main(["--echo", "--records", "--references", str(refs), "--style", str(style)]) == 0
     out = capsys.readouterr().out
     assert "有參考紀錄的題數：1" in out and "BLEU-4" in out
+
+
+# ── 模型來源限制（docs/adr/0003）────────────────────────────
+
+@pytest.mark.parametrize("argv", [
+    ["--endpoint", "http://127.0.0.1:9/v1", "--model", "qwen2.5-1.5b-instruct-q4_k_m"],
+    ["--cmd", "ollama run deepseek-r1:7b"],
+])
+def test_cli_refuses_chinese_models_before_calling_them(argv, capsys):
+    assert main(argv) == 2
+    err = capsys.readouterr().err
+    assert "docs/adr/0003" in err

@@ -6,7 +6,7 @@
 
 radar-model-eval --echo
     照抄原文的假模型，給 CI 與第一次試跑用（應該全部採用）。
-radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model qwen2.5-7b-instruct-q4_k_m
+radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model llama-breeze2-3b-instruct-q4_k_m
     OpenAI 相容的 chat completions（llama.cpp server、Ollama 等）。只連本機或區網，不經過 proxy。
 radar-model-eval --cmd "某個指令"
     任意指令，prompt 從標準輸入送進去，標準輸出當成模型的回答。
@@ -17,6 +17,7 @@ radar-model-eval --endpoint … --model … --records [--references 參考紀錄
     參考紀錄是 {"題號": "護理人員寫的紀錄"}，要由機構提供（會議清單 F13），樣本與參考都要先去識別。
 
 選型時對每個候選模型各跑一次，比較採用率、延遲與退回原因（會議清單 B1、F2）。
+中國開發或以其為基底的模型不用（docs/adr/0003）；名稱屬於這些家族時直接拒絕，不送任何題目。
 """
 from __future__ import annotations
 
@@ -39,6 +40,7 @@ from radar_agent import kg_rules
 from radar_agent.ask import Match, Question, match_question
 from radar_agent.care_record import care_record
 from radar_agent.caregiver import event_notes
+from radar_agent.model_policy import banned_origin
 from radar_agent.text_metrics import bleu, rouge_1, rouge_l
 from radar_agent.device_events import Summary, summarize
 from radar_agent.kg_rules import Assessment
@@ -403,6 +405,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--style", help="--records 用：機構紀錄格式樣本（文字檔，需先去識別）")
     args = ap.parse_args(sys.argv[1:] if argv is None else argv)
 
+    banned = banned_origin(args.model or args.cmd or "")
+    if banned:
+        print(f"錯誤：{banned}", file=sys.stderr)
+        return 2
     model: Any
     if args.echo:
         model = EchoModel()

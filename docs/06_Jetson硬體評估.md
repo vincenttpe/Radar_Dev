@@ -43,12 +43,12 @@ decode 速度主要受**記憶體頻寬**限制（每產生一個 token 要把�
 
 | 型號 | 記憶體 | 頻寬 | AI 算力（廠商標示） | 公開 LLM 數據 |
 |---|---|---|---|---|
-| Orin Nano Super 8GB | 8 GB | 102 GB/s | 67 TOPS（INT8 sparse） | Qwen2.5 7B INT4 約 21.8 token/s（NVIDIA，Super 模式） |
+| Orin Nano Super 8GB | 8 GB | 102 GB/s | 67 TOPS（INT8 sparse） | Llama 3.2 1B 約 45 token/s、Gemma 2 2B 約 26 token/s（第三方，Ollama，見 `docs/adr/0003`） |
 | Orin NX 16GB | 16 GB | 待核對 | 157 TOPS（INT8 sparse） | Llama 3.1 8B INT4 約 22.8 token/s（NVIDIA，Super 模式） |
 | AGX Orin 32／64GB | 32／64 GB | 待核對 | 275 TOPS（INT8 sparse；dense 約 138） | 待核對 |
 | AGX Thor T5000 | 128 GB | 待核對 | 2070 TFLOPS（FP4 sparse） | 第三方報告 Llama 3.1 8B 約 149 token/s，未核實 |
 
-注意：Orin 標 INT8、Thor 標 FP4，數字不能直接比較。我們預計用 0.5B–3B 的小模型，速度會比上表的 7B／8B 快；**以實測為準**。
+注意：Orin 標 INT8、Thor 標 FP4，數字不能直接比較。我們預計用 1B–4B 的小模型，且不用中國開發的模型（`docs/adr/0003`），速度會比上表的 7B／8B 快；**以實測為準**。
 
 ## 4. 實測步驟
 
@@ -57,12 +57,12 @@ decode 速度主要受**記憶體頻寬**限制（每產生一個 token 要把�
 1. **準備真實工作**：用 Profile 改寫的實際 prompt（結構化事實＋範本指示），不要用通用測試題。**2026-10-17 已備妥**：`radar-model-eval` 內建 20 題（裝置事件 11 題、知識圖譜等級 9 題，全部是程式產生的模擬資料），每題走正式的 `rewrite()`，量採用率、每題延遲、token／秒，並統計退回原因。接法有三種：`--endpoint`（OpenAI 相容 API，例如 llama.cpp server、Ollama）、`--cmd`（任意指令，prompt 從標準輸入送入）、`--echo`（照抄原文的假模型，試跑用）。
 
    ```bash
-   radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model qwen2.5-1.5b-instruct-q4_k_m
-   radar-model-eval --endpoint http://127.0.0.1:11434/v1 --model qwen2.5:3b --show   # 印出被採用的輸出，給人看品質
+   radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model llama-breeze2-3b-instruct-q4_k_m
+   radar-model-eval --endpoint http://127.0.0.1:11434/v1 --model llama3.2:3b --show   # 印出被採用的輸出，給人看品質
    ```
 
    題組裡知識圖譜的建議原文（例如 K2 的「由醫師或物理治療師評估」）照規則必須一字不改；這段原文是否合乎非醫療器材的用語，待知識圖譜審核（E4～E6）。
-2. **候選模型**：例如 Qwen2.5 0.5B／1.5B／3B，各試 4-bit 與 8-bit 量化（F2 確認選型與授權）。
+2. **候選模型**：Llama-Breeze2 3B、Llama3-TAIDE-LX-8B、Llama 3.2 1B／3B、Gemma 3 1B／4B 等（清單與理由見 `docs/adr/0003`），各試 4-bit 與 8-bit 量化；每個候選都要記下開發者、base model 與授權（F2）。中國開發或以其為基底的模型不用，`radar-model-eval` 也會依名稱擋下。
 3. **量測項目**：
    - prefill 與 decode 的 token/s；
    - 記憶體峰值（`tegrastats`）；
