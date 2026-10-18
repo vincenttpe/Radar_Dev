@@ -16,6 +16,7 @@ git rev-parse --show-toplevel
 git remote get-url origin
 git fetch --quiet origin            # 失敗就註明「落後數可能不是最新」，繼續
 git status --porcelain=v1 --branch
+git rev-list --count origin/main..HEAD   # 0 表示分支上沒有 main 以外的 commit
 git log -5 --format='%h %s（%cr）' origin/main
 ```
 
@@ -41,11 +42,11 @@ git log -5 --format='%h %s（%cr）' origin/main
 | 分支還沒推上 GitHub | `git push -u origin <分支>` |
 | 有未 commit 的檔案 | `git add`、`git commit` |
 | 有未 push 的 commit | `git push`，到 GitHub 開 PR（範本見 `.github/pull_request_template.md`） |
-| 分支已合併進 main | 回 main 再 `git pull` |
+| 不在 `main`、已推上 GitHub，而且 `rev-list` 為 0（分支已合併進 main） | 回 main 再 `git pull`；要繼續改就從最新的 main 開新分支 |
 
 最後列 `origin/main` 最近 5 個 commit。
 
 ## 必須遵守
 
 - 不執行 `pull`、`commit`、`push`、`checkout`、`reset`、`stash`，也不改任何檔案；使用者要你代做時，先確認再做。
-- 雲端工作階段（分支名像 `claude/...`）也照實回報：雲端的改動同樣要 push 上去才會留下。
+- 雲端工作階段（分支名像 `claude/...`）也照實回報：雲端的改動同樣要 push 上去才會留下。分支已合併時，雲端工作階段要沿用指定的分支名，下一步改成「從最新的 main 重開同名分支」。
