@@ -11,7 +11,7 @@ from typing import ClassVar
 
 import pytest
 
-from radar_agent.caregiver import caregiver_text, check_output
+from radar_agent.caregiver import caregiver_text, check_output, event_notes
 from radar_agent.device_events import Summary
 from radar_agent.model_eval import (
     ASK_CASES,
@@ -24,8 +24,11 @@ from radar_agent.model_eval import (
     all_cases,
     evaluate,
     evaluate_asks,
+    evaluate_records,
     main,
+    record_cases,
     report_asks,
+    report_records,
     report_text,
 )
 
@@ -215,3 +218,40 @@ def test_cli_questions(capsys):
     out = capsys.readouterr().out
     assert out.startswith(f"模型：echo　題數：{len(ASK_CASES)}　正確 ")
     assert "模型回答不是單一編號" in out
+
+
+# ── 照護紀錄改寫（care_record）與 LLM 文字指標 ─────────────
+
+
+
+def test_record_cases_are_the_simulated_cases_that_have_events():
+    cases = record_cases()
+    assert cases and all(event_notes(c.source, PLACE) for c in cases)
+    assert {"E2", "E6", "E10"} <= {c.id for c in cases} and "E9" not in {c.id for c in cases}
+
+
+def test_records_without_references_report_adoption_only():
+    text = report_records(evaluate_records(EchoModel(), record_cases()), None)
+    n = len(record_cases())
+    assert text.startswith(f"模型：echo　照護紀錄題數：{n}　採用 {n}、退回草稿 0")
+    assert "沒有參考紀錄" in text and "BLEU" not in text.split("沒有參考紀錄")[0]
+
+
+def test_records_with_references_report_text_metrics_against_kpi_targets():
+    """參考紀錄是測試手寫的；正式評估要用護理人員寫的紀錄（F13）。"""
+    run = evaluate_records(EchoModel(), record_cases())
+    refs = {r.case.id: r.out.text for r in run.results[:2]}  # 只有兩題有參考：只算這兩題
+    text = report_records(run, refs)
+    assert "有參考紀錄的題數：2" in text
+    assert "BLEU-1 100.0（目標 ≥ 44，達標）" in text
+    assert "ROUGE-L 100.0（目標 ≥ 28，達標）" in text
+
+
+def test_cli_records_with_references(tmp_path, capsys):
+    refs = tmp_path / "refs.json"
+    refs.write_text(json.dumps({"E2": "長者疑似跌倒後回覆沒事。"}, ensure_ascii=False), encoding="utf-8")
+    style = tmp_path / "style.txt"
+    style.write_text("【時間】事件經過。", encoding="utf-8")
+    assert main(["--echo", "--records", "--references", str(refs), "--style", str(style)]) == 0
+    out = capsys.readouterr().out
+    assert "有參考紀錄的題數：1" in out and "BLEU-4" in out
