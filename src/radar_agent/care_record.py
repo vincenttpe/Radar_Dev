@@ -10,8 +10,9 @@ from __future__ import annotations
 import re
 from decimal import Decimal
 
-from radar_agent.caregiver import check_output, event_notes
+from radar_agent.caregiver import event_notes
 from radar_agent.device_events import Summary
+from radar_agent.output_check import check_output
 from radar_agent.rewrite import Model, Rewritten
 
 PROMPT_VERSION = "record-v0"

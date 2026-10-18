@@ -11,7 +11,7 @@ from typing import ClassVar
 
 import pytest
 
-from radar_agent.caregiver import caregiver_text, check_output, event_notes
+from radar_agent.caregiver import caregiver_text, event_notes
 from radar_agent.device_events import Summary
 from radar_agent.model_eval import (
     ASK_CASES,
@@ -31,6 +31,7 @@ from radar_agent.model_eval import (
     report_records,
     report_text,
 )
+from radar_agent.output_check import check_output
 
 
 def ticking(step: float):

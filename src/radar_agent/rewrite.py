@@ -14,9 +14,10 @@ from decimal import Decimal
 from typing import Literal, Protocol
 
 from radar_agent.audience import Profile, check_audience
-from radar_agent.caregiver import caregiver_text, check_output
+from radar_agent.caregiver import caregiver_text
 from radar_agent.device_events import Summary
 from radar_agent.kg_rules import Assessment
+from radar_agent.output_check import check_output
 
 PROMPT_VERSION = "caregiver-v0"
 # 範本裡的這些提醒，改寫後一定要留著：拿掉就變成「沒有資料」被讀成「沒事」（REVIEW.md 3.1）

@@ -4,8 +4,9 @@
 """
 import json
 
-from radar_agent.caregiver import caregiver_report, caregiver_text, check_output, event_notes
+from radar_agent.caregiver import caregiver_report, caregiver_text, event_notes
 from radar_agent.device_events import summarize
+from radar_agent.output_check import check_output
 
 TOPIC = "radar10/DEVICE01"
 

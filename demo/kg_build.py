@@ -28,7 +28,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-from radar_agent.caregiver import FORBIDDEN, check_output
+from radar_agent.output_check import FORBIDDEN, check_output
 from radar_agent.event_validation import validate_event
 from radar_agent.audience import ALLOWED, check_audience
 from radar_agent.kg_rules import Assessment, KgInfo, assess, load

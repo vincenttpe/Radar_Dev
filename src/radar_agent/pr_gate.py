@@ -33,7 +33,8 @@ DOORS: dict[str, tuple[str, ...]] = {
         "src/radar_agent/kg_source.py",  # 解析門檻、產生 thresholds.json、METRIC_CONFIG
     ),
     "給讀者的輸出與用語": (
-        "src/radar_agent/caregiver.py",  # 居服員 Profile 範本與輸出檢查
+        "src/radar_agent/caregiver.py",  # 居服員 Profile 範本
+        "src/radar_agent/output_check.py",  # 輸出檢查：數字都來自事實、不用醫療用語
         "src/radar_agent/rewrite.py",  # 在地模型的 prompt 與改寫後的檢查
         "src/radar_agent/ask.py",  # 提問對應的 prompt：決定讀者拿到哪一題的答案
         "src/radar_agent/care_record.py",  # 照護紀錄改寫的 prompt 與檢查
