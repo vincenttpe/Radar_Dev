@@ -56,11 +56,13 @@ radar-kg-build --check                                                          
 radar-kg-manifest --check                                                         # 檢查知識圖譜發布清單
 radar-kg-level 來回行走 5.4                                                       # 量測值 → 知識圖譜等級與建議（--list 列出門檻）
 radar-caregiver 事件.jsonl --place "1 號廁所"                                     # 一台裝置的事件 → 居服員看的場域摘要（輸出檢查沒過就不輸出）
+radar-caregiver 事件.jsonl --place "1 號廁所" --json                              # 同上，改輸出 JSON 給 Dashboard（docs/16）
+radar-ask 事件.jsonl --place "1 號廁所" --question "早上有人跌倒嗎" --endpoint 網址 --model 模型名稱  # 事件提問：在地模型選題號，答案套固定句型（--pick 直接點題）
 radar-field-data inspect 實測.json                                                 # 實測資料的格式、時間範圍、事件數與每小時分布（不印出 MAC）
 radar-field-data mask 實測.json --out-dir outputs/field                            # 裝置識別換成 FIELD-01…，每台一個檔案；只能寫到 outputs/
 radar-field-data sheet > 操演紀錄.csv                                              # 實機操演紀錄表（10 項，現場填手錶時間）
 radar-field-data compare 操演紀錄.csv outputs/field/FIELD-01.jsonl --date 2026-10-19  # 紀錄表與資料逐項比對、判斷時區
-radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model 模型名稱              # 在地模型評估：固定題組的採用率、延遲、退回原因（--echo 試跑）
+radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model 模型名稱              # 在地模型評估：固定題組的採用率、延遲、退回原因（--echo 試跑；--event-questions 量事件提問）
 ```
 
 `git pull` 之後如果 `pyproject.toml` 有變動，再執行一次 `pip install -e ".[dev]"`。

@@ -7,10 +7,12 @@ docs/02「在地模型負載與分流」的範本層：範本是主要路徑，�
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +21,8 @@ from radar_agent.kg_rules import Assessment
 from radar_agent.output_check import check_output, numbers, wording_problems
 
 
-def _duration(span: timedelta) -> str:
+def duration_text(span: timedelta) -> str:
+    """停留時間的寫法：「4 分 35 秒」「5 分鐘」「40 秒」。"""
     minutes, seconds = divmod(int(span.total_seconds()), 60)
     if minutes and seconds:
         return f"{minutes} 分 {seconds} 秒"
@@ -38,7 +41,7 @@ def _site_text(summary: Summary, place: str) -> str:
     parts = [f"{place} {days}："]
     if summary.visits:
         longest = max(v.duration for v in summary.visits)
-        parts.append(f"有人使用 {len(summary.visits)} 次，最長一次 {_duration(longest)}。")
+        parts.append(f"有人使用 {len(summary.visits)} 次，最長一次 {duration_text(longest)}。")
     else:
         parts.append("沒有偵測到有人使用。")
     if summary.interrupted_visits:
@@ -153,6 +156,71 @@ def caregiver_report(summary: Summary, *, place: str) -> str:
         parts += ["", "【處置提示】", *(f"{n.span or f'{n.time:%H:%M}'} {n.prompt}" for n in notes)]
         parts += ["", "【照護紀錄草稿】", *(n.record for n in notes)]
     return "\n".join(parts)
+
+
+# ── 給 Dashboard 的結構化輸出（docs/16_Dashboard對接說明.md）──────────
+# 文字與 caregiver_report 逐句相同，另附計數與每則事件的等級，讓 Dashboard 自己排版。
+REPORT_SCHEMA = "caregiver-report-v0"
+TREND_SCHEMA = "usage-trend-v0"
+
+# 處置提示 → （等級, 標題）。標題用計畫書三項機制的名稱；等級給 Dashboard 決定顏色：
+# urgent 立即到場、check 前往查看、resolved 警報解除、device 裝置問題。
+# 上面的處置提示一改，這裡認不得就會丟錯，提醒同步更新。
+NOTE_KINDS: dict[str, tuple[str, str]] = {
+    "請立即到場確認。": ("urgent", "跌倒警報"),
+    "長者回覆需要協助，請立即到場。": ("urgent", "跌倒警報"),
+    "長者主動呼救，請立即到場。": ("urgent", "主動呼救"),
+    "長者回覆沒事，警報已解除；可視情況前往關心。": ("resolved", "回覆沒事"),
+    "已偵測到起身，警報已解除。": ("resolved", "起身解除"),
+    "停留超過設定時間，請前往查看。": ("check", "久待警報"),
+    "這段時間無法判斷是否有跌倒，請通知資訊人員。": ("device", "裝置斷線"),
+}
+
+
+class OutputRejected(ValueError):
+    """輸出檢查沒通過：不交出任何文字。problems 是檢查列出的問題。"""
+
+    def __init__(self, problems: list[str]):
+        super().__init__("輸出檢查沒通過：" + "；".join(problems))
+        self.problems = problems
+
+
+def _stamp(when: datetime) -> str:
+    return f"{when:%Y-%m-%d %H:%M:%S}"
+
+
+def report_data(summary: Summary, *, place: str) -> dict[str, Any]:
+    """caregiver_report 的結構化版本。輸出檢查沒通過時丟 OutputRejected。"""
+    problems = check_output(caregiver_report(summary, place=place), summary, place=place)
+    if problems:
+        raise OutputRejected(problems)
+    events = []
+    for note in event_notes(summary, place):
+        if note.prompt not in NOTE_KINDS:
+            raise ValueError(f"NOTE_KINDS 沒有這句處置提示：{note.prompt}")
+        level, title = NOTE_KINDS[note.prompt]
+        events.append({
+            "at": _stamp(note.time), "label": note.span or f"{note.time:%H:%M}", "level": level, "title": title,
+            "prompt": note.prompt, "record": note.record,
+        })
+    online = summary.online
+    return {
+        "schema": REPORT_SCHEMA,
+        "place": place,
+        "from": _stamp(online[0].start) if online else None,
+        "to": _stamp(online[-1].end) if online else None,
+        "summary": _site_text(summary, place),
+        "counts": {
+            "visits": len(summary.visits),
+            "fall_alerts": sum(not a.distress_call for a in summary.fall_alerts),
+            "distress_calls": sum(a.distress_call for a in summary.fall_alerts),
+            "no_need_help": len(summary.no_need_help_replies),
+            "longstay": len(summary.longstay_alerts),
+            "offline": [[_stamp(a.end), _stamp(b.start)] for a, b in pairwise(online)],
+        },
+        "events": events,
+        "text_layer": "template",
+    }
 
 
 # ── 使用趨勢：近 7 天與前 7 天比較（docs/11 G3）────────────────
@@ -270,6 +338,19 @@ def check_trend(text: str, trend: Trend | None, *, place: str = "") -> list[str]
 # ── 命令列 ───────────────────────────────────────────────
 # 裝置事件檔 → read_records → summarize → caregiver_text → check_output；檢查沒通過就不輸出文字。
 
+def trend_data(trend: Trend | None, *, place: str) -> dict[str, Any]:
+    """trend_text 的結構化版本：文字逐行相同，另附每天的次數（None 表示在線不足、不列入比較）。"""
+    text = trend_text(trend, place=place)
+    problems = check_trend(text, trend, place=place)
+    if problems:
+        raise OutputRejected(problems)
+    days = [] if trend is None else [
+        {"day": c.day.isoformat(), "visits": c.visits, "dawn": c.dawn, "recent": i >= 7}
+        for i, c in enumerate(trend.before + trend.recent)
+    ]
+    return {"schema": TREND_SCHEMA, "place": place, "lines": text.splitlines(), "days": days, "text_layer": "template"}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="一台裝置的事件 → 居服員看的事件摘要、處置提示與照護紀錄草稿（範本，不用模型；先過輸出檢查）"
@@ -277,14 +358,23 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("events", type=Path, help="紀錄檔：雲端格式 {timestamp, topic, resolution, payload}，JSON 陣列或一行一筆")
     ap.add_argument("--place", required=True, help="地點名稱，例如「1 號廁所」；不放長者姓名等個人資料")
     ap.add_argument("--trend", action="store_true", help="改輸出使用趨勢：最後 7 天與前 7 天比較（需要約兩週的紀錄）")
+    ap.add_argument("--json", action="store_true", help="改輸出 JSON 給 Dashboard（欄位見 docs/16_Dashboard對接說明.md）")
     args = ap.parse_args(sys.argv[1:] if argv is None else argv)
 
     if not args.place.strip():
         print("錯誤：--place 不能是空白", file=sys.stderr)
         return 2
+    problems: list[str] = []
     try:
         records = read_records(args.events)
-        if args.trend:
+        if args.json:
+            try:
+                data = (trend_data(usage_trend(records), place=args.place) if args.trend
+                        else report_data(summarize(records), place=args.place))
+                text = json.dumps(data, ensure_ascii=False, indent=2)
+            except OutputRejected as e:
+                problems = e.problems
+        elif args.trend:
             trend = usage_trend(records)
             text = trend_text(trend, place=args.place)
             problems = check_trend(text, trend, place=args.place)

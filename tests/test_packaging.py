@@ -21,6 +21,7 @@ def test_declared_scripts(project):
         "radar-caregiver": "radar_agent.caregiver:main",
         "radar-field-data": "radar_agent.field_data:main",
         "radar-model-eval": "radar_agent.model_eval:main",
+        "radar-ask": "radar_agent.event_ask:main",
     }
 
 

@@ -14,6 +14,7 @@ import pytest
 from radar_agent.caregiver import caregiver_text, event_notes
 from radar_agent.device_events import Summary
 from radar_agent.model_eval import (
+    EVENT_ASK_CASES,
     ASK_CASES,
     ASK_MENU,
     PLACE,
@@ -268,3 +269,9 @@ def test_cli_refuses_chinese_models_before_calling_them(argv, capsys):
     assert main(argv) == 2
     err = capsys.readouterr().err
     assert "docs/adr/0003" in err
+
+
+def test_cli_event_questions(capsys):
+    assert main(["--echo", "--event-questions"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith(f"模型：echo　題數：{len(EVENT_ASK_CASES)}　正確 ")

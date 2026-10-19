@@ -23,6 +23,7 @@ from types import ModuleType
 from typing import Any
 
 from radar_agent.caregiver import (
+    NOTE_KINDS,
     caregiver_report,
     check_trend,
     event_notes,
@@ -38,17 +39,8 @@ REPO = HERE.parent
 PLACE = "1 號廁所"
 PLACEHOLDER = "/*DEMO_DATA*/null"
 
-# 處置提示 → （卡片等級, 卡片標題）。標題用計畫書三項機制的名稱，等級決定顏色。
-# caregiver.py 的處置提示一改，這裡認不得就會失敗，提醒同步更新畫面。
-KINDS: dict[str, tuple[str, str]] = {
-    "請立即到場確認。": ("urgent", "跌倒警報"),
-    "長者回覆需要協助，請立即到場。": ("urgent", "跌倒警報"),
-    "長者主動呼救，請立即到場。": ("urgent", "主動呼救"),
-    "長者回覆沒事，警報已解除；可視情況前往關心。": ("resolved", "回覆沒事"),
-    "已偵測到起身，警報已解除。": ("resolved", "起身解除"),
-    "停留超過設定時間，請前往查看。": ("check", "久待警報"),
-    "這段時間無法判斷是否有跌倒，請通知資訊人員。": ("device", "裝置斷線"),
-}
+# 處置提示 → （卡片等級, 卡片標題）：和 radar-caregiver --json 用同一份對照（caregiver.NOTE_KINDS）。
+KINDS = NOTE_KINDS
 
 
 def _load_generator() -> ModuleType:

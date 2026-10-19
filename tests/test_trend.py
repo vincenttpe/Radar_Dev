@@ -176,3 +176,13 @@ def test_cli_trend_with_a_medical_word_in_the_place_prints_nothing(tmp_path, cap
     assert main([str(path), "--place", "治療室", "--trend"]) == 1
     out, err = capsys.readouterr()
     assert out == "" and "治療" in err
+
+
+def test_cli_trend_json_has_the_same_lines_and_marks_days_left_out(two_week_demo, capsys):
+    assert main([str(two_week_demo), "--place", "1 號廁所", "--trend"]) == 0
+    text = capsys.readouterr().out
+    assert main([str(two_week_demo), "--place", "1 號廁所", "--trend", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["schema"] == "usage-trend-v0" and "\n".join(data["lines"]) + "\n" == text
+    assert len(data["days"]) == 14 and sum(d["recent"] for d in data["days"]) == 7
+    assert {"day": "2026-10-10", "visits": None, "dawn": None, "recent": True} in data["days"]
