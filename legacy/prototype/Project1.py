@@ -2566,7 +2566,7 @@ def safe_generate_action_card(prompt_payload: str, fallback_text: str, max_new_t
 # ============================================================
 URI      = os.getenv("NEO4J_URI",      "bolt://localhost:7687")
 USER     = os.getenv("NEO4J_USER",     "neo4j")
-PASSWORD = os.getenv("NEO4J_PASSWORD", "password123")
+PASSWORD = os.environ["NEO4J_PASSWORD"]  # 不再用公開的預設密碼；請設定環境變數（docs/04、週一清單 3-9）
 
 driver = GraphDatabase.driver(URI, auth=(USER, PASSWORD))
 
