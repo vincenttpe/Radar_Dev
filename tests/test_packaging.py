@@ -134,3 +134,16 @@ def test_label_workflow_creates_exactly_the_documented_triage_labels(repo):
     workflow = (repo / ".github" / "workflows" / "labels.yml").read_text(encoding="utf-8")
     created = set(re.findall(r"gh label create (\S+)", workflow))
     assert documented == created == {"needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"}
+
+
+def test_secret_scan_workflow_pins_gitleaks_and_redacts(repo):
+    """secrets.yml 要固定 gitleaks 版本、核對 checksum、遮罩結果，而且只有唯讀權限。"""
+    import re
+
+    text = (repo / ".github" / "workflows" / "secrets.yml").read_text(encoding="utf-8")
+    workflow = yaml.safe_load(text)
+    assert workflow["permissions"] == {"contents": "read"}
+    assert re.fullmatch(r"\d+\.\d+\.\d+", workflow["env"]["GITLEAKS_VERSION"])
+    assert re.fullmatch(r"[0-9a-f]{64}", workflow["env"]["GITLEAKS_SHA256"])
+    assert "sha256sum -c" in text and "--redact" in text and "--exit-code 1" in text
+    assert "upload-artifact" not in text, "報告檔不上傳，避免把找到的東西帶出去"
