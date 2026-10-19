@@ -105,3 +105,17 @@ python -m pytest --cov  # 測試；覆蓋率低於 95% 會失敗（含分支覆�
 ## 設定
 
 密碼與金鑰一律用環境變數，不寫進程式碼。複製 `.env.example` 為 `.env` 後填入；`.env` 已列在 `.gitignore`。
+
+## GitHub repo 設定（2026-10-19）
+
+repo 的設定在 GitHub 網頁上，不在檔案裡；這裡記下目前的狀態與理由，改設定時一併更新。
+
+| 項目 | 設定 | 理由 |
+|---|---|---|
+| `main` 的 Ruleset | 合併前必須經過 PR；`pytest (3.11)`、`pytest (3.12)`、`one-way-doors` 三項通過；禁止 force push 與刪除；核准人數 0、Bypass 名單留空 | 目前只有一人開發，不等別人核准；單向門靠 CI 與合併前審查（`CLAUDE.md`）把關。有其他成員一起審查時，再提高核准人數並加 CODEOWNERS |
+| 合併方式 | 只開 merge commit；合併後自動刪除分支 | 和目前的習慣一致 |
+| Actions 權限 | 預設唯讀；不允許 Actions 建立或核准 PR | CI 只需要讀取。需要寫入的 workflow 在檔案裡自己宣告（例如 `labels.yml` 只要 `issues: write`） |
+| Issue 標籤 | 由 `.github/workflows/labels.yml` 建立與維護 | 見 `docs/agents/triage-labels.md` |
+| Dependabot alerts | 開啟 | 依賴套件有安全漏洞時通知 |
+| Code scanning（CodeQL） | 開啟（預設設定，PR 上會多一項 `Analyze (python)` 檢查） | 掃描程式碼裡常見的安全問題；結果在 Security 分頁。目前不是 Ruleset 的必過檢查 |
+| Secret scanning、Push protection | **不開** | 私人 repo 要另外付費；目前一人開發，真實資料與密碼不進 repo 已由 `REVIEW.md` 規範。舊程式的 Neo4j 密碼改由資料庫端重設處理（`docs/04`） |
