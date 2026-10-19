@@ -3,6 +3,7 @@
 只透過 caregiver_text()、check_output() 與命令列 main() 驗證；期望的句子是在對話中確認過的寫法（2026-10-14）。
 """
 import json
+from pathlib import Path
 
 from radar_agent.caregiver import caregiver_report, caregiver_text, event_notes
 from radar_agent.device_events import summarize
@@ -405,3 +406,49 @@ def test_cli_prints_prompts_and_record_draft(tmp_path, capsys):
         "【處置提示】\n09:02 請立即到場確認。\n\n【照護紀錄草稿】\n"
         "09:02 1 號廁所雷達偵測到疑似跌倒，語音詢問 10 秒未獲回應。\n"
     )
+
+
+# ── 給 Dashboard 的 JSON（radar-caregiver --json）─────────────
+
+DEMO = Path(__file__).resolve().parents[1] / "data" / "samples_demo" / "bathroom_morning.jsonl"
+
+
+def test_json_carries_the_same_sentences_as_the_text_report(capsys):
+    code, out, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--json")
+    data = json.loads(out)
+    _, text, _ = _run(capsys, DEMO, "--place", "1 號廁所")
+    assert code == 0 and data["schema"] == "caregiver-report-v0" and data["text_layer"] == "template"
+    assert data["summary"] in text
+    assert all(e["record"] in text and e["prompt"] in text for e in data["events"])
+    assert {e["level"] for e in data["events"]} == {"urgent", "resolved", "check", "device"}
+    assert data["counts"]["fall_alerts"] == 2 and data["counts"]["distress_calls"] == 1
+    assert data["counts"]["offline"] == [["2026-10-14 11:10:00", "2026-10-14 11:25:00"]]
+
+
+def test_json_without_any_data_has_no_period(tmp_path, capsys):
+    path = tmp_path / "empty.json"
+    path.write_text("[]", encoding="utf-8")
+    code, out, _ = _run(capsys, path, "--place", "1 號廁所", "--json")
+    data = json.loads(out)
+    assert code == 0 and (data["from"], data["to"], data["events"]) == (None, None, [])
+    assert data["summary"] == "1 號廁所：沒有收到資料，無法判斷。"
+
+
+def test_json_is_not_printed_when_the_check_fails(monkeypatch, tmp_path, capsys):
+    from radar_agent import caregiver
+
+    monkeypatch.setattr(caregiver, "check_output", lambda *a, **k: ["假的問題"])
+    code, out, err = _run(capsys, DEMO, "--place", "1 號廁所", "--json")
+    assert (code, out) == (1, "") and "假的問題" in err
+
+
+def test_every_prompt_has_a_level_and_title():
+    """處置提示一改，NOTE_KINDS 也要跟著改；否則 --json 會丟錯。"""
+    from radar_agent.caregiver import NOTE_KINDS, report_data
+
+    data = report_data(summarize(_jsonl(DEMO)), place="1 號廁所")
+    assert {e["prompt"] for e in data["events"]} <= set(NOTE_KINDS)
+
+
+def _jsonl(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]

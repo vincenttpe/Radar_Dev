@@ -23,12 +23,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import shlex
 import statistics
-import subprocess
 import sys
 import time
-import urllib.request
 from pathlib import Path
 from collections import Counter
 from collections.abc import Callable
@@ -40,9 +37,11 @@ from radar_agent import kg_rules
 from radar_agent.ask import Match, Question, match_question
 from radar_agent.care_record import care_record
 from radar_agent.caregiver import event_notes
-from radar_agent.model_policy import banned_origin
+# 模型類別搬到 local_model.py；這裡保留匯入，舊的匯入路徑（測試、文件）照常可用
+from radar_agent.local_model import CommandModel, EchoModel, HttpChatModel, add_model_args, model_from_args  # noqa: F401
 from radar_agent.text_metrics import bleu, rouge_1, rouge_l
 from radar_agent.device_events import Summary, summarize
+from radar_agent.event_ask import EVENT_QUESTIONS
 from radar_agent.kg_rules import Assessment
 from radar_agent.rewrite import Rewritten, rewrite
 
@@ -200,12 +199,33 @@ class AskResult:
         return "沒對應到" if got is None else "對錯題"
 
 
-def evaluate_asks(model: Any, cases: list[AskCase], *, clock: Callable[[], float] = time.perf_counter
-                  ) -> tuple[str, list[AskResult]]:
+# 事件提問（radar-ask，11 月中甲方 Demo）：照護人員可能怎麼問，對到 EVENT_QUESTIONS 哪一題
+EVENT_ASK_CASES: list[AskCase] = [
+    AskCase("V1", "早上有人跌倒嗎", "falls"),
+    AskCase("V2", "今天有沒有跌倒警報", "falls"),
+    AskCase("V3", "有長輩喊救命嗎", "calls"),
+    AskCase("V4", "有人按呼叫或用講的求救嗎", "calls"),
+    AskCase("V5", "有人在廁所待很久嗎", "longstay"),
+    AskCase("V6", "久待警報有幾次", "longstay"),
+    AskCase("V7", "廁所今天用了幾次", "visits"),
+    AskCase("V8", "最久一次待多久", "visits"),
+    AskCase("V9", "雷達有沒有離線", "offline"),
+    AskCase("V10", "機器有沒有壞掉或沒連線", "offline"),
+    AskCase("V11", "現在我要去處理什麼", "alerts"),
+    AskCase("V12", "今天的警報有哪些", "alerts"),
+    AskCase("V13", "他今天血壓多少", None),
+    AskCase("V14", "晚餐吃什麼", None),
+    AskCase("V15", "他是不是生病了", None),
+]
+
+
+def evaluate_asks(model: Any, cases: list[AskCase], *, menu: list[Question] | None = None,
+                  clock: Callable[[], float] = time.perf_counter) -> tuple[str, list[AskResult]]:
+    questions = ASK_MENU if menu is None else menu
     results = []
     for case in cases:
         started = clock()
-        match = match_question(case.asked, ASK_MENU, model=model)
+        match = match_question(case.asked, questions, model=model)
         results.append(AskResult(case, match, clock() - started))
     return model.name, results
 
@@ -263,53 +283,6 @@ def report_records(run: Run, references: dict[str, str] | None) -> str:
         lines.append(f"{name} {value:.1f}（目標 ≥ {target}，{'達標' if value >= target else '未達標'}）")
     lines.append("BERTScore 需要另外的語言模型，這裡不計算。")
     return "\n".join(lines)
-
-
-# ── 模型 ────────────────────────────────────────────────
-
-class EchoModel:
-    """照抄 prompt 裡的原文：檢查一定通過，用來確認流程與量測沒問題。"""
-
-    name = "echo"
-
-    def __call__(self, prompt: str) -> str:
-        return prompt.rsplit("原文：\n", 1)[-1]
-
-
-class HttpChatModel:
-    """OpenAI 相容的 /chat/completions。只給本機或區網的模型伺服器用，刻意不走 proxy。"""
-
-    def __init__(self, endpoint: str, model: str, *, timeout: float = 120, max_tokens: int = 512):
-        self.url = endpoint.rstrip("/") + "/chat/completions"
-        self.model, self.timeout, self.max_tokens = model, timeout, max_tokens
-        self.name = model
-        self.last_tokens: int | None = None
-        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-
-    def __call__(self, prompt: str) -> str:
-        body = json.dumps({
-            "model": self.model, "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0, "max_tokens": self.max_tokens,
-        }).encode("utf-8")
-        req = urllib.request.Request(self.url, data=body, headers={"Content-Type": "application/json"})
-        with self._opener.open(req, timeout=self.timeout) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        usage = data.get("usage") or {}
-        self.last_tokens = usage.get("completion_tokens")
-        return str(data["choices"][0]["message"]["content"])
-
-
-class CommandModel:
-    """執行指令，prompt 從標準輸入送進去，標準輸出當成回答；結束碼不是 0 就算模型錯誤。"""
-
-    def __init__(self, cmd: str, *, timeout: float = 120):
-        self.argv, self.timeout = shlex.split(cmd), timeout
-        self.name = cmd
-
-    def __call__(self, prompt: str) -> str:
-        done = subprocess.run(self.argv, input=prompt, capture_output=True, text=True, encoding="utf-8",
-                              timeout=self.timeout, check=True)
-        return done.stdout
 
 
 # ── 執行與報告 ──────────────────────────────────────────
@@ -391,36 +364,26 @@ def report_text(run: Run, *, show: bool = False) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="在地模型評估：固定題組跑 rewrite()，量採用率、延遲與退回原因")
-    which = ap.add_mutually_exclusive_group(required=True)
-    which.add_argument("--echo", action="store_true", help="照抄原文的假模型（CI、試跑用）")
-    which.add_argument("--endpoint", help="OpenAI 相容 API 的網址，例如 http://127.0.0.1:8080/v1")
-    which.add_argument("--cmd", help="執行的指令；prompt 從標準輸入送入")
-    ap.add_argument("--model", help="--endpoint 時的模型名稱（會記進追溯紀錄）")
-    ap.add_argument("--timeout", type=float, default=120, help="每題逾時秒數（預設 120）")
+    add_model_args(ap, required=True)
     ap.add_argument("--only", help="只跑這些題，逗號分隔，例如 E2,K7")
     ap.add_argument("--show", action="store_true", help="印出被採用的模型輸出")
     ap.add_argument("--questions", action="store_true", help="改量提問對應（打字提問對到哪一個固定問題）")
+    ap.add_argument("--event-questions", action="store_true", help="改量事件提問（radar-ask 的題目）")
     ap.add_argument("--records", action="store_true", help="改量照護紀錄改寫")
     ap.add_argument("--references", help="--records 用：參考紀錄 JSON（{題號: 紀錄}），有它才算 BLEU、ROUGE")
     ap.add_argument("--style", help="--records 用：機構紀錄格式樣本（文字檔，需先去識別）")
     args = ap.parse_args(sys.argv[1:] if argv is None else argv)
 
-    banned = banned_origin(args.model or args.cmd or "")
-    if banned:
-        print(f"錯誤：{banned}", file=sys.stderr)
+    try:
+        model = model_from_args(args)
+    except ValueError as e:
+        print(f"錯誤：{e}", file=sys.stderr)
         return 2
-    model: Any
-    if args.echo:
-        model = EchoModel()
-    elif args.endpoint:
-        if not args.model:
-            print("錯誤：--endpoint 要搭配 --model", file=sys.stderr)
-            return 2
-        model = HttpChatModel(args.endpoint, args.model, timeout=args.timeout)
-    else:
-        model = CommandModel(args.cmd, timeout=args.timeout)
     if args.questions:
         print(report_asks(evaluate_asks(model, ASK_CASES)))
+        return 0
+    if args.event_questions:
+        print(report_asks(evaluate_asks(model, EVENT_ASK_CASES, menu=EVENT_QUESTIONS)))
         return 0
     if args.records:
         refs = json.loads(Path(args.references).read_text(encoding="utf-8")) if args.references else None

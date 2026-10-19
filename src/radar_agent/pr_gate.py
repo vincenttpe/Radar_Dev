@@ -38,6 +38,7 @@ DOORS: dict[str, tuple[str, ...]] = {
         "src/radar_agent/rewrite.py",  # 在地模型的 prompt 與改寫後的檢查
         "src/radar_agent/ask.py",  # 提問對應的 prompt：決定讀者拿到哪一題的答案
         "src/radar_agent/care_record.py",  # 照護紀錄改寫的 prompt 與檢查
+        "src/radar_agent/event_ask.py",  # 事件提問的題目與答案句型
         "src/radar_agent/audience.py",  # 讀者權限：哪種 Profile 能看哪類資料
     ),
     "個人資料的流向": (
@@ -65,6 +66,7 @@ EVIDENCE: dict[str, tuple[str, ...]] = {
     "改到指令或報告": (  # pyproject.toml 的 [project.scripts] 指向的模組
         "src/radar_agent/kg_rules.py", "src/radar_agent/kg_source.py", "src/radar_agent/kg_manifest.py",
         "src/radar_agent/caregiver.py", "src/radar_agent/field_data.py", "src/radar_agent/model_eval.py",
+        "src/radar_agent/event_ask.py",
     ),
 }
 EVIDENCE_SECTION = "## 驗證證據"
