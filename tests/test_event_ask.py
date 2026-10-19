@@ -1,7 +1,7 @@
 """事件提問（radar-ask）：模型只選題號，答案由事件事實套固定句型，答案要通過輸出檢查。
 
 事件用 Demo 模擬資料（data/samples_demo/bathroom_morning.jsonl）與 model_eval 的模擬題組，不含真實資料。
-答案句型是 2026-10-19 的草稿；用語一改這裡就會失敗。
+答案句型於 2026-10-19 確認；用語一改這裡就會失敗。
 """
 import json
 from pathlib import Path
@@ -30,7 +30,7 @@ class Scripted:
 
 def test_falls_answer_states_disconnection_instead_of_claiming_none():
     assert answer("falls", SUMMARY, place="1 號廁所") == (
-        "1 號廁所 10/14：在線期間跌倒警報 2 次（08:32、09:16）。\n"
+        "1 號廁所 10/14 08:00–11:59：在線期間跌倒警報 2 次（08:32、09:16）。\n"
         "語音回覆沒事 1 次。\n"
         "11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。\n"
         "在線期間另有主動呼救 1 次（10:03）。"
@@ -65,7 +65,7 @@ def test_model_picks_a_number_and_the_answer_comes_from_the_facts():
     reply = ask_events("有人待很久嗎", SUMMARY, place="1 號廁所", model=model)
     data = reply.data()
     assert data["question"]["id"] == "longstay" and data["confirm"] == "您是想問「有沒有人待太久？」嗎？"
-    assert data["answer"].startswith("1 號廁所 10/14：在線期間久待警報 1 次（10:45）。")
+    assert data["answer"].startswith("1 號廁所 10/14 08:00–11:59：在線期間久待警報 1 次（10:45）。")
     assert (data["model"], data["prompt_version"], data["rejected"]) == ("scripted", "ask-v0", [])
     assert "有人待很久嗎" not in json.dumps(data, ensure_ascii=False), "不保存讀者打的原文"
 
@@ -99,7 +99,7 @@ def _run(capsys, *argv):
 def test_cli_pick_skips_the_model(capsys):
     code, out, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--pick", "visits")
     assert code == 0
-    assert out == "您是想問「用了幾次？最久待多久？」嗎？\n1 號廁所 10/14：有人使用 5 次，最長一次 22 分鐘。\n11:10–11:25 裝置斷線，這段時間無法判斷使用情形。\n"
+    assert out == "您是想問「用了幾次？最久待多久？」嗎？\n1 號廁所 10/14 08:00–11:59：有人使用 5 次，最長一次 22 分鐘。\n11:10–11:25 裝置斷線，這段時間無法判斷使用情形。\n"
 
 
 def test_cli_without_a_model_shows_the_menu(capsys):
@@ -150,7 +150,7 @@ def test_device_going_offline_before_the_data_ends_is_never_answered_as_nothing(
 
 def test_offline_before_the_end_scopes_counts_to_online_time():
     assert "在線期間久待警報 0 次" in answer("longstay", ENDED_OFFLINE, place=PLACE)
-    assert answer("alerts", ENDED_OFFLINE, place=PLACE).startswith(f"{PLACE} 10/14：在線期間沒有警報。")
+    assert answer("alerts", ENDED_OFFLINE, place=PLACE).startswith(f"{PLACE} 10/14 09:00–09:00：在線期間沒有警報。")
 
 
 @pytest.mark.parametrize("qid", [q.id for q in EVENT_QUESTIONS])
@@ -220,3 +220,12 @@ def test_repeated_offline_at_the_end_starts_at_the_first_one():
 def test_data_after_offline_clears_the_end_offline_mark():
     summary = summarize([_rec("08:00:00", "absence"), _rec("08:00:05", "offline"), _rec("08:10:00", "absence")])
     assert summary.ended_offline is None
+
+
+def test_answer_head_names_the_period_and_crosses_midnight():
+    two_days = summarize([_rec("23:58:00", "absence"),
+                          {"timestamp": "2026-10-15 00:00:05", "topic": T, "resolution": None,
+                           "payload": {"mode": "radar", "event": "absence", "trigger": "track", "userReply": False}}])
+    text = answer("visits", two_days, place=PLACE)
+    assert text.startswith(f"{PLACE} 10/14 23:58–10/15 00:00：")
+    assert check_output(text, two_days, place=PLACE) == []

@@ -3,7 +3,7 @@
 11 月中甲方 Demo 讓在地模型「有感」的功能（docs/11「11 月中甲方 Demo」）：模型跑在 Jetson 本機，
 提問與資料不出場域。流程照 ask.py：模型只回題號 → 先問「您是想問……嗎？」→ 讀者確認後才顯示答案；
 對應不到就列出選單讓讀者自己點。模型不寫答案，答案的數字都要通過輸出檢查。
-題目與答案句型是 2026-10-19 的草稿，待確認；改這裡屬單向門「給讀者的輸出與用語」（REVIEW.md 第 2 節）。
+題目與答案句型於 2026-10-19 確認（docs/11）；改這裡屬單向門「給讀者的輸出與用語」（REVIEW.md 第 2 節）。
 """
 from __future__ import annotations
 
@@ -26,7 +26,6 @@ from radar_agent.caregiver import (
     no_need_help_sentences,
     note_kind,
     offline_sentences,
-    period_head,
     usage_sentences,
 )
 from radar_agent.device_events import Summary, disconnected, read_records, summarize
@@ -93,6 +92,13 @@ _ANSWERS: dict[str, tuple[Callable[[Summary, str], list[str]], str | None]] = {
 }
 
 
+def _head(summary: Summary, place: str) -> str:
+    """「1 號廁所 10/14 08:00–11:59：」：題目不解析「今天早上」這類時段，答案自己寫出涵蓋哪一段（2026-10-19 決定）。"""
+    first, last = summary.online[0].start, summary.online[-1].end
+    end = f"{last:%H:%M}" if last.date() == first.date() else f"{last.month}/{last.day} {last:%H:%M}"
+    return f"{place} {first.month}/{first.day} {first:%H:%M}–{end}："
+
+
 def answer(question_id: str, summary: Summary, *, place: str) -> str:
     """固定句型的答案，只用 summary 裡的事實；句子和【事件摘要】共用 caregiver 的寫法。
     斷線與無法判讀的紀錄每一題都會寫出來。question_id 不在 EVENT_QUESTIONS 時丟 KeyError。"""
@@ -107,7 +113,7 @@ def answer(question_id: str, summary: Summary, *, place: str) -> str:
     if question_id == "falls":
         lines += _calls_also(summary)
     lines += device_problem_sentences(summary)
-    return "\n".join([period_head(summary, place) + lines[0], *lines[1:]])
+    return "\n".join([_head(summary, place) + lines[0], *lines[1:]])
 
 
 def confirm_text(question: Question) -> str:
