@@ -123,3 +123,14 @@ def test_modules_run_as_scripts(repo, module, args):
     result = subprocess.run([sys.executable, "-m", module, *args], cwd=repo, env=env, capture_output=True, text=True, encoding="utf-8", check=False)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip()
+
+
+def test_label_workflow_creates_exactly_the_documented_triage_labels(repo):
+    """labels.yml 建的標籤要和 docs/agents/triage-labels.md 的表一致，技能才找得到。"""
+    import re
+
+    doc = (repo / "docs" / "agents" / "triage-labels.md").read_text(encoding="utf-8")
+    documented = set(re.findall(r"^\| `[^`]+` \| `([^`]+)` \|", doc, re.MULTILINE))
+    workflow = (repo / ".github" / "workflows" / "labels.yml").read_text(encoding="utf-8")
+    created = set(re.findall(r"gh label create (\S+)", workflow))
+    assert documented == created == {"needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"}
