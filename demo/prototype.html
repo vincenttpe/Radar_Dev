@@ -137,6 +137,15 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .chart .miss { fill: none; stroke: var(--device); stroke-dasharray: 4 3; }
 .chart .sep { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 2 3; }
 .trend-lines { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 72ch; }
+/* 提問 */
+.ask-form { display: flex; flex-wrap: wrap; gap: 8px; }
+.ask-form input { flex: 1 1 240px; min-width: 0; font: 15px var(--f-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.ask-form input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.menu { display: flex; flex-wrap: wrap; gap: 8px; }
+.menu button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.answer { display: grid; gap: 4px; min-height: 1.6em; }
+.answer p { margin: 0; font-size: 16px; line-height: 1.7; max-width: 68ch; }
+.answer .wait { color: var(--muted); }
 .notes { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 14px; display: grid; gap: 4px; max-width: 72ch; }
 </style>
 
@@ -215,6 +224,19 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
     <div class="panel"><p class="summary" id="summary"></p></div>
   </section>
 
+  <section aria-labelledby="h-ask">
+    <div class="head-row"><h2 id="h-ask">提問<button type="button" class="gap-badge" data-gap="5" aria-label="Gap 5">5</button></h2><span class="hint">答案涵蓋整段資料，開頭寫出時段</span></div>
+    <div class="panel" style="display:grid;gap:14px">
+      <form class="ask-form" id="ask-form" autocomplete="off">
+        <input id="ask-input" type="text" maxlength="100" placeholder="例如：今天早上有沒有人跌倒？" aria-label="提問">
+        <button type="submit">送出</button>
+      </form>
+      <p class="hint" style="margin:0">這一頁沒有接上在地模型。正式版由 Jetson 上的模型把提問對到下面其中一題，先問「您是想問……嗎？」再回答；現在請直接點題目。</p>
+      <div class="menu" id="ask-menu"></div>
+      <div class="answer" id="ask-answer" aria-live="polite"></div>
+    </div>
+  </section>
+
   <section aria-labelledby="h-trend" id="trend">
     <div class="head-row"><h2 id="h-trend">兩週使用趨勢<button type="button" class="gap-badge" data-gap="8" aria-label="Gap 8">8</button></h2><span class="hint">模擬資料 10/1–10/14，規則為暫定值</span></div>
     <div class="panel" style="display:grid;gap:14px">
@@ -234,6 +256,7 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
       <li id="note-source">全部是模擬資料，還沒接上真實雷達資料。</li>
       <li>資料格式是現在雲端保存的裝置事件；正式部署後改讀 Jetson 的輸出。這一頁示意輸出的內容，不是 Dashboard 畫面，也不是即時警示。</li>
       <li>句子由範本產生，接上在地模型之前不稱為「LLM 產生」。</li>
+      <li>提問的答案由固定句型產生，數字都通過輸出檢查；這一頁沒有在地模型，打字送出不會對到題目，只能從選單點題。</li>
       <li>斷線時段寫「無法判斷」，不算成 0 次跌倒。</li>
       <li>長者回覆沒事不直接算誤報；主動呼救另外列，不算進跌倒警報。</li>
       <li id="note-trend">使用趨勢是場域統計，沒有個人 ID，不代表特定長者。</li>
@@ -341,6 +364,38 @@ const DATA = {
    "title": "裝置斷線",
    "prompt": "這段時間無法判斷是否有跌倒，請通知資訊人員。",
    "record": "11:10–11:25 裝置斷線，期間狀況不明。"
+  }
+ ],
+ "ask": [
+  {
+   "id": "falls",
+   "text": "有沒有人跌倒？",
+   "answer": "1 號廁所 10/14 08:00–11:59：在線期間跌倒警報 2 次（08:32、09:16）。\n語音回覆沒事 1 次。\n11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。\n在線期間另有主動呼救 1 次（10:03）。"
+  },
+  {
+   "id": "calls",
+   "text": "有沒有人主動呼救？",
+   "answer": "1 號廁所 10/14 08:00–11:59：在線期間主動呼救 1 次（10:03）。\n11:10–11:25 裝置斷線，這段時間無法判斷是否有人呼救。"
+  },
+  {
+   "id": "longstay",
+   "text": "有沒有人待太久？",
+   "answer": "1 號廁所 10/14 08:00–11:59：在線期間久待警報 1 次（10:45）。\n11:10–11:25 裝置斷線，這段時間無法判斷是否有人待太久。"
+  },
+  {
+   "id": "visits",
+   "text": "用了幾次？最久待多久？",
+   "answer": "1 號廁所 10/14 08:00–11:59：有人使用 5 次，最長一次 22 分鐘。\n11:10–11:25 裝置斷線，這段時間無法判斷使用情形。"
+  },
+  {
+   "id": "offline",
+   "text": "裝置有沒有斷線？",
+   "answer": "1 號廁所 10/14 08:00–11:59：11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。"
+  },
+  {
+   "id": "alerts",
+   "text": "有哪些警報？要怎麼處理？",
+   "answer": "1 號廁所 10/14 08:00–11:59：警報與處置提示：\n08:32 跌倒警報：請立即到場確認。\n08:32 長者回覆沒事，警報已解除；可視情況前往關心。\n09:16 跌倒警報：長者回覆需要協助，請立即到場。\n09:19 起身解除：已偵測到起身，警報已解除。\n10:03 長者主動呼救，請立即到場。\n10:05 起身解除：已偵測到起身，警報已解除。\n10:45 久待警報：停留超過設定時間，請前往查看。\n11:10–11:25 裝置斷線：這段時間無法判斷是否有跌倒，請通知資訊人員。"
   }
  ],
  "trend": {
@@ -512,7 +567,33 @@ function render() {
   const sum = $("summary"); sum.className = "summary" + (done ? "" : " wait");
   sum.textContent = done ? DATA.summary : "重播中。播完全部事件後顯示這段時間的摘要。";
   $("btn-prev").disabled = shown === 0; $("btn-next").disabled = done; $("btn-all").disabled = done;
+  renderAsk(done);
 }
+
+// 提問：答案和 radar-ask --pick 相同（不經模型）。重播中和事件摘要一樣先不給答案；不保留打的原文（可能有姓名）
+let asked = null;
+function renderAsk(done) {
+  const menu = $("ask-menu"), out = $("ask-answer");
+  menu.replaceChildren(); out.replaceChildren();
+  DATA.ask.forEach(q => {
+    const b = el("button", null, q.text); b.type = "button"; b.disabled = !done;
+    b.setAttribute("aria-pressed", String(q.id === asked));
+    b.onclick = () => { asked = q.id; renderAsk(true); };
+    menu.append(b);
+  });
+  if (!done) { out.append(el("p", "wait", "重播中。播完全部事件後再提問。")); return; }
+  if (asked === "unmatched") { out.append(el("p", "wait", "沒有對應到固定問題（這一頁沒有接上在地模型）。請從上面選一題。")); return; }
+  const q = DATA.ask.find(x => x.id === asked);
+  if (!q) { out.append(el("p", "wait", "點一個題目看答案。")); return; }
+  q.answer.split("\n").forEach(line => out.append(el("p", null, line)));
+  out.append(el("p", "hint", "從選單點選，不經模型。"));
+}
+$("ask-form").onsubmit = ev => {
+  ev.preventDefault();
+  $("ask-input").value = "";
+  asked = shown === events.length ? "unmatched" : null;
+  renderAsk(shown === events.length);
+};
 
 const go = n => { shown = Math.max(0, Math.min(events.length, n)); render(); };
 $("btn-reset").onclick = () => { document.body.classList.add("present"); go(0); };

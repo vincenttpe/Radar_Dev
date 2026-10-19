@@ -109,3 +109,21 @@ def test_gap_mode_is_hidden_by_default_and_every_badge_has_a_row(repo):
     badges = set(re.findall(r'class="gap-badge" data-gap="(\d+)"', page))
     rows = set(re.findall(r'<tr id="gap-row-(\d+)">', page))
     assert badges == rows == {str(n) for n in range(1, 10)}
+
+
+@pytest.mark.parametrize("qid", ["falls", "calls", "longstay", "visits", "offline", "alerts"])
+def test_ask_answers_on_page_are_the_radar_ask_pick_output(repo, data, capsys, qid):
+    from radar_agent.event_ask import main as ask_main
+
+    assert ask_main([str(repo / "data" / "samples_demo" / "bathroom_morning.jsonl"), "--place", "1 號廁所",
+                     "--pick", qid, "--json"]) == 0
+    reply = json.loads(capsys.readouterr().out)
+    on_page = {q["id"]: q for q in data["ask"]}
+    assert on_page[qid]["answer"] == reply["answer"] and on_page[qid]["text"] == reply["question"]["text"]
+
+
+def test_ask_box_says_there_is_no_local_model_and_keeps_no_typed_text(repo, data):
+    page = (repo / "demo" / "prototype.html").read_text(encoding="utf-8")
+    assert [q["id"] for q in data["ask"]] == ["falls", "calls", "longstay", "visits", "offline", "alerts"]
+    assert "這一頁沒有接上在地模型" in page and 'maxlength="100"' in page
+    assert '$("ask-input").value = "";' in page, "打字送出後要清掉原文，不保留"
