@@ -171,7 +171,7 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
         <tr id="gap-row-2"><td>2</td><td>時鐘與時間軸</td><td>時間戳是雲端<b>收到</b>時補上的，時區還沒確認</td><td>事件<b>發生</b>時間；KPI 3「通報 &lt; 10 秒」要用它來量</td><td>A4、A27（10/19 討論；實機操演時對時）</td></tr>
         <tr id="gap-row-3"><td>3</td><td>處置提示卡片</td><td>本 repo 事後整理一段時間的紀錄才產生，<b>不是即時通知</b></td><td>即時警示 &lt; 10 秒，由警示服務發出，不經本 repo</td><td>誰發、要不要和處置提示合成一則：10/19 Dashboard 題 3</td></tr>
         <tr id="gap-row-4"><td>4</td><td>跌倒警報的句子</td><td>只寫得出「語音詢問 10 秒未獲回應」</td><td>計畫書例句「接近地面姿態持續 30 秒，未取得有效語音回應」</td><td>姿態持續時間 A6（Jetson 可做、尚未實作）</td></tr>
-        <tr id="gap-row-5"><td>5</td><td>所有句子</td><td>由範本產生；改寫層與檢查已做好，還沒接模型</td><td>Jetson 上的在地語言模型改寫，數字仍照規則</td><td>Jetson 型號 B1、模型選型 F2</td></tr>
+        <tr id="gap-row-5"><td>5</td><td>所有句子、提問</td><td>由範本產生；改寫層與檢查已做好，還沒接模型。提問只能從選單點題，還沒接模型對應</td><td>Jetson 上的在地語言模型改寫，數字仍照規則</td><td>Jetson 型號 B1、模型選型 F2</td></tr>
         <tr id="gap-row-6"><td>6</td><td>照護紀錄草稿</td><td>一行一事件，格式自訂；只顯示、不保存</td><td>撰寫時間降低 ≥ 50%；查核點 B4 照護紀錄自動生成；BLEU、ROUGE 等文字指標</td><td>機構紀錄樣本 F13、與 radarLLM 的分工 F12、寫回哪裡（Dashboard 題 4）</td></tr>
         <tr id="gap-row-7"><td>7</td><td>事件摘要的次數</td><td>去重只能比「完全一樣」；重複的跌倒訊息合併到解除為止</td><td>跌倒偵測準確率 ≥ 90%、漏報率 ≤ 10%，以人工標註驗收</td><td>事件序號 A11、重複警報 A26、標註資料 A10</td></tr>
         <tr id="gap-row-8"><td>8</td><td>兩週使用趨勢</td><td>場域統計，兩週模擬資料；現有系統只存 7 天</td><td>應用情境 2：個人基線與長期趨勢</td><td>長者代號 A15、超過 7 天的保存 E8、由誰計算（Dashboard 題 8）</td></tr>
@@ -572,15 +572,18 @@ function render() {
 
 // 提問：答案和 radar-ask --pick 相同（不經模型）。重播中和事件摘要一樣先不給答案；不保留打的原文（可能有姓名）
 let asked = null;
+// 按鈕只建一次，之後只改狀態：重建會讓鍵盤焦點掉回 body
+const askButtons = DATA.ask.map(q => {
+  const b = el("button", null, q.text); b.type = "button";
+  b.onclick = () => { asked = q.id; renderAsk(true); };
+  $("ask-menu").append(b);
+  return b;
+});
 function renderAsk(done) {
-  const menu = $("ask-menu"), out = $("ask-answer");
-  menu.replaceChildren(); out.replaceChildren();
-  DATA.ask.forEach(q => {
-    const b = el("button", null, q.text); b.type = "button"; b.disabled = !done;
-    b.setAttribute("aria-pressed", String(q.id === asked));
-    b.onclick = () => { asked = q.id; renderAsk(true); };
-    menu.append(b);
-  });
+  const out = $("ask-answer");
+  out.replaceChildren();
+  if (!done) asked = null;  // 重播時清掉上一輪的答案
+  askButtons.forEach((b, i) => { b.disabled = !done; b.setAttribute("aria-pressed", String(DATA.ask[i].id === asked)); });
   if (!done) { out.append(el("p", "wait", "重播中。播完全部事件後再提問。")); return; }
   if (asked === "unmatched") { out.append(el("p", "wait", "沒有對應到固定問題（這一頁沒有接上在地模型）。請從上面選一題。")); return; }
   const q = DATA.ask.find(x => x.id === asked);
@@ -590,7 +593,9 @@ function renderAsk(done) {
 }
 $("ask-form").onsubmit = ev => {
   ev.preventDefault();
+  const typed = $("ask-input").value.trim();
   $("ask-input").value = "";
+  if (!typed) return;
   asked = shown === events.length ? "unmatched" : null;
   renderAsk(shown === events.length);
 };

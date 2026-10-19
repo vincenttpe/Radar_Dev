@@ -78,6 +78,8 @@ def test_field_data_page_is_labelled_as_field_data_and_has_no_trend(build, tmp_p
     assert data["source"] == "field" and data["trend"] is None
     assert data["summary"].startswith("2 號廁所 10/14：")
     assert len(data["events"]) == 8
+    assert [q["id"] for q in data["ask"]] == ["falls", "calls", "longstay", "visits", "offline", "alerts"]
+    assert all(q["answer"].startswith("2 號廁所 10/14 ") for q in data["ask"])
 
 
 def test_field_data_page_refuses_unmasked_or_empty_input(build, tmp_path):
@@ -127,3 +129,12 @@ def test_ask_box_says_there_is_no_local_model_and_keeps_no_typed_text(repo, data
     assert [q["id"] for q in data["ask"]] == ["falls", "calls", "longstay", "visits", "offline", "alerts"]
     assert "這一頁沒有接上在地模型" in page and 'maxlength="100"' in page
     assert '$("ask-input").value = "";' in page, "打字送出後要清掉原文，不保留"
+
+
+def test_ask_answer_that_fails_the_output_check_stops_the_build(build, monkeypatch):
+    from radar_agent.event_ask import Reply
+    from radar_agent.ask import Match
+
+    monkeypatch.setattr(build, "pick", lambda qid, summary, place: Reply(Match(None), None, 0.0, ("數字對不上",)))
+    with pytest.raises(ValueError, match="事件提問的答案沒通過輸出檢查"):
+        build.demo_data()
