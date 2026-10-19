@@ -86,6 +86,7 @@ def test_docs_only_change_passes_with_none(template):
     ("src/radar_agent/ask.py", "給讀者的輸出與用語"),
     ("src/radar_agent/care_record.py", "給讀者的輸出與用語"),
     ("data/samples_fall/2026-06-03.json", "個人資料的流向"),
+    ("src/radar_agent/device_events.py", "個人資料的流向"),
     ("schemas/event.v0.draft.json", "事件格式"),
     ("src/radar_agent/event_validation.py", "事件格式"),
     (".github/workflows/tests.yml", "檢查與審查機制"),
