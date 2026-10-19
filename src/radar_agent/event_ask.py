@@ -95,8 +95,11 @@ _ANSWERS: dict[str, tuple[Callable[[Summary, str], list[str]], str | None]] = {
 def _head(summary: Summary, place: str) -> str:
     """「1 號廁所 10/14 08:00–11:59：」：題目不解析「今天早上」這類時段，答案自己寫出涵蓋哪一段（2026-10-19 決定）。"""
     first, last = summary.online[0].start, summary.online[-1].end
-    end = f"{last:%H:%M}" if last.date() == first.date() else f"{last.month}/{last.day} {last:%H:%M}"
-    return f"{place} {first.month}/{first.day} {first:%H:%M}–{end}："
+    start = f"{place} {first.month}/{first.day} {first:%H:%M}"
+    if last.date() != first.date():
+        return f"{start}–{last.month}/{last.day} {last:%H:%M}："
+    # 頭尾在同一分鐘（例如只有一筆資料）只寫一個時間，不寫「09:00–09:00」（#66）
+    return f"{start}：" if f"{last:%H:%M}" == f"{first:%H:%M}" else f"{start}–{last:%H:%M}："
 
 
 def answer(question_id: str, summary: Summary, *, place: str) -> str:

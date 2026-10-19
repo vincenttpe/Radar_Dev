@@ -150,7 +150,7 @@ def test_device_going_offline_before_the_data_ends_is_never_answered_as_nothing(
 
 def test_offline_before_the_end_scopes_counts_to_online_time():
     assert "在線期間久待警報 0 次" in answer("longstay", ENDED_OFFLINE, place=PLACE)
-    assert answer("alerts", ENDED_OFFLINE, place=PLACE).startswith(f"{PLACE} 10/14 09:00–09:00：在線期間沒有警報。")
+    assert answer("alerts", ENDED_OFFLINE, place=PLACE).startswith(f"{PLACE} 10/14 09:00：在線期間沒有警報。")
 
 
 @pytest.mark.parametrize("qid", [q.id for q in EVENT_QUESTIONS])
@@ -229,3 +229,11 @@ def test_answer_head_names_the_period_and_crosses_midnight():
     text = answer("visits", two_days, place=PLACE)
     assert text.startswith(f"{PLACE} 10/14 23:58–10/15 00:00：")
     assert check_output(text, two_days, place=PLACE) == []
+
+
+def test_answer_head_writes_one_time_when_start_and_end_share_a_minute():
+    """資料頭尾在同一分鐘時只寫一個時間，不寫「09:00–09:00」（#66）。"""
+    for summary in (ENDED_OFFLINE, summarize([_rec("09:00:00", "absence")])):
+        text = answer("visits", summary, place=PLACE)
+        assert text.startswith(f"{PLACE} 10/14 09:00：") and "09:00–09:00" not in text
+        assert check_output(text, summary, place=PLACE) == []
