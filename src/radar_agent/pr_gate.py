@@ -45,6 +45,7 @@ DOORS: dict[str, tuple[str, ...]] = {
         "data/",
         "src/radar_agent/audience.py",  # 讀者權限決定個人資料交給誰
         "src/radar_agent/field_data.py",  # 實測資料的遮罩與輸出位置限制
+        "src/radar_agent/local_model.py",  # 把讀者打的提問送進在地模型（只能是本機或區網）
         "src/radar_agent/device_events.py",  # 讀取裝置事件紀錄檔、整理出造訪與警報
     ),
     "事件格式": ("schemas/", "src/radar_agent/event_validation.py"),

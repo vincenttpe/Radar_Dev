@@ -16,7 +16,7 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
-from radar_agent.device_events import FallAlert, Summary, read_records, summarize, summarize_days
+from radar_agent.device_events import FallAlert, Summary, disconnected, read_records, summarize, summarize_days
 from radar_agent.kg_rules import Assessment
 from radar_agent.output_check import check_output, numbers, wording_problems
 
@@ -31,47 +31,86 @@ def duration_text(span: timedelta) -> str:
     return f"{seconds} 秒"
 
 
-def _site_text(summary: Summary, place: str) -> str:
-    if not summary.online:
-        return f"{place}：沒有收到資料，無法判斷。"
+# ── 場域摘要的句子：radar-caregiver 的【事件摘要】與 radar-ask 的答案共用 ──
+# 同一個事實只有一種寫法；斷線與無法判讀的提醒放在這裡，兩邊都不會漏（REVIEW.md 3.1）。
+
+def falls_and_calls(summary: Summary) -> tuple[list[FallAlert], list[FallAlert]]:
+    """跌倒警報與主動呼救分開（mode=speech 的 fall 是主動呼救，不算跌倒；docs/05 C2）。"""
+    return ([a for a in summary.fall_alerts if not a.distress_call],
+            [a for a in summary.fall_alerts if a.distress_call])
+
+
+def period_head(summary: Summary, place: str) -> str:
+    """「1 號廁所 10/14：」；跨日寫成「10/13–10/14」。summary.online 不能是空的。"""
     first, last = summary.online[0].start, summary.online[-1].end
     days = f"{first.month}/{first.day}"
     if last.date() != first.date():
         days += f"–{last.month}/{last.day}"
-    parts = [f"{place} {days}："]
+    return f"{place} {days}："
+
+
+def count_sentence(summary: Summary, label: str, times: list[datetime]) -> str:
+    """「跌倒警報 2 次（08:32、09:16）。」；裝置有斷線時前面加「在線期間」。"""
+    scope = "在線期間" if disconnected(summary) else ""
+    listed = f"（{'、'.join(f'{t:%H:%M}' for t in times)}）" if times else ""
+    return f"{scope}{label} {len(times)} 次{listed}。"
+
+
+def no_need_help_sentences(summary: Summary) -> list[str]:
+    """語音回覆沒事；不直接當誤報（C2），沒有就不寫。"""
+    replies = summary.no_need_help_replies
+    return [f"語音回覆沒事 {len(replies)} 次。"] if replies else []
+
+
+def usage_sentences(summary: Summary) -> list[str]:
     if summary.visits:
         longest = max(v.duration for v in summary.visits)
-        parts.append(f"有人使用 {len(summary.visits)} 次，最長一次 {duration_text(longest)}。")
+        lines = [f"有人使用 {len(summary.visits)} 次，最長一次 {duration_text(longest)}。"]
     else:
-        parts.append("沒有偵測到有人使用。")
+        lines = ["沒有偵測到有人使用。"]
     if summary.interrupted_visits:
-        parts.append(f"另有 {len(summary.interrupted_visits)} 次使用途中裝置斷線，停留時間不明。")
+        lines.append(f"另有 {len(summary.interrupted_visits)} 次使用途中裝置斷線，停留時間不明。")
     if summary.ongoing_visit is not None:
-        parts.append(f"資料結束時仍有人在內（{summary.ongoing_visit.start:%H:%M} 起）。")
-    gaps = [(a.end, b.start) for a, b in zip(summary.online, summary.online[1:], strict=False)]
-    scope = "在線期間" if gaps else ""
-    # 主動呼救（mode=speech 的 fall）另外列，不算進跌倒警報（docs/05 C2，2026-10-16 第四次書面回覆）
-    falls = [a for a in summary.fall_alerts if not a.distress_call]
-    calls = [a for a in summary.fall_alerts if a.distress_call]
-    for label, alerts in (("跌倒警報", falls), ("主動呼救", calls)):
-        times = f"（{'、'.join(f'{a.time:%H:%M}' for a in alerts)}）" if alerts else ""
-        parts.append(f"{scope}{label} {len(alerts)} 次{times}。")
-    if summary.no_need_help_replies:
-        parts.append(f"語音回覆沒事 {len(summary.no_need_help_replies)} 次。")
-    stays = summary.longstay_alerts
-    times = f"（{'、'.join(f'{t:%H:%M}' for t in stays)}）" if stays else ""
-    parts.append(f"{scope}久待警報 {len(stays)} 次{times}。")
-    if gaps:
-        for off, on in gaps:
-            parts.append(f"{off:%H:%M}–{on:%H:%M} 裝置斷線，這段時間無法判斷是否有跌倒。")
-    else:
-        parts.append("這段時間裝置都在線。")
+        lines.append(f"資料結束時仍有人在內（{summary.ongoing_visit.start:%H:%M} 起）。")
+    return lines
+
+
+def ended_offline_sentences(summary: Summary, what: str = "是否有跌倒") -> list[str]:
+    """資料結束前斷線、之後沒再連上：「HH:MM 起裝置斷線，之後無法判斷……」。"""
+    if summary.ended_offline is None:
+        return []
+    return [f"{summary.ended_offline:%H:%M} 起裝置斷線，之後無法判斷{what}。"]
+
+
+def offline_sentences(summary: Summary, what: str = "是否有跌倒") -> list[str]:
+    """中間的斷線時段，加上資料結束前的斷線；沒有斷線時回傳空清單。"""
+    gaps = [f"{a.end:%H:%M}–{b.start:%H:%M} 裝置斷線，這段時間無法判斷{what}。" for a, b in pairwise(summary.online)]
+    return gaps + ended_offline_sentences(summary, what)
+
+
+def device_problem_sentences(summary: Summary) -> list[str]:
+    """裝置錯誤與讀不懂的紀錄：都要請資訊人員處理，不能省略。"""
+    lines = []
     if summary.errors:
         times = "、".join(f"{when:%H:%M}" for when, _ in summary.errors)
-        parts.append(f"裝置回報錯誤 {len(summary.errors)} 次（{times}），請通知資訊人員。")
+        lines.append(f"裝置回報錯誤 {len(summary.errors)} 次（{times}），請通知資訊人員。")
     unreadable = len(summary.unreadable) + len(summary.unknown_events)
     if unreadable:
-        parts.append(f"另有 {unreadable} 筆紀錄無法判讀，請通知資訊人員。")
+        lines.append(f"另有 {unreadable} 筆紀錄無法判讀，請通知資訊人員。")
+    return lines
+
+
+def _site_text(summary: Summary, place: str) -> str:
+    if not summary.online:
+        return f"{place}：沒有收到資料，無法判斷。"
+    falls, calls = falls_and_calls(summary)
+    parts = [period_head(summary, place), *usage_sentences(summary),
+             count_sentence(summary, "跌倒警報", [a.time for a in falls]),
+             count_sentence(summary, "主動呼救", [a.time for a in calls])]
+    parts += no_need_help_sentences(summary)
+    parts.append(count_sentence(summary, "久待警報", summary.longstay_alerts))
+    parts += offline_sentences(summary) or ["這段時間裝置都在線。"]
+    parts += device_problem_sentences(summary)
     return "".join(parts)
 
 
@@ -185,6 +224,13 @@ class OutputRejected(ValueError):
         self.problems = problems
 
 
+def note_kind(prompt: str) -> tuple[str, str]:
+    """處置提示的（等級, 標題）；認不得就丟 ValueError，提醒同步更新 NOTE_KINDS。"""
+    if prompt not in NOTE_KINDS:
+        raise ValueError(f"NOTE_KINDS 沒有這句處置提示：{prompt}")
+    return NOTE_KINDS[prompt]
+
+
 def _stamp(when: datetime) -> str:
     return f"{when:%Y-%m-%d %H:%M:%S}"
 
@@ -196,14 +242,13 @@ def report_data(summary: Summary, *, place: str) -> dict[str, Any]:
         raise OutputRejected(problems)
     events = []
     for note in event_notes(summary, place):
-        if note.prompt not in NOTE_KINDS:
-            raise ValueError(f"NOTE_KINDS 沒有這句處置提示：{note.prompt}")
-        level, title = NOTE_KINDS[note.prompt]
+        level, title = note_kind(note.prompt)
         events.append({
             "at": _stamp(note.time), "label": note.span or f"{note.time:%H:%M}", "level": level, "title": title,
             "prompt": note.prompt, "record": note.record,
         })
     online = summary.online
+    falls, calls = falls_and_calls(summary)
     return {
         "schema": REPORT_SCHEMA,
         "place": place,
@@ -212,11 +257,13 @@ def report_data(summary: Summary, *, place: str) -> dict[str, Any]:
         "summary": _site_text(summary, place),
         "counts": {
             "visits": len(summary.visits),
-            "fall_alerts": sum(not a.distress_call for a in summary.fall_alerts),
-            "distress_calls": sum(a.distress_call for a in summary.fall_alerts),
+            "fall_alerts": len(falls),
+            "distress_calls": len(calls),
             "no_need_help": len(summary.no_need_help_replies),
             "longstay": len(summary.longstay_alerts),
             "offline": [[_stamp(a.end), _stamp(b.start)] for a, b in pairwise(online)],
+            # 資料結束前斷線的時間（之後沒再連上）；沒有就是 null
+            "ended_offline": _stamp(summary.ended_offline) if summary.ended_offline else None,
         },
         "events": events,
         "text_layer": "template",

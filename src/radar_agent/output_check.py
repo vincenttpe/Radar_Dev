@@ -11,7 +11,7 @@ import re
 from datetime import datetime
 from decimal import Decimal
 
-from radar_agent.device_events import Summary
+from radar_agent.device_events import Summary, disconnected
 from radar_agent.kg_rules import Assessment
 
 FORBIDDEN = {
@@ -44,6 +44,8 @@ def _facts(source: Summary | Assessment, place: str) -> set[Decimal]:
         times += [r.time for r in source.resolutions]
         allowed |= {Decimal(a.delay_s) for a in source.fall_alerts if a.delay_s is not None}
         times += [p.start for p in source.online] + [p.end for p in source.online]
+        if source.ended_offline is not None:
+            times.append(source.ended_offline)
         if source.ongoing_visit is not None:
             times.append(source.ongoing_visit.start)
         for when in times:
@@ -81,9 +83,11 @@ def check_output(text: str, source: Summary | Assessment, *, place: str = "") ->
             if source[key]:
                 unquoted = unquoted.replace(str(source[key]), "")
     problems += wording_problems(unquoted)
-    if isinstance(source, Summary):
-        disconnected = len(source.online) != 1 or bool(source.interrupted_visits)
-        for label in ("跌倒警報", "主動呼救"):
-            if disconnected and re.search(rf"(?<!在線期間){label} 0 次", text):
+    if isinstance(source, Summary) and disconnected(source):
+        for label in ("跌倒警報", "主動呼救", "久待警報"):
+            if re.search(rf"(?<!在線期間){label} 0 次", text):
                 problems.append(f"裝置有斷線，不能寫「{label} 0 次」而不註明在線期間")
+        if "裝置都在線" in text:
+            problems.append("裝置有斷線，不能寫「裝置都在線」")
     return problems
+

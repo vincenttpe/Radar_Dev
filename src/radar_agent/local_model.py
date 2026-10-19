@@ -80,6 +80,6 @@ def model_from_args(args: argparse.Namespace) -> Any:
         if not args.model:
             raise ValueError("--endpoint 要搭配 --model")
         return HttpChatModel(args.endpoint, args.model, timeout=args.timeout)
-    if args.cmd:
+    if args.cmd is not None:  # 空字串也照指令處理：每次呼叫都記成模型錯誤，不讓整個工具當掉
         return CommandModel(args.cmd, timeout=args.timeout)
     return None

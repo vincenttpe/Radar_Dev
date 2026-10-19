@@ -32,7 +32,8 @@ def test_falls_answer_states_disconnection_instead_of_claiming_none():
     assert answer("falls", SUMMARY, place="1 號廁所") == (
         "1 號廁所 10/14：在線期間跌倒警報 2 次（08:32、09:16）。\n"
         "語音回覆沒事 1 次。\n"
-        "11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。"
+        "11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。\n"
+        "在線期間另有主動呼救 1 次（10:03）。"
     )
 
 
@@ -115,3 +116,107 @@ def test_cli_with_a_command_model_and_json(capsys):
 def test_cli_refuses_models_from_china(capsys):
     code, _, err = _run(capsys, DEMO, "--place", "1 號廁所", "--question", "x", "--cmd", "ollama run qwen2.5:3b")
     assert code == 2 and "docs/adr/0003" in err
+
+
+# ── 2026-10-19 審查找到的情況：斷線與讀不懂的紀錄不能被答成沒事 ──────────
+
+T = "radar10/DEVICE01"
+
+
+def _rec(hms: str, event: str) -> dict:
+    payload = {"mode": "radar", "event": event, "trigger": "track", "userReply": False}
+    return {"timestamp": f"2026-10-14 {hms}", "topic": T, "resolution": None, "payload": payload}
+
+
+# 有人進去後裝置斷線，之後沒再連上：只有一段在線時段，但其實有斷線
+ENDED_OFFLINE = summarize(
+    [_rec(f"09:00:{s:02d}", "absence") for s in range(0, 30, 5)]
+    + [_rec("09:00:30", "presence"), _rec("09:00:35", "moving"), _rec("09:00:40", "offline")]
+)
+# 有讀不懂的紀錄（時間格式錯）
+UNREADABLE = summarize(
+    [_rec(f"09:00:{s:02d}", "absence") for s in range(0, 60, 5)]
+    + [{"timestamp": "不是時間", "topic": T, "resolution": None, "payload": {"event": "absence"}}]
+)
+
+
+@pytest.mark.parametrize("qid", [q.id for q in EVENT_QUESTIONS])
+def test_device_going_offline_before_the_data_ends_is_never_answered_as_nothing(qid):
+    text = answer(qid, ENDED_OFFLINE, place=PLACE)
+    assert "都在線" not in text and "這段時間沒有警報" not in text
+    assert "09:00 起裝置斷線" in text
+    assert check_output(text, ENDED_OFFLINE, place=PLACE) == []
+
+
+def test_offline_before_the_end_scopes_counts_to_online_time():
+    assert "在線期間久待警報 0 次" in answer("longstay", ENDED_OFFLINE, place=PLACE)
+    assert answer("alerts", ENDED_OFFLINE, place=PLACE).startswith(f"{PLACE} 10/14：在線期間沒有警報。")
+
+
+@pytest.mark.parametrize("qid", [q.id for q in EVENT_QUESTIONS])
+def test_unreadable_records_are_mentioned_in_every_answer(qid):
+    assert answer(qid, UNREADABLE, place=PLACE).endswith("另有 1 筆紀錄無法判讀，請通知資訊人員。")
+
+
+def test_check_rejects_zero_longstay_or_all_online_when_the_device_went_offline():
+    assert check_output("久待警報 0 次。", ENDED_OFFLINE, place=PLACE) == [
+        "裝置有斷線，不能寫「久待警報 0 次」而不註明在線期間"
+    ]
+    assert check_output("這段時間裝置都在線。", ENDED_OFFLINE, place=PLACE) == ["裝置有斷線，不能寫「裝置都在線」"]
+
+
+def test_falls_answer_mentions_distress_calls_without_counting_them_as_falls():
+    text = answer("falls", CASES["E4"], place=PLACE)
+    assert "跌倒警報 0 次" in text and "另有主動呼救 1 次（09:06）" in text
+
+
+def test_reply_carries_the_period_it_covers():
+    data = pick("falls", SUMMARY, place="1 號廁所").data()
+    assert (data["from"], data["to"]) == ("2026-10-14 08:00:00", "2026-10-14 11:59:55")
+
+
+def test_cli_reports_an_unknown_prompt_instead_of_crashing(monkeypatch, capsys):
+    from radar_agent import caregiver
+
+    monkeypatch.delitem(caregiver.NOTE_KINDS, "請立即到場確認。")
+    code, _, err = _run(capsys, DEMO, "--place", "1 號廁所", "--pick", "alerts")
+    assert code == 2 and "NOTE_KINDS" in err
+
+
+# 斷線時沒人在用、最後一筆是 offline；以及中間斷過一次、最後又在使用途中斷線
+QUIET_OFFLINE = summarize([*(_rec(f"09:00:{s:02d}", "absence") for s in range(0, 40, 5)), _rec("09:00:40", "offline")])
+GAP_THEN_OFFLINE = summarize(
+    [*(_rec(f"09:00:{s:02d}", "absence") for s in range(0, 30, 5)), _rec("09:00:30", "offline"),
+     *(_rec(f"09:10:{s:02d}", "absence") for s in range(0, 30, 5)),
+     _rec("09:10:30", "presence"), _rec("09:10:35", "moving"), _rec("09:10:40", "offline")]
+)
+
+
+@pytest.mark.parametrize("summary", [QUIET_OFFLINE, GAP_THEN_OFFLINE], ids=["quiet", "gap-then-offline"])
+@pytest.mark.parametrize("qid", [q.id for q in EVENT_QUESTIONS])
+def test_offline_at_the_end_is_always_stated(summary, qid):
+    text = answer(qid, summary, place=PLACE)
+    assert "09:00 起裝置斷線" in text or "09:10 起裝置斷線" in text, text
+    assert "都在線" not in text and "這段時間沒有警報" not in text
+    assert check_output(text, summary, place=PLACE) == []
+
+
+def test_gap_and_end_offline_are_both_listed():
+    text = answer("offline", GAP_THEN_OFFLINE, place=PLACE)
+    assert "09:00–09:10 裝置斷線" in text and "09:10 起裝置斷線，之後無法判斷是否有跌倒。" in text
+
+
+def test_repeated_offline_at_the_end_starts_at_the_first_one():
+    """結尾連續兩筆 offline：斷線起點是第一筆，不是最後一筆（2026-10-19 第二輪審查）。"""
+    summary = summarize([*(_rec(f"08:00:{s:02d}", "absence") for s in range(0, 10, 5)),
+                         _rec("08:00:10", "offline"), _rec("08:05:00", "offline")])
+    assert summary.ended_offline is not None and f"{summary.ended_offline:%H:%M:%S}" == "08:00:10"
+    for q in EVENT_QUESTIONS:
+        text = answer(q.id, summary, place=PLACE)
+        assert "08:00 起裝置斷線" in text and "08:05" not in text
+        assert check_output(text, summary, place=PLACE) == []
+
+
+def test_data_after_offline_clears_the_end_offline_mark():
+    summary = summarize([_rec("08:00:00", "absence"), _rec("08:00:05", "offline"), _rec("08:10:00", "absence")])
+    assert summary.ended_offline is None

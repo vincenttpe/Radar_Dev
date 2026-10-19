@@ -10,7 +10,7 @@
 | 近 7 天與前 7 天的使用趨勢 | `radar-caregiver 紀錄檔 --place "1 號廁所" --trend --json` | `usage-trend-v0` |
 | 照護人員打字提問 | `radar-ask 紀錄檔 --place "1 號廁所" --question "提問" --endpoint 網址 --model 模型名稱 --json` | `event-ask-v0` |
 
-紀錄檔是雲端格式（`{timestamp, topic, resolution, payload}`，JSON 陣列或一行一筆）。地點名稱不放長者姓名。輸出檢查沒通過時，指令的結束碼是 1，而且不輸出任何文字。
+紀錄檔是雲端格式（`{timestamp, topic, resolution, payload}`，JSON 陣列或一行一筆）。地點名稱不放長者姓名。輸出檢查沒通過時結束碼是 1：`radar-caregiver` 不輸出任何文字；`radar-ask` 仍輸出 JSON，但 `answer` 是 `null`，原因在 `rejected`。
 
 試跑可以用模擬資料：`data/samples_demo/bathroom_morning.jsonl`（一個上午）。
 
@@ -27,6 +27,7 @@
 | `counts.no_need_help` | 語音回覆沒事；**不是誤報**，不要寫成誤報（會議清單 C2） | 數字卡 |
 | `counts.longstay` | 久待警報 | 數字卡 |
 | `counts.offline` | 斷線時段 `[[開始, 結束], ...]` | 時間軸上標灰 |
+| `counts.ended_offline` | 資料結束前斷線的時間（之後沒再連上）；沒有就是 `null` | 時間軸上從這裡標灰到結尾 |
 | `events[]` | 每個事件一則：`at` 時間、`label` 顯示用時間（斷線是起訖）、`level`、`title`、`prompt` 處置提示、`record` 照護紀錄草稿 | 通知卡片；`record` 給「複製到照護紀錄」 |
 | `text_layer` | 文字來源，目前都是 `template`（固定範本） | 小字標示 |
 
@@ -53,6 +54,7 @@
 | `menu` | 全部六題 `{id, text}`，對不到時讓照護人員自己點 |
 | `model`、`prompt_version` | 用了哪個模型、哪一版 prompt |
 | `seconds` | 模型對應花的秒數 |
+| `from`、`to` | 答案涵蓋的資料時間。題目不解析「今天早上」這類時段，畫面要標出這段時間 |
 | `rejected` | 對不到或不顯示的原因 |
 
 畫面流程：
@@ -60,7 +62,8 @@
 1. 照護人員在輸入框打字送出。
 2. 有 `question`：先顯示 `confirm`，按「是」才顯示 `answer`；按「不是」就顯示 `menu`。
 3. 沒有 `question`：直接顯示 `menu`。點選單時改呼叫 `radar-ask ... --pick 題目id --json`，不經過模型。
-4. 答案旁標出 `model` 與 `seconds`，例如「在地模型 Llama-Breeze2 3B · 1.2 秒」；Demo 時說明模型在 Jetson 本機執行，提問與資料不出場域。實際是不是在 Jetson 上跑，要以部署為準，不要寫死在畫面上。
+4. 答案旁固定標出 `model` 與 `seconds`，例如「在地模型 Llama-Breeze2 3B · 1.2 秒」，並標出 `from`–`to`。
+5. 「在 Jetson 本機執行、提問與資料不出場域」照部署設定顯示：Dashboard 端設一個開關，實際部署在 Jetson 上才打開（2026-10-19 決定），不要寫死。
 
 本 repo 不保存照護人員打的原文（可能含姓名），Dashboard 端也請不要寫進 log。
 
