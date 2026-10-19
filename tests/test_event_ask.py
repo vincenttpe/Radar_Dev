@@ -32,8 +32,8 @@ def test_falls_answer_states_disconnection_instead_of_claiming_none():
     assert answer("falls", SUMMARY, place="1 號廁所") == (
         "1 號廁所 10/14：在線期間跌倒警報 2 次（08:32、09:16）。\n"
         "語音回覆沒事 1 次。\n"
-        "在線期間另有主動呼救 1 次（10:03）。\n"
-        "11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。"
+        "11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。\n"
+        "在線期間另有主動呼救 1 次（10:03）。"
     )
 
 
@@ -181,3 +181,26 @@ def test_cli_reports_an_unknown_prompt_instead_of_crashing(monkeypatch, capsys):
     monkeypatch.delitem(caregiver.NOTE_KINDS, "請立即到場確認。")
     code, _, err = _run(capsys, DEMO, "--place", "1 號廁所", "--pick", "alerts")
     assert code == 2 and "NOTE_KINDS" in err
+
+
+# 斷線時沒人在用、最後一筆是 offline；以及中間斷過一次、最後又在使用途中斷線
+QUIET_OFFLINE = summarize([*(_rec(f"09:00:{s:02d}", "absence") for s in range(0, 40, 5)), _rec("09:00:40", "offline")])
+GAP_THEN_OFFLINE = summarize(
+    [*(_rec(f"09:00:{s:02d}", "absence") for s in range(0, 30, 5)), _rec("09:00:30", "offline"),
+     *(_rec(f"09:10:{s:02d}", "absence") for s in range(0, 30, 5)),
+     _rec("09:10:30", "presence"), _rec("09:10:35", "moving"), _rec("09:10:40", "offline")]
+)
+
+
+@pytest.mark.parametrize("summary", [QUIET_OFFLINE, GAP_THEN_OFFLINE], ids=["quiet", "gap-then-offline"])
+@pytest.mark.parametrize("qid", [q.id for q in EVENT_QUESTIONS])
+def test_offline_at_the_end_is_always_stated(summary, qid):
+    text = answer(qid, summary, place=PLACE)
+    assert "09:00 起裝置斷線" in text or "09:10 起裝置斷線" in text, text
+    assert "都在線" not in text and "這段時間沒有警報" not in text
+    assert check_output(text, summary, place=PLACE) == []
+
+
+def test_gap_and_end_offline_are_both_listed():
+    text = answer("offline", GAP_THEN_OFFLINE, place=PLACE)
+    assert "09:00–09:10 裝置斷線" in text and "09:10 起裝置斷線，之後無法判斷是否有跌倒。" in text

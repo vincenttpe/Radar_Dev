@@ -16,9 +16,9 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
-from radar_agent.device_events import FallAlert, Summary, read_records, summarize, summarize_days
+from radar_agent.device_events import FallAlert, Summary, disconnected, read_records, summarize, summarize_days
 from radar_agent.kg_rules import Assessment
-from radar_agent.output_check import check_output, disconnected, numbers, wording_problems
+from radar_agent.output_check import check_output, numbers, wording_problems
 
 
 def duration_text(span: timedelta) -> str:
@@ -69,14 +69,17 @@ def usage_sentences(summary: Summary) -> list[str]:
     return lines
 
 
+def ended_offline_sentences(summary: Summary, what: str = "是否有跌倒") -> list[str]:
+    """資料結束前斷線、之後沒再連上：「HH:MM 起裝置斷線，之後無法判斷……」。"""
+    if summary.ended_offline is None:
+        return []
+    return [f"{summary.ended_offline:%H:%M} 起裝置斷線，之後無法判斷{what}。"]
+
+
 def offline_sentences(summary: Summary, what: str = "是否有跌倒") -> list[str]:
-    """斷線時段；沒有斷線時回傳空清單。資料結束前斷線、之後沒再連上，也算斷線。"""
-    gaps = list(pairwise(summary.online))
-    if gaps:
-        return [f"{a.end:%H:%M}–{b.start:%H:%M} 裝置斷線，這段時間無法判斷{what}。" for a, b in gaps]
-    if disconnected(summary):
-        return [f"{summary.online[-1].end:%H:%M} 起裝置斷線，之後無法判斷{what}。"]
-    return []
+    """中間的斷線時段，加上資料結束前的斷線；沒有斷線時回傳空清單。"""
+    gaps = [f"{a.end:%H:%M}–{b.start:%H:%M} 裝置斷線，這段時間無法判斷{what}。" for a, b in pairwise(summary.online)]
+    return gaps + ended_offline_sentences(summary, what)
 
 
 def device_problem_sentences(summary: Summary) -> list[str]:
@@ -240,6 +243,7 @@ def report_data(summary: Summary, *, place: str) -> dict[str, Any]:
             "prompt": note.prompt, "record": note.record,
         })
     online = summary.online
+    falls, calls = falls_and_calls(summary)
     return {
         "schema": REPORT_SCHEMA,
         "place": place,
@@ -248,8 +252,8 @@ def report_data(summary: Summary, *, place: str) -> dict[str, Any]:
         "summary": _site_text(summary, place),
         "counts": {
             "visits": len(summary.visits),
-            "fall_alerts": len(falls_and_calls(summary)[0]),
-            "distress_calls": len(falls_and_calls(summary)[1]),
+            "fall_alerts": len(falls),
+            "distress_calls": len(calls),
             "no_need_help": len(summary.no_need_help_replies),
             "longstay": len(summary.longstay_alerts),
             "offline": [[_stamp(a.end), _stamp(b.start)] for a, b in pairwise(online)],

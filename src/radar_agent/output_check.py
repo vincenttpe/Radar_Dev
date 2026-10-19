@@ -11,7 +11,7 @@ import re
 from datetime import datetime
 from decimal import Decimal
 
-from radar_agent.device_events import Summary
+from radar_agent.device_events import Summary, disconnected
 from radar_agent.kg_rules import Assessment
 
 FORBIDDEN = {
@@ -89,7 +89,3 @@ def check_output(text: str, source: Summary | Assessment, *, place: str = "") ->
             problems.append("裝置有斷線，不能寫「裝置都在線」")
     return problems
 
-
-def disconnected(summary: Summary) -> bool:
-    """有沒有斷線：在線時段不只一段（中間斷過）、沒有資料，或使用途中斷線（含資料結束前斷線）。"""
-    return len(summary.online) != 1 or bool(summary.interrupted_visits)

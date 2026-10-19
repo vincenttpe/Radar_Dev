@@ -81,6 +81,13 @@ class Summary:
     unreadable: list[dict[str, Any]] = field(default_factory=list)
     # 規格外的 event：仍算心跳，但要請人確認
     unknown_events: list[dict[str, Any]] = field(default_factory=list)
+    # 最後一筆是 offline、之後沒再收到資料：資料結束前就斷線了，之後的狀況不明（REVIEW.md 3.1）
+    ended_offline: datetime | None = None
+
+
+def disconnected(summary: Summary) -> bool:
+    """有沒有斷線：在線時段不只一段（中間斷過）、沒有資料、使用途中斷線，或資料結束前斷線。"""
+    return len(summary.online) != 1 or bool(summary.interrupted_visits) or summary.ended_offline is not None
 
 
 def summarize(records: list[dict[str, Any]]) -> Summary:
@@ -93,6 +100,7 @@ def summarize(records: list[dict[str, Any]]) -> Summary:
     fall_active = False
     for when, payload, record in parsed:
         event = payload.get("event")
+        summary.ended_offline = when if event == "offline" else None
         if event == "offline":
             if online_start is not None:
                 summary.online.append(Period(online_start, when))

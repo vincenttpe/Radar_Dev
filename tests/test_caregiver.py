@@ -462,3 +462,11 @@ def test_report_says_when_the_device_went_offline_before_the_data_ended():
     text = caregiver_report(summary, place="1 號廁所")
     assert "在線期間跌倒警報 0 次" in text and "09:00 起裝置斷線，之後無法判斷是否有跌倒。" in text
     assert "都在線" not in text and check_output(text, summary, place="1 號廁所") == []
+
+
+def test_report_says_the_device_went_offline_even_when_nobody_was_inside():
+    """最後一筆是 offline、當時沒人：以前寫「裝置都在線」而且檢查放行（2026-10-19 審查）。"""
+    summary = summarize([*timeline("09:00:00", "09:00:35"), rec("09:00:40", "offline")])
+    text = caregiver_report(summary, place="1 號廁所")
+    assert "在線期間跌倒警報 0 次" in text and "09:00 起裝置斷線，之後無法判斷是否有跌倒。" in text
+    assert "都在線" not in text and check_output(text, summary, place="1 號廁所") == []
