@@ -1,6 +1,6 @@
 """產生 Demo 原型頁 demo/prototype.html（docs/11「Demo 原型頁」）。
 
-頁面上照護人員看到的每一句話都來自 radar-caregiver（`caregiver_report`、`trend_text`），
+頁面上照護人員看到的每一句話都來自 radar-caregiver（`caregiver_report`、`trend_text`）與 radar-ask（`pick`），
 這裡只把它們放進畫面：事件依時間排成通知卡片，照護紀錄草稿逐行累積，最後是兩週使用趨勢。
 資料是 data/samples_demo/ 的**模擬資料**，頁面頂端一直標明。
 
@@ -30,7 +30,8 @@ from radar_agent.caregiver import (
     trend_text,
     usage_trend,
 )
-from radar_agent.device_events import summarize
+from radar_agent.device_events import Summary, summarize
+from radar_agent.event_ask import EVENT_QUESTIONS, pick
 from radar_agent.field_data import MAC_LIKE, check_out_dir
 from radar_agent.output_check import check_output
 
@@ -60,6 +61,17 @@ def _section(report: str, heading: str) -> list[str]:
 
 def _jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def ask_data(summary: Summary, place: str) -> list[dict[str, str]]:
+    """事件提問的六題與答案：和 radar-ask --pick 同一套函式（不經模型），答案先通過輸出檢查。"""
+    out = []
+    for q in EVENT_QUESTIONS:
+        reply = pick(q.id, summary, place=place)
+        if reply.answer is None:
+            raise ValueError(f"事件提問的答案沒通過輸出檢查：{q.id} {reply.problems}")
+        out.append({"id": q.id, "text": q.text, "answer": reply.answer})
+    return out
 
 
 def demo_data(events: Path | None = None, place: str = PLACE) -> dict[str, Any]:
@@ -106,6 +118,7 @@ def demo_data(events: Path | None = None, place: str = PLACE) -> dict[str, Any]:
             [f"{a.end:%Y-%m-%d %H:%M:%S}", f"{b.start:%Y-%m-%d %H:%M:%S}"] for a, b in zip(summary.online, summary.online[1:], strict=False)
         ],
         "events": cards,
+        "ask": ask_data(summary, place),
         "trend": None,
     }
     if events is not None:
