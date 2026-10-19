@@ -204,3 +204,19 @@ def test_offline_at_the_end_is_always_stated(summary, qid):
 def test_gap_and_end_offline_are_both_listed():
     text = answer("offline", GAP_THEN_OFFLINE, place=PLACE)
     assert "09:00–09:10 裝置斷線" in text and "09:10 起裝置斷線，之後無法判斷是否有跌倒。" in text
+
+
+def test_repeated_offline_at_the_end_starts_at_the_first_one():
+    """結尾連續兩筆 offline：斷線起點是第一筆，不是最後一筆（2026-10-19 第二輪審查）。"""
+    summary = summarize([*(_rec(f"08:00:{s:02d}", "absence") for s in range(0, 10, 5)),
+                         _rec("08:00:10", "offline"), _rec("08:05:00", "offline")])
+    assert summary.ended_offline is not None and f"{summary.ended_offline:%H:%M:%S}" == "08:00:10"
+    for q in EVENT_QUESTIONS:
+        text = answer(q.id, summary, place=PLACE)
+        assert "08:00 起裝置斷線" in text and "08:05" not in text
+        assert check_output(text, summary, place=PLACE) == []
+
+
+def test_data_after_offline_clears_the_end_offline_mark():
+    summary = summarize([_rec("08:00:00", "absence"), _rec("08:00:05", "offline"), _rec("08:10:00", "absence")])
+    assert summary.ended_offline is None

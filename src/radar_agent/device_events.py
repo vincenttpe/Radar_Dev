@@ -100,7 +100,8 @@ def summarize(records: list[dict[str, Any]]) -> Summary:
     fall_active = False
     for when, payload, record in parsed:
         event = payload.get("event")
-        summary.ended_offline = when if event == "offline" else None
+        # 連續的 offline 以第一筆為斷線起點；之後只要再收到資料就清掉
+        summary.ended_offline = (summary.ended_offline or when) if event == "offline" else None
         if event == "offline":
             if online_start is not None:
                 summary.online.append(Period(online_start, when))

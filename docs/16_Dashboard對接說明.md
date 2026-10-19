@@ -27,6 +27,7 @@
 | `counts.no_need_help` | 語音回覆沒事；**不是誤報**，不要寫成誤報（會議清單 C2） | 數字卡 |
 | `counts.longstay` | 久待警報 | 數字卡 |
 | `counts.offline` | 斷線時段 `[[開始, 結束], ...]` | 時間軸上標灰 |
+| `counts.ended_offline` | 資料結束前斷線的時間（之後沒再連上）；沒有就是 `null` | 時間軸上從這裡標灰到結尾 |
 | `events[]` | 每個事件一則：`at` 時間、`label` 顯示用時間（斷線是起訖）、`level`、`title`、`prompt` 處置提示、`record` 照護紀錄草稿 | 通知卡片；`record` 給「複製到照護紀錄」 |
 | `text_layer` | 文字來源，目前都是 `template`（固定範本） | 小字標示 |
 

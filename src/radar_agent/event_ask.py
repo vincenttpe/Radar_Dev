@@ -23,6 +23,7 @@ from radar_agent.caregiver import (
     ended_offline_sentences,
     event_notes,
     falls_and_calls,
+    no_need_help_sentences,
     note_kind,
     offline_sentences,
     period_head,
@@ -47,10 +48,8 @@ _BY_ID = {q.id: q for q in EVENT_QUESTIONS}
 
 
 def _falls(summary: Summary) -> list[str]:
-    lines = [count_sentence(summary, "跌倒警報", [a.time for a in falls_and_calls(summary)[0]])]
-    if summary.no_need_help_replies:
-        lines.append(f"語音回覆沒事 {len(summary.no_need_help_replies)} 次。")
-    return lines
+    return [count_sentence(summary, "跌倒警報", [a.time for a in falls_and_calls(summary)[0]]),
+            *no_need_help_sentences(summary)]
 
 
 def _calls_also(summary: Summary) -> list[str]:

@@ -44,6 +44,8 @@ def _facts(source: Summary | Assessment, place: str) -> set[Decimal]:
         times += [r.time for r in source.resolutions]
         allowed |= {Decimal(a.delay_s) for a in source.fall_alerts if a.delay_s is not None}
         times += [p.start for p in source.online] + [p.end for p in source.online]
+        if source.ended_offline is not None:
+            times.append(source.ended_offline)
         if source.ongoing_visit is not None:
             times.append(source.ongoing_visit.start)
         for when in times:

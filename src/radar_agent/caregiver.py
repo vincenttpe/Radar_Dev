@@ -56,6 +56,12 @@ def count_sentence(summary: Summary, label: str, times: list[datetime]) -> str:
     return f"{scope}{label} {len(times)} 次{listed}。"
 
 
+def no_need_help_sentences(summary: Summary) -> list[str]:
+    """語音回覆沒事；不直接當誤報（C2），沒有就不寫。"""
+    replies = summary.no_need_help_replies
+    return [f"語音回覆沒事 {len(replies)} 次。"] if replies else []
+
+
 def usage_sentences(summary: Summary) -> list[str]:
     if summary.visits:
         longest = max(v.duration for v in summary.visits)
@@ -101,8 +107,7 @@ def _site_text(summary: Summary, place: str) -> str:
     parts = [period_head(summary, place), *usage_sentences(summary),
              count_sentence(summary, "跌倒警報", [a.time for a in falls]),
              count_sentence(summary, "主動呼救", [a.time for a in calls])]
-    if summary.no_need_help_replies:
-        parts.append(f"語音回覆沒事 {len(summary.no_need_help_replies)} 次。")
+    parts += no_need_help_sentences(summary)
     parts.append(count_sentence(summary, "久待警報", summary.longstay_alerts))
     parts += offline_sentences(summary) or ["這段時間裝置都在線。"]
     parts += device_problem_sentences(summary)
@@ -257,6 +262,8 @@ def report_data(summary: Summary, *, place: str) -> dict[str, Any]:
             "no_need_help": len(summary.no_need_help_replies),
             "longstay": len(summary.longstay_alerts),
             "offline": [[_stamp(a.end), _stamp(b.start)] for a, b in pairwise(online)],
+            # 資料結束前斷線的時間（之後沒再連上）；沒有就是 null
+            "ended_offline": _stamp(summary.ended_offline) if summary.ended_offline else None,
         },
         "events": events,
         "text_layer": "template",

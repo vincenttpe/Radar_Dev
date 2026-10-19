@@ -470,3 +470,11 @@ def test_report_says_the_device_went_offline_even_when_nobody_was_inside():
     text = caregiver_report(summary, place="1 號廁所")
     assert "在線期間跌倒警報 0 次" in text and "09:00 起裝置斷線，之後無法判斷是否有跌倒。" in text
     assert "都在線" not in text and check_output(text, summary, place="1 號廁所") == []
+
+
+def test_json_carries_the_end_offline_time():
+    from radar_agent.caregiver import report_data
+
+    summary = summarize([*timeline("09:00:00", "09:00:35"), rec("09:00:40", "offline")])
+    assert report_data(summary, place="1 號廁所")["counts"]["ended_offline"] == "2026-10-14 09:00:40"
+    assert report_data(summarize(timeline("09:00:00", "09:00:35")), place="1 號廁所")["counts"]["ended_offline"] is None
