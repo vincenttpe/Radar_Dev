@@ -13,16 +13,23 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
-from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
 from radar_agent.ask import Match, Question, match_question
-from radar_agent.caregiver import NOTE_KINDS, duration_text, event_notes
+from radar_agent.caregiver import (
+    count_sentence,
+    device_problem_sentences,
+    event_notes,
+    falls_and_calls,
+    note_kind,
+    offline_sentences,
+    period_head,
+    usage_sentences,
+)
 from radar_agent.device_events import Summary, read_records, summarize
 from radar_agent.local_model import add_model_args, model_from_args
-from radar_agent.output_check import check_output
+from radar_agent.output_check import check_output, disconnected
 from radar_agent.rewrite import Model
 
 SCHEMA = "event-ask-v0"
@@ -38,78 +45,63 @@ EVENT_QUESTIONS: list[Question] = [
 _BY_ID = {q.id: q for q in EVENT_QUESTIONS}
 
 
-def _times(when: list[datetime]) -> str:
-    return f"（{'、'.join(f'{t:%H:%M}' for t in when)}）" if when else ""
+def _falls(summary: Summary) -> list[str]:
+    falls, calls = falls_and_calls(summary)
+    lines = [count_sentence(summary, "跌倒警報", [a.time for a in falls])]
+    if summary.no_need_help_replies:
+        lines.append(f"語音回覆沒事 {len(summary.no_need_help_replies)} 次。")
+    if calls:  # 主動呼救不算跌倒，但問跌倒時不能漏掉（2026-10-19 決定）
+        lines.append(count_sentence(summary, "另有主動呼救", [a.time for a in calls]))
+    return lines
 
 
-def _gaps(summary: Summary) -> list[tuple[datetime, datetime]]:
-    return [(a.end, b.start) for a, b in pairwise(summary.online)]
+def _calls(summary: Summary) -> list[str]:
+    return [count_sentence(summary, "主動呼救", [a.time for a in falls_and_calls(summary)[1]])]
 
 
-def _head(summary: Summary, place: str) -> str:
-    first, last = summary.online[0].start, summary.online[-1].end
-    days = f"{first.month}/{first.day}"
-    if last.date() != first.date():
-        days += f"–{last.month}/{last.day}"
-    return f"{place} {days}："
+def _longstay(summary: Summary) -> list[str]:
+    return [count_sentence(summary, "久待警報", summary.longstay_alerts)]
 
 
-def _gap_lines(summary: Summary, what: str) -> list[str]:
-    return [f"{off:%H:%M}–{on:%H:%M} 裝置斷線，這段時間無法判斷{what}。" for off, on in _gaps(summary)]
+def _offline(summary: Summary) -> list[str]:
+    return offline_sentences(summary) or ["這段時間裝置都在線。"]
 
 
-def _count(summary: Summary, label: str, when: list[datetime]) -> str:
-    scope = "在線期間" if _gaps(summary) else ""
-    return f"{scope}{label} {len(when)} 次{_times(when)}。"
+def _alerts(summary: Summary, place: str) -> list[str]:
+    """和 radar-caregiver 的【處置提示】同一份，前面補上事件種類。中間斷線已在處置提示裡。"""
+    lines = []
+    for n in event_notes(summary, place):
+        title = note_kind(n.prompt)[1]
+        said = n.prompt if title in n.prompt else f"{title}：{n.prompt}"
+        lines.append(f"{n.span or f'{n.time:%H:%M}'} {said}")
+    if not lines:
+        return ["在線期間沒有警報。" if disconnected(summary) else "這段時間沒有警報。"]
+    return ["警報與處置提示：", *lines]
+
+
+# 題目 → （答案主體, 斷線時「無法判斷」的對象；None 表示主體已經寫了斷線）
+_ANSWERS: dict[str, tuple[Callable[[Summary, str], list[str]], str | None]] = {
+    "falls": (lambda s, _: _falls(s), "是否有跌倒"),
+    "calls": (lambda s, _: _calls(s), "是否有人呼救"),
+    "longstay": (lambda s, _: _longstay(s), "是否有人待太久"),
+    "visits": (lambda s, _: usage_sentences(s), "使用情形"),
+    "offline": (lambda s, _: _offline(s), None),
+    "alerts": (_alerts, "是否有跌倒"),
+}
 
 
 def answer(question_id: str, summary: Summary, *, place: str) -> str:
-    """固定句型的答案，只用 summary 裡的事實。question_id 不在 EVENT_QUESTIONS 時丟 KeyError。"""
-    if question_id not in _BY_ID:
-        raise KeyError(question_id)
+    """固定句型的答案，只用 summary 裡的事實；句子和【事件摘要】共用 caregiver 的寫法。
+    斷線與無法判讀的紀錄每一題都會寫出來。question_id 不在 EVENT_QUESTIONS 時丟 KeyError。"""
+    body, what = _ANSWERS[question_id]
     if not summary.online:
         return f"{place}：沒有收到資料，無法判斷。"
-    parts = [_head(summary, place)]
-    falls = [a.time for a in summary.fall_alerts if not a.distress_call]
-    calls = [a.time for a in summary.fall_alerts if a.distress_call]
-    if question_id == "falls":
-        parts.append(_count(summary, "跌倒警報", falls))
-        if summary.no_need_help_replies:
-            parts.append(f"語音回覆沒事 {len(summary.no_need_help_replies)} 次。")
-        parts += _gap_lines(summary, "是否有跌倒")
-    elif question_id == "calls":
-        parts.append(_count(summary, "主動呼救", calls))
-        parts += _gap_lines(summary, "是否有人呼救")
-    elif question_id == "longstay":
-        parts.append(_count(summary, "久待警報", summary.longstay_alerts))
-        parts += _gap_lines(summary, "是否有人待太久")
-    elif question_id == "visits":
-        if summary.visits:
-            longest = max(v.duration for v in summary.visits)
-            parts.append(f"有人使用 {len(summary.visits)} 次，最長一次 {duration_text(longest)}。")
-        else:
-            parts.append("沒有偵測到有人使用。")
-        if summary.interrupted_visits:
-            parts.append(f"另有 {len(summary.interrupted_visits)} 次使用途中裝置斷線，停留時間不明。")
-        if summary.ongoing_visit is not None:
-            parts.append(f"資料結束時仍有人在內（{summary.ongoing_visit.start:%H:%M} 起）。")
-        parts += _gap_lines(summary, "使用情形")
-    elif question_id == "offline":
-        parts += _gap_lines(summary, "是否有跌倒") or ["這段時間裝置都在線。"]
-        if summary.errors:
-            when = [w for w, _ in summary.errors]
-            parts.append(f"裝置回報錯誤 {len(when)} 次{_times(when)}，請通知資訊人員。")
-    else:  # alerts：和 radar-caregiver 的【處置提示】同一份，前面補上事件種類
-        notes = event_notes(summary, place)
-        if notes:
-            parts.append("警報與處置提示：")
-            for n in notes:
-                title = NOTE_KINDS[n.prompt][1]
-                said = n.prompt if title in n.prompt else f"{title}：{n.prompt}"
-                parts.append(f"{n.span or f'{n.time:%H:%M}'} {said}")
-        else:
-            parts.append("這段時間沒有警報。")
-    return "\n".join([parts[0] + parts[1], *parts[2:]]) if len(parts) > 1 else parts[0]
+    lines = body(summary, place)
+    # 中間斷線在【處置提示】裡已經有了，alerts 只補資料結束前斷線那一句
+    if what is not None and (question_id != "alerts" or len(summary.online) == 1):
+        lines += offline_sentences(summary, what)
+    lines += device_problem_sentences(summary)
+    return "\n".join([period_head(summary, place) + lines[0], *lines[1:]])
 
 
 def confirm_text(question: Question) -> str:
@@ -124,6 +116,8 @@ class Reply:
     answer: str | None   # 對到題目且答案通過輸出檢查才有；讀者確認後才顯示
     seconds: float       # 模型對應花的時間，不含產生答案
     problems: tuple[str, ...] = ()
+    # 答案涵蓋的時間：題目不解析「今天早上」這類時段，畫面要標出答案是哪一段資料（2026-10-19 決定）
+    period: tuple[str, str] | None = None
 
     def data(self) -> dict[str, Any]:
         q = self.match.question
@@ -136,6 +130,8 @@ class Reply:
             "model": self.match.model,
             "prompt_version": self.match.prompt_version,
             "seconds": round(self.seconds, 2),
+            "from": self.period[0] if self.period else None,
+            "to": self.period[1] if self.period else None,
             "rejected": list(self.match.rejected + self.problems),
             "text_layer": "template",
         }
@@ -147,22 +143,28 @@ def checked_answer(question: Question, summary: Summary, *, place: str) -> tuple
     return (None, tuple(problems)) if problems else (text, ())
 
 
+def _period(summary: Summary) -> tuple[str, str] | None:
+    if not summary.online:
+        return None
+    return f"{summary.online[0].start:%Y-%m-%d %H:%M:%S}", f"{summary.online[-1].end:%Y-%m-%d %H:%M:%S}"
+
+
 def ask_events(asked: str, summary: Summary, *, place: str, model: Model | None,
                clock: Callable[[], float] = time.perf_counter) -> Reply:
     started = clock()
     match = match_question(asked, EVENT_QUESTIONS, model=model)
     seconds = clock() - started
     if match.question is None:
-        return Reply(match, None, seconds)
+        return Reply(match, None, seconds, period=_period(summary))
     text, problems = checked_answer(match.question, summary, place=place)
-    return Reply(match, text, seconds, problems)
+    return Reply(match, text, seconds, problems, _period(summary))
 
 
 def pick(question_id: str, summary: Summary, *, place: str) -> Reply:
     """讀者直接從選單點題目：不經過模型。"""
     q = _BY_ID[question_id]
     text, problems = checked_answer(q, summary, place=place)
-    return Reply(Match(q), text, 0.0, problems)
+    return Reply(Match(q), text, 0.0, problems, _period(summary))
 
 
 def _text(reply: Reply) -> str:
@@ -196,13 +198,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         model = model_from_args(args)
         summary = summarize(read_records(args.events))
-    except (OSError, ValueError) as e:
+        if args.pick:
+            reply = pick(args.pick, summary, place=args.place)
+        else:
+            reply = ask_events(args.question, summary, place=args.place, model=model)
+    except (OSError, ValueError) as e:  # 讀檔失敗、模型不能用，或處置提示對不上 NOTE_KINDS
         print(f"錯誤：{e}", file=sys.stderr)
         return 2
-    if args.pick:
-        reply = pick(args.pick, summary, place=args.place)
-    else:
-        reply = ask_events(args.question, summary, place=args.place, model=model)
     print(json.dumps(reply.data(), ensure_ascii=False, indent=2) if args.json else _text(reply))
     return 1 if reply.problems else 0
 

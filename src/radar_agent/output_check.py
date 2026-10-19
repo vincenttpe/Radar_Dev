@@ -81,9 +81,15 @@ def check_output(text: str, source: Summary | Assessment, *, place: str = "") ->
             if source[key]:
                 unquoted = unquoted.replace(str(source[key]), "")
     problems += wording_problems(unquoted)
-    if isinstance(source, Summary):
-        disconnected = len(source.online) != 1 or bool(source.interrupted_visits)
-        for label in ("跌倒警報", "主動呼救"):
-            if disconnected and re.search(rf"(?<!在線期間){label} 0 次", text):
+    if isinstance(source, Summary) and disconnected(source):
+        for label in ("跌倒警報", "主動呼救", "久待警報"):
+            if re.search(rf"(?<!在線期間){label} 0 次", text):
                 problems.append(f"裝置有斷線，不能寫「{label} 0 次」而不註明在線期間")
+        if "裝置都在線" in text:
+            problems.append("裝置有斷線，不能寫「裝置都在線」")
     return problems
+
+
+def disconnected(summary: Summary) -> bool:
+    """有沒有斷線：在線時段不只一段（中間斷過）、沒有資料，或使用途中斷線（含資料結束前斷線）。"""
+    return len(summary.online) != 1 or bool(summary.interrupted_visits)

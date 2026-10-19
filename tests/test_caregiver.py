@@ -452,3 +452,13 @@ def test_every_prompt_has_a_level_and_title():
 
 def _jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def test_report_says_when_the_device_went_offline_before_the_data_ended():
+    """以前會寫「裝置都在線」再被輸出檢查擋下；現在照實寫出斷線時間（2026-10-19）。"""
+    records = [*timeline("09:00:00", "09:00:25"),
+               rec("09:00:30", "presence"), rec("09:00:35", "moving"), rec("09:00:40", "offline")]
+    summary = summarize(records)
+    text = caregiver_report(summary, place="1 號廁所")
+    assert "在線期間跌倒警報 0 次" in text and "09:00 起裝置斷線，之後無法判斷是否有跌倒。" in text
+    assert "都在線" not in text and check_output(text, summary, place="1 號廁所") == []

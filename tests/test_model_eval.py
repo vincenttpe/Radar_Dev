@@ -275,3 +275,8 @@ def test_cli_event_questions(capsys):
     assert main(["--echo", "--event-questions"]) == 0
     out = capsys.readouterr().out
     assert out.startswith(f"模型：echo　題數：{len(EVENT_ASK_CASES)}　正確 ")
+
+
+def test_empty_command_counts_as_model_errors_instead_of_crashing(capsys):
+    assert main(["--cmd", "", "--event-questions"]) == 0
+    assert "模型錯誤" in capsys.readouterr().out
