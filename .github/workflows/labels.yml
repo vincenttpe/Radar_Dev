@@ -1,0 +1,28 @@
+name: labels
+
+# Issue 的 triage 標籤（docs/agents/triage-labels.md）。名稱要和那份文件一致；
+# 改這裡的名稱、說明或顏色後合併到 main 就會自動更新，也可以從 Actions 頁面手動執行。
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/labels.yml]
+
+permissions:
+  issues: write   # 只用來建立或更新標籤
+
+jobs:
+  triage-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 建立或更新 5 個 triage 標籤
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # --force：已存在就更新說明與顏色，不會重複建立
+          gh label create needs-triage    --force --color FBCA04 --description "維護者要先評估"
+          gh label create needs-info      --force --color D4C5F9 --description "等回報者補資訊"
+          gh label create ready-for-agent --force --color 0E8A16 --description "規格完整，代理可以直接做"
+          gh label create ready-for-human --force --color 1D76DB --description "要由人來做（需要判斷、外部權限或現場測試）"
+          gh label create wontfix         --force --color CCCCCC --description "不處理"

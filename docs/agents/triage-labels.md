@@ -10,4 +10,6 @@
 | `ready-for-human` | `ready-for-human` | 要由人來做（需要判斷、外部權限或現場測試） |
 | `wontfix` | `wontfix` | 不處理 |
 
+標籤由 `.github/workflows/labels.yml` 建立與維護（2026-10-19）：改名稱、說明或顏色時改那個檔案，合併到 main 後會自動更新。
+
 技能提到某個角色時（例如「貼上可交給代理的 triage 標籤」），用表中對應的標籤字串。
