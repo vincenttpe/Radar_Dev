@@ -232,3 +232,19 @@ def test_secret_scan_refuses_root_ignore_file(scan_repo):
 def test_gitleaks_config_extends_the_default_rules(repo):
     config = tomllib.loads((repo / ".github" / "gitleaks.toml").read_text(encoding="utf-8"))
     assert config["extend"] == {"useDefault": True}
+
+
+@pytest.mark.parametrize(("stub", "code"), [
+    # gitleaks 遇到 git 的 stderr（例如 .gitattributes 的 !zzz）只記 ERR、照樣 exit 0：要當成失敗
+    ('echo "2:21AM ERR [git] warning: Negative patterns are ignored"; echo "no leaks found"; exit 0', 1),
+    ('echo "leaks found: 1"; exit 1', 1),
+    ('echo "2:21AM INF no leaks found"; exit 0', 0),
+])
+def test_secret_scan_treats_gitleaks_errors_as_failure(scan_repo, stub, code):
+    work, (a, b), run, _ = scan_repo
+    fake = work.parent / "gitleaks"
+    fake.write_text(f"#!/bin/sh\n{stub}\n", encoding="utf-8")
+    result = run(a, b)
+    assert result.returncode == code, result.stdout
+    if "ERR" in stub:
+        assert "掃描不完整" in result.stdout

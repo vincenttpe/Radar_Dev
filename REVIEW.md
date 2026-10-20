@@ -19,7 +19,7 @@
 
 `.github/workflows/pr-gate.yml` 檢查 PR 說明的勾選與變更的檔案是否一致：單向門（第 2 節）與驗證證據（改到知識圖譜或指令列工具時，對應的驗證項目必須勾選）。
 
-`.github/workflows/secrets.yml` 用 gitleaks 掃有沒有密碼或金鑰：PR 與 push 到 main 掃新增的 commit，每週一與手動執行時掃全部歷史（結果遮罩；目前不是必過檢查）。掃描範圍拿不到時會失敗，不會悄悄通過；允許清單只認 `.github/` 底下的檔，`.gitattributes` 也關不掉掃描。gitleaks 預設跳過的路徑（例如 `node_modules/`、lock 檔、`*.pdf`）不掃，審查時仍要看。掃到時不要自己改歷史或加允許清單（`.github/gitleaks.toml`、`.github/gitleaksignore`），回報給人決定。
+`.github/workflows/secrets.yml` 用 gitleaks 掃有沒有密碼或金鑰：PR 與 push 到 main 掃新增的 commit，每週一與手動執行時掃全部歷史（結果遮罩；目前不是必過檢查）。掃描範圍拿不到時會失敗，不會悄悄通過；允許清單只認 `.github/` 底下的檔；`.gitattributes` 能影響掃描，所以改它屬於單向門（第 2 節）。gitleaks 預設跳過的路徑（例如 `node_modules/`、lock 檔、`*.pdf`）、含 NUL 的真正二進位內容、Git LFS 檔案與 commit 訊息都不掃，審查時仍要看。掃到時不要自己改歷史或加允許清單（`.github/gitleaks.toml`、`.github/gitleaksignore`），回報給人決定。
 
 這些通過就不用再逐項看。審查重點放在工具抓不到的事：數字對不對、該不該這樣改、是不是做了需求以外的事。
 
@@ -34,7 +34,7 @@
 | 給讀者的輸出與用語 | Profile 範本（`caregiver.py`）、輸出檢查（`output_check.py`）、在地模型的 prompt 與改寫檢查（`rewrite.py`）、提問對應（`ask.py`）、事件提問的題目與答案（`event_ask.py`）、照護紀錄改寫（`care_record.py`）、讀者權限（`audience.py`） | 已送出的文字收不回；產品定位為非醫療器材，用語不能越界 |
 | 個人資料的流向 | 讀取、保存、傳送長者資料的程式；決定資料交給哪種讀者的權限表（`audience.py`）；實測資料的遮罩與輸出位置限制（`field_data.py`）；讀取與整理裝置事件紀錄（`device_events.py`）；把讀者的提問送進在地模型（`local_model.py`）；`data/` 底下的資料檔 | 個人資料一旦流出（進模型、快取、log、commit）就無法撤回 |
 | 事件格式 | `schemas/`；實際執行格式檢查的 `src/radar_agent/event_validation.py` | 現有系統與雷達端照著格式送資料，改了要雙方一起升版；放寬驗證等於默默接受格式改版 |
-| 檢查與審查機制 | `.github/`（CI、PR 範本）、`REVIEW.md`、`src/radar_agent/pr_gate.py` | 放寬檢查或規範，上面各項的保護就跟著失效，而且不會有人發現 |
+| 檢查與審查機制 | `.github/`（CI、PR 範本）、`REVIEW.md`、`src/radar_agent/pr_gate.py`；任何一層的 `.gitattributes`（可以讓密碼掃描看不到檔案內容） | 放寬檢查或規範，上面各項的保護就跟著失效，而且不會有人發現 |
 
 檔案路徑與單向門的對應寫在 `src/radar_agent/pr_gate.py` 的 `DOORS`，CI 依此檢查：變更碰到哪一項，PR 就必須勾哪一項，並填寫可逆性。沒有列在 `DOORS` 的檔案（例如之後新增的報告或在地模型 prompt）仍靠作者勾選與審查者判斷；新增這類檔案時，要一併補進 `DOORS`。
 

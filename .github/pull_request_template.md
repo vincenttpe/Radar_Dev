@@ -17,7 +17,7 @@
 - [ ] 給讀者的輸出與用語（Profile 範本、在地模型 prompt、輸出檢查）
 - [ ] 個人資料的流向（讀取、保存、傳送長者資料；`data/` 底下的資料檔）
 - [ ] 事件格式（`schemas/`、`event_validation.py`）
-- [ ] 檢查與審查機制（`.github/`、`REVIEW.md`、`pr_gate.py`）
+- [ ] 檢查與審查機制（`.github/`、`REVIEW.md`、`pr_gate.py`、`.gitattributes`）
 - [ ] 以上皆無（雙向門：文件、測試、內部重構、開發工具）
 
 **可逆性與回復方式**（有勾選單向門時必填）：
