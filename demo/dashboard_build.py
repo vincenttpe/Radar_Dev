@@ -33,6 +33,7 @@ from radar_agent.caregiver import (
     offline_sentences,
 )
 from radar_agent.device_events import HEARTBEAT_GAP, disconnected, summarize
+from radar_agent.output_check import wording_problems
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
@@ -85,7 +86,7 @@ def simulated_devices(morning: list[dict[str, Any]]) -> list[tuple[str, str, lis
 def device_rows(devices: list[tuple[str, str, list[dict[str, Any]]]]) -> tuple[str, list[dict[str, Any]]]:
     """系統管理人員看的裝置清單：只有裝置狀態，不含照護事件。
 
-    基準時間是所有裝置裡最晚收到資料的時間（正式版改用畫面更新的時間）：最後收到資料比基準落後
+    基準時間是所有裝置裡最晚收到資料的時間（模擬用；正式版要用伺服器目前時間，否則全部裝置都停送時基準也跟著停）：最後收到資料比基準落後
     超過心跳間隔、又沒有送 offline 的裝置，判成「沒收到資料」，不能因為自己的紀錄裡沒斷線就當成在線。
     """
     summaries = [(name, place, records, summarize(records)) for name, place, records in devices]
@@ -121,25 +122,87 @@ def device_rows(devices: list[tuple[str, str, list[dict[str, Any]]]]) -> tuple[s
     return _stamp(ref), rows
 
 
-def incidents(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """把一件事的警報與之後的解除合成一張事件卡；裝置斷線另外列，不算事件。
+# 解除事件的原因（資料裡的標題 → 事件卡上的寫法）
+CAUSE = {"回覆沒事": "長者回覆沒事", "起身解除": "偵測到起身"}
 
-    解除（resolved）配給它之前最近一則還沒解除的要到場通知（跌倒、主動呼救）；久待警報在規格裡沒有解除事件，
-    這份資料裡也沒有，所以一直是「裝置警報未解除」。這份資料沒有人員處置紀錄，人員處置一律是「尚未確認」，
-    不能從裝置訊號推論已經處理或平安。
+
+def incidents(events: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """把一件事的警報與之後的解除合成一張事件卡；回傳 (事件卡, 配不到警報的解除)。裝置斷線另外列，不算事件。
+
+    暫定配對：解除（resolved）配給它之前最近一則還沒解除的要到場通知（跌倒、主動呼救）。久待警報在規格裡沒有
+    解除事件，所以不配；配不到的解除不丟掉，另外列出（REVIEW.md 3.1）。兩件要到場的通知重疊時可能配錯，
+    正式版要有事件序號（會議清單 A11）。這份資料沒有人員處置紀錄：人員處置一律從「尚未確認」開始。
     """
     out: list[dict[str, Any]] = []
+    orphans: list[dict[str, Any]] = []
     open_urgent: list[dict[str, Any]] = []
     for e in events:
         if e["level"] in ("urgent", "check"):
-            card = {"at": e["at"], "label": e["label"], "level": e["level"], "title": e["title"],
-                    "prompt": e["prompt"], "cleared": None, "human": None}
+            card = {"id": f"e{len(out) + 1}", "at": e["at"], "label": e["label"], "level": e["level"],
+                    "title": e["title"], "prompt": e["prompt"], "cleared": None}
             out.append(card)
             if e["level"] == "urgent":
                 open_urgent.append(card)
-        elif e["level"] == "resolved" and open_urgent:
-            open_urgent.pop()["cleared"] = {"label": e["label"], "title": e["title"], "prompt": e["prompt"]}
-    return out
+        elif e["level"] == "resolved":
+            if open_urgent:
+                open_urgent.pop()["cleared"] = {"label": e["label"], "cause": CAUSE.get(e["title"], e["title"])}
+            else:
+                orphans.append({"label": e["label"], "title": e["title"]})
+    return out, orphans
+
+
+# 頁面上所有固定句型：JS 只把 {n}、{time} 這類欄位換成資料裡的數字與時間，不自己寫句子。
+# 建置時每一句都要通過 wording_problems（不用醫療用語、不寫推測）。
+UI_TEXT: dict[str, str] = {
+    "tag": "模擬歷史資料",
+    "head_pending": "有 {n} 件待接手",
+    "head_none": "沒有待接手的事件",
+    "no_clear": "{n} 件未收到裝置解除紀錄，狀態待確認：{list}",
+    "local_note": "這份資料本身沒有人員處置紀錄；下面的接手與處置只存在這個分頁，重新整理就會清掉。",
+    "count_pending": "待接手 {n} 件",
+    "count_handling": "處理中 {n} 件",
+    "count_done": "已完成 {n} 件",
+    "pill_urgent": "在線期間立即到場通知：{n} 件",
+    "pill_check": "在線期間前往查看通知：{n} 件",
+    "pill_offline": "裝置斷線：{n} 段",
+    "prompt_then": "當時通知：{prompt}",
+    "device_cleared": "{time} {cause}，裝置警報解除",
+    "device_unknown": "未收到解除紀錄，狀態待確認",
+    "human_pending": "尚未確認",
+    "human_handling": "處理中：{who} {time} 接手",
+    "human_done": "已完成：{result}（{who}，{time}）",
+    "family_handling": "處理中（{time} 接手）",
+    "family_done": "已完成：{result}（{time}）",
+    "family_note": "這份資料本身沒有人員處置紀錄，所以先顯示「尚未確認」；居服員在這一頁示意接手或記錄處置後，這裡會同步顯示。",
+    "orphan": "{time} {title}：找不到對應的警報",
+    "need_who": "請填處理人代號。",
+    "need_time": "請填時間。",
+    "need_result": "請選擇處置結果。",
+    "saved": "已儲存（只存在這個分頁）。",
+    "admin_head": "{n} 台裝置異常",
+    "admin_none": "沒有異常裝置",
+    "admin_offline": "{time} 收到斷線訊息，之後 {min} 分鐘沒收到資料",
+    "admin_silent": "最後收到資料 {time}，之後 {min} 分鐘沒收到資料，也沒有收到斷線訊息",
+    "admin_unreadable": "無法判讀的紀錄 {n} 筆",
+    "admin_errors": "裝置錯誤 {n} 次",
+    "admin_online": "目前在線 {n} 台，其中 {m} 台曾斷線",
+    "admin_offline_n": "斷線中 {n} 台",
+    "admin_silent_n": "資料逾時 {n} 台",
+    "admin_base": "基準時間 {time}（模擬：所有裝置最晚收到資料的時間；正式版用伺服器目前時間）",
+    "status_online": "在線",
+    "status_recovered": "在線（曾斷線）",
+    "status_offline": "斷線中",
+    "status_silent": "資料逾時",
+}
+# 記錄處置的結果選項：只描述做了什麼，不判斷長者狀況（判斷寫在備註，由人負責）
+RESULTS = ["已到場確認", "已到場協助", "以電話或語音確認", "其他（見備註）"]
+
+
+def check_ui_text() -> None:
+    for key, text in [*UI_TEXT.items(), *((f"result{i}", r) for i, r in enumerate(RESULTS))]:
+        problems = wording_problems(text)
+        if problems:
+            raise ValueError(f"頁面固定句型「{key}」沒通過用語檢查：{problems}")
 
 
 def _period(data: dict[str, Any]) -> dict[str, Any]:
@@ -163,7 +226,8 @@ def dashboard_data() -> dict[str, Any]:
     days = caregiver["trend"]["days"]
     caregiver.update({
         "period": _period(caregiver),
-        "incidents": incidents(caregiver["events"]),
+        "incidents": incidents(caregiver["events"])[0],
+        "orphans": incidents(caregiver["events"])[1],
         "offline_sentences": offline_sentences(summary),
         "trend_rule": trend_rule(),
         "counted_days": [sum(d["visits"] is not None for d in days[:7]), sum(d["visits"] is not None for d in days[7:])],
@@ -181,13 +245,15 @@ def dashboard_data() -> dict[str, Any]:
         "offline": family_full["offline"],
         "offline_sentences": offline_sentences(summary),
         # 家屬只看「什麼時候、發生什麼、裝置警報與人員處置的狀態」：處置提示與照護紀錄是給居服員的
-        "incidents": [{"at": c["at"], "label": c["label"], "level": c["level"], "title": c["title"],
-                       "cleared": {"label": c["cleared"]["label"]} if c["cleared"] else None, "human": None}
-                      for c in incidents(family_full["events"])],
+        # 事件 id 和居服員畫面相同：同一個模擬上午，居服員示意的處置會同步到這裡
+        "incidents": [{"id": c["id"], "at": c["at"], "label": c["label"], "level": c["level"], "title": c["title"],
+                       "cleared": c["cleared"]} for c in incidents(family_full["events"])[0]],
         "days": family_full["trend"]["days"],
     }
     ref, devices = device_rows(simulated_devices(morning))
-    return {"caregiver": caregiver, "family": family, "devices": devices, "devices_ref": ref}
+    check_ui_text()
+    return {"caregiver": caregiver, "family": family, "devices": devices, "devices_ref": ref,
+            "text": UI_TEXT, "results": RESULTS}
 
 
 def fragment(data: dict[str, Any]) -> str:

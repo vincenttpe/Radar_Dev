@@ -51,20 +51,24 @@ def test_incidents_keep_device_state_and_human_state_apart(data):
     assert [(c["label"], c["title"], c["cleared"] and c["cleared"]["label"]) for c in cards] == [
         ("08:32", "跌倒警報", "08:32"), ("09:16", "跌倒警報", "09:19"),
         ("10:03", "主動呼救", "10:05"), ("10:45", "久待警報", None)]
-    assert all(c["human"] is None for c in cards)
+    assert [c["id"] for c in cards] == ["e1", "e2", "e3", "e4"]
+    assert cards[1]["cleared"]["cause"] == "偵測到起身" and data["caregiver"]["orphans"] == []
 
 
 def test_incidents_never_pair_a_resolution_with_a_longstay(build):
     events = [{"at": "a", "label": "10:00", "level": "check", "title": "久待警報", "prompt": "p"},
               {"at": "b", "label": "10:01", "level": "resolved", "title": "起身解除", "prompt": "q"}]
-    assert build.incidents(events)[0]["cleared"] is None
+    cards, orphans = build.incidents(events)
+    assert cards[0]["cleared"] is None
+    assert orphans == [{"label": "10:01", "title": "起身解除"}], "配不到警報的解除不能丟掉"
 
 
 def test_family_view_is_simulated_and_has_no_caregiver_prompts_or_records(data):
     family = data["family"]
     assert family["source"] == "sim"
     assert family["summary"].startswith("DEMO-ELDER-01 房間的浴廁 10/14：")
-    assert all(set(c) == {"at", "label", "level", "title", "cleared", "human"} for c in family["incidents"])
+    assert all(set(c) == {"id", "at", "label", "level", "title", "cleared"} for c in family["incidents"])
+    assert [c["id"] for c in family["incidents"]] == [c["id"] for c in data["caregiver"]["incidents"]], "處置狀態要能同步"
     text = json.dumps(family, ensure_ascii=False)
     assert "請立即到場" not in text and "請前往查看" not in text and "場域" not in text
     assert len(family["days"]) == 14
@@ -121,6 +125,26 @@ def test_page_is_labelled_simulated_and_not_a_replacement(repo):
     page = (repo / "demo" / "dashboard.html").read_text(encoding="utf-8")
     assert "模擬資料" in page and "模擬歷史資料" in page and "不是要取代官網" in page
     assert "家屬不能看" in page and "尚未確認" in page
+
+
+def test_ui_sentences_come_from_the_checked_table(repo, build, data):
+    """頁面固定句型都在 UI_TEXT、通過用語檢查；範本用到的每個 key 都要存在。"""
+    import re
+
+    from radar_agent.output_check import wording_problems
+
+    assert all(not wording_problems(t) for t in [*data["text"].values(), *data["results"]])
+    template = (repo / "demo" / "dashboard_template.html").read_text(encoding="utf-8")
+    used = set(re.findall(r'say\("(\w+)"[,)]', template))
+    used |= {f"status_{s}" for s in ("online", "recovered", "offline", "silent")}
+    assert used <= set(data["text"]), used - set(data["text"])
+    assert data["text"]["device_unknown"] == "未收到解除紀錄，狀態待確認"
+
+
+def test_ui_text_that_fails_the_wording_check_stops_the_build(build, monkeypatch):
+    monkeypatch.setitem(build.UI_TEXT, "head_none", "長者已經沒事，不必診斷")
+    with pytest.raises(ValueError, match="用語檢查"):
+        build.dashboard_data()
 
 
 def test_embedded_data_cannot_close_the_script_tag(build, data):
