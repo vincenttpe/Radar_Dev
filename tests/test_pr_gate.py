@@ -94,6 +94,8 @@ def test_docs_only_change_passes_with_none(template):
     (".github/workflows/tests.yml", "檢查與審查機制"),
     ("REVIEW.md", "檢查與審查機制"),
     ("src/radar_agent/pr_gate.py", "檢查與審查機制"),
+    (".gitattributes", "檢查與審查機制"),
+    ("data/samples_demo/.gitattributes", "檢查與審查機制"),
 ])
 def test_touching_a_door_without_checking_it_is_rejected(template, path, door):
     errors = check(_body(template, [NONE_LABEL]), [path])

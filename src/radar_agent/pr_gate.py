@@ -54,6 +54,10 @@ DOORS: dict[str, tuple[str, ...]] = {
         "src/radar_agent/pr_gate.py",
     ),
 }
+# 不論放在哪一層都算的檔名。git 會讀每一層的 .gitattributes，可以讓密碼掃描看不到檔案內容（-diff、LFS）
+DOOR_FILENAMES: dict[str, tuple[str, ...]] = {
+    "檢查與審查機制": (".gitattributes",),
+}
 NONE_LABEL = "以上皆無"
 DOORS_SECTION = "## 單向門檢查"
 REVERSIBILITY_HEADING = "**可逆性與回復方式**"
@@ -127,7 +131,12 @@ def _hits(changed: list[str], mapping: dict[str, tuple[str, ...]]) -> dict[str, 
 
 def required_doors(changed: list[str]) -> dict[str, list[str]]:
     """{單向門: 碰到它的變更檔案}，只列有碰到的。"""
-    return _hits(changed, DOORS)
+    hits = _hits(changed, DOORS)
+    for path in changed:
+        for door, names in DOOR_FILENAMES.items():
+            if path.rsplit("/", 1)[-1] in names and path not in hits.get(door, []):
+                hits.setdefault(door, []).append(path)
+    return hits
 
 
 def required_evidence(changed: list[str]) -> dict[str, list[str]]:
