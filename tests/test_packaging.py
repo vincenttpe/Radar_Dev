@@ -188,7 +188,8 @@ def test_secret_scan_uses_fixed_config_and_redacts(scan_repo):
     assert run(a, b).returncode == 0
     called = args.read_text(encoding="utf-8").splitlines()
     assert called[:2] == ["git", "."]
-    for flag in ("--redact", "-v", "--ignore-gitleaks-allow"):
+    # --no-color：ERR 偵測比對的是不帶顏色碼的 log 行，拿掉就偵測不到
+    for flag in ("--redact", "-v", "--ignore-gitleaks-allow", "--no-color"):
         assert flag in called
     assert called[called.index("--config") + 1] == ".github/gitleaks.toml"
     assert called[called.index("--gitleaks-ignore-path") + 1] == ".github/gitleaksignore"
@@ -234,17 +235,20 @@ def test_gitleaks_config_extends_the_default_rules(repo):
     assert config["extend"] == {"useDefault": True}
 
 
-@pytest.mark.parametrize(("stub", "code"), [
+@pytest.mark.parametrize(("stub", "code", "incomplete"), [
     # gitleaks 遇到 git 的 stderr（例如 .gitattributes 的 !zzz）只記 ERR、照樣 exit 0：要當成失敗
-    ('echo "2:21AM ERR [git] warning: Negative patterns are ignored"; echo "no leaks found"; exit 0', 1),
-    ('echo "leaks found: 1"; exit 1', 1),
-    ('echo "2:21AM INF no leaks found"; exit 0', 0),
+    ('echo "2:21AM ERR [git] warning: Negative patterns are ignored"; echo "no leaks found"; exit 0', 1, True),
+    ('echo "12:05PM ERR error=\\"stderr is not empty\\""; exit 0', 1, True),
+    ('echo "leaks found: 1"; exit 1', 1, False),
+    ('echo "2:21AM INF no leaks found"; exit 0', 0, False),
+    # 檔名或作者名字裡的 ERR 不是 gitleaks 出錯：結束碼照 gitleaks，也不印「掃描不完整」
+    ('echo "File:        a ERR b.txt"; echo "leaks found: 1"; exit 1', 1, False),
+    ('echo "Author:      ERR"; echo "2:21AM INF no leaks found"; exit 0', 0, False),
 ])
-def test_secret_scan_treats_gitleaks_errors_as_failure(scan_repo, stub, code):
+def test_secret_scan_treats_gitleaks_errors_as_failure(scan_repo, stub, code, incomplete):
     work, (a, b), run, _ = scan_repo
     fake = work.parent / "gitleaks"
     fake.write_text(f"#!/bin/sh\n{stub}\n", encoding="utf-8")
     result = run(a, b)
     assert result.returncode == code, result.stdout
-    if "ERR" in stub:
-        assert "掃描不完整" in result.stdout
+    assert ("掃描不完整" in result.stdout) == incomplete

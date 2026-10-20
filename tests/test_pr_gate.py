@@ -182,6 +182,11 @@ def test_missing_evidence_section_is_rejected_when_evidence_is_needed():
     ]
 
 
+def test_gitattributes_under_a_door_prefix_is_listed_once():
+    """.github/.gitattributes 同時符合 DOORS 的前綴與 DOOR_FILENAMES 的檔名，只列一次。"""
+    assert required_doors([".github/.gitattributes"]) == {"檢查與審查機制": [".github/.gitattributes"]}
+
+
 def test_required_doors_groups_files_by_door():
     assert required_doors(["kg/v1/graph.cypher", "README.md", "kg/releases.json"]) == {
         "知識圖譜內容": ["kg/v1/graph.cypher", "kg/releases.json"],
