@@ -19,7 +19,7 @@
 
 `.github/workflows/pr-gate.yml` 檢查 PR 說明的勾選與變更的檔案是否一致：單向門（第 2 節）與驗證證據（改到知識圖譜或指令列工具時，對應的驗證項目必須勾選）。
 
-`.github/workflows/secrets.yml` 用 gitleaks 掃有沒有密碼或金鑰：PR 與 push 到 main 掃新增的 commit，每週一與手動執行時掃全部歷史（結果遮罩；目前不是必過檢查）。掃描範圍拿不到時會失敗，不會悄悄通過；允許清單只認 `.github/` 底下的檔；`.gitattributes` 能影響掃描，所以改它屬於單向門（第 2 節）。gitleaks 預設跳過的路徑（例如 `node_modules/`、lock 檔、`*.pdf`）、含 NUL 的那一段新增內容（例如整個新的二進位檔）、Git LFS 檔案與 commit 訊息都不掃，審查時仍要看。掃到時不要自己改歷史或加允許清單（`.github/gitleaks.toml`、`.github/gitleaksignore`），回報給人決定。
+`.github/workflows/secrets.yml` 用 gitleaks 掃有沒有密碼或金鑰：PR 與 push 到 main 掃新增的 commit，每週一與手動執行時掃全部歷史（結果遮罩；目前不是必過檢查）。掃描範圍拿不到時會失敗，不會悄悄通過；允許清單只認 `.github/` 底下的檔；`.gitattributes` 能影響掃描，所以改它屬於單向門（第 2 節）。gitleaks 預設跳過的路徑（例如 `node_modules/`、lock 檔、`*.pdf`、`*.bin`）、金鑰不是連續文字的內容（UTF-16、壓縮或編碼過的檔案）、Git LFS 檔案與 commit 訊息都不掃，審查時仍要看。掃到時不要自己改歷史或加允許清單（`.github/gitleaks.toml`、`.github/gitleaksignore`），回報給人決定。
 
 這些通過就不用再逐項看。審查重點放在工具抓不到的事：數字對不對、該不該這樣改、是不是做了需求以外的事。
 

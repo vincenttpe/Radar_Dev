@@ -34,11 +34,12 @@ echo "掃描範圍：$range"
 
 # --config、--gitleaks-ignore-path 固定讀 .github/ 底下的檔；--ignore-gitleaks-allow：程式碼裡的 gitleaks:allow 註解不算數
 # --redact：結果裡的密碼一律遮掉；-v：列出檔案、行號、commit，人才知道要去哪裡處理
-# --text：不理會 .gitattributes 的 -diff／binary（含 NUL 的那一段新增內容與 LFS 檔仍不掃；.gitattributes 改動屬單向門）
+# --text：不理會 .gitattributes 的 -diff／binary（含 NUL 的內容照樣掃；UTF-16、壓縮檔與 LFS 檔掃不到；.gitattributes 改動屬單向門）
 # --diff-merges=first-parent：每個 commit 都掃，merge commit 另外和第一個 parent 比對，解衝突時才寫進去的內容也掃得到
 # gitleaks 中途出錯（例如 git log 有任何 stderr 輸出：.gitattributes 裡一行 !zzz 就會觸發）只記一行 ERR，
 # 照樣顯示沒發現、exit 0；所以收下輸出，有 ERR 就當作掃描不完整而失敗。
-# 只比對 gitleaks 自己 log 的格式（「2:21AM ERR ...」），檔名或作者名字裡的 ERR 不算
+# 只比對 gitleaks 自己 log 的格式（「2:21AM ERR ...」，時間是 Go 的 3:04PM 格式），檔名或作者名字裡的 ERR 不算。
+# 依賴 --no-color：有顏色碼時 log 行開頭不是時間，就比對不到（測試固定了這個旗標）
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
 set +e
