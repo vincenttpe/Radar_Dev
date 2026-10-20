@@ -239,6 +239,9 @@ def test_gitleaks_config_extends_the_default_rules(repo):
     ('echo "2:21AM ERR [git] warning: Negative patterns are ignored"; echo "no leaks found"; exit 0', 1),
     ('echo "leaks found: 1"; exit 1', 1),
     ('echo "2:21AM INF no leaks found"; exit 0', 0),
+    # 檔名或作者名字裡的 ERR 不是 gitleaks 出錯：結束碼照 gitleaks，也不印「掃描不完整」
+    ('echo "File:        a ERR b.txt"; echo "leaks found: 1"; exit 1', 1),
+    ('echo "Author:      ERR"; echo "2:21AM INF no leaks found"; exit 0', 0),
 ])
 def test_secret_scan_treats_gitleaks_errors_as_failure(scan_repo, stub, code):
     work, (a, b), run, _ = scan_repo
@@ -246,5 +249,4 @@ def test_secret_scan_treats_gitleaks_errors_as_failure(scan_repo, stub, code):
     fake.write_text(f"#!/bin/sh\n{stub}\n", encoding="utf-8")
     result = run(a, b)
     assert result.returncode == code, result.stdout
-    if "ERR" in stub:
-        assert "掃描不完整" in result.stdout
+    assert ("掃描不完整" in result.stdout) == ("M ERR " in stub)
