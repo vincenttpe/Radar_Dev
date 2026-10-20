@@ -193,22 +193,31 @@ def test_secret_scan_uses_fixed_config_and_redacts(scan_repo):
     assert called[called.index("--config") + 1] == ".github/gitleaks.toml"
     assert called[called.index("--gitleaks-ignore-path") + 1] == ".github/gitleaksignore"
     assert called[called.index("--exit-code") + 1] == "1"
-    assert f"--log-opts={a}..{b}" in called
+    # --text：.gitattributes 不能把檔案標成二進位來躲掃描；--diff-merges：解衝突時寫進 merge commit 的內容也要掃
+    assert f"--log-opts=--text --diff-merges=first-parent {a}..{b}" in called
 
 
 def test_secret_scan_without_range_scans_all_history(scan_repo):
     _, _, run, args = scan_repo
     assert run().returncode == 0
-    assert "--log-opts=--all" in args.read_text(encoding="utf-8").splitlines()
+    assert "--log-opts=--text --diff-merges=first-parent --all" in args.read_text(encoding="utf-8").splitlines()
 
 
-@pytest.mark.parametrize("bad", ["0" * 40, "deadbeef" * 5, ""])
+@pytest.mark.parametrize("bad", ["0" * 40, "deadbeef" * 5, "--all"])
 def test_secret_scan_fails_when_range_is_missing_instead_of_passing(scan_repo, bad):
     """gitleaks 遇到無效範圍會顯示沒發現、exit 0；腳本要先擋下（force push、分支重建）。"""
     _, (_, b), run, args = scan_repo
     result = run(bad, b)
     assert result.returncode == 1 and "拿不到" in result.stdout
     assert not args.exists(), "範圍無效時不能呼叫 gitleaks"
+
+
+def test_secret_scan_needs_both_ends_of_the_range_or_neither(scan_repo):
+    _, (a, b), run, args = scan_repo
+    for given in ((a, ""), ("", b), (a,)):
+        result = run(*given)
+        assert result.returncode == 1 and "兩個都給或都不給" in result.stdout
+    assert not args.exists()
 
 
 def test_secret_scan_refuses_root_ignore_file(scan_repo):
