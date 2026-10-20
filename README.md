@@ -119,4 +119,4 @@ repo 的設定在 GitHub 網頁上，不在檔案裡；這裡記下目前的狀�
 | Dependabot alerts | 開啟 | 依賴套件有安全漏洞時通知 |
 | Code scanning（CodeQL） | 開啟（預設設定，PR 上會多一項 `Analyze (python)` 檢查） | 掃描程式碼裡常見的安全問題；結果在 Security 分頁。目前不是 Ruleset 的必過檢查 |
 | Secret scanning、Push protection | **不開** | 私人 repo 要另外付費；目前一人開發，真實資料與密碼不進 repo 已由 `REVIEW.md` 規範。舊程式的 Neo4j 密碼改由資料庫端重設處理（`docs/04`） |
-| 密碼掃描（gitleaks） | `.github/workflows/secrets.yml`：PR 掃新增的 commit，每週一與手動執行時掃全部歷史；結果遮罩、不上傳報告。目前**不是** Ruleset 的必過檢查，觀察一兩週誤報後再決定（2026-10-19） | 免費替代上面沒開的 Secret scanning。掃到東西時由人決定要不要換密碼、列進允許清單；第一次全歷史掃描（219 個 commit、全部分支）沒有發現 |
+| 密碼掃描（gitleaks） | `.github/workflows/secrets.yml`（掃描邏輯在 `.github/scripts/secret-scan.sh`）：PR 與 push 到 main 掃新增的 commit，每週一與手動執行時掃全部分支的完整歷史。結果遮罩密碼本身，但 log 會列出檔案、行號、commit 與作者 email；不上傳報告。掃描範圍拿不到（例如 force push）就失敗，不會悄悄通過。允許清單只認 `.github/gitleaks.toml`、`.github/gitleaksignore`（單向門），根目錄有 `.gitleaksignore` 就失敗，程式碼裡的 `gitleaks:allow` 註解不算數。目前**不是** Ruleset 的必過檢查，觀察一兩週誤報後再決定（2026-10-19） | **部分**替代上面沒開的 Secret scanning：只能在 push 之後發現，沒有 push protection，也不會向發行商驗證金鑰真假；merge commit 沒有自己的 diff，解衝突時才寫進去的內容掃不到。掃到東西時由人決定要不要換密碼、列進允許清單。2026-10-19 第一次全歷史掃描（149 個有內容變更的 commit，merge commit 不含）沒有發現 |

@@ -1,0 +1,6 @@
+# gitleaks 設定（.github/workflows/secrets.yml 用 --config 固定讀這個檔）。
+# 放在 .github/ 底下，改這裡就屬於單向門「檢查與審查機制」，一定會被要求人工審查；
+# repo 根目錄的 .gitleaks.toml、.gitleaksignore 與程式碼裡的 gitleaks:allow 註解都不會生效。
+# 要排除誤報時，由人決定後才在這裡加 [allowlist]（REVIEW.md 第 1 節）。
+[extend]
+useDefault = true

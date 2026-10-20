@@ -1,5 +1,6 @@
 """pyproject.toml：指令入口指向真的存在、可無參數呼叫的函式，依賴與 requirements-dev.txt 一致。"""
 import importlib
+import subprocess
 import sys
 import tomllib
 
@@ -136,14 +137,89 @@ def test_label_workflow_creates_exactly_the_documented_triage_labels(repo):
     assert documented == created == {"needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"}
 
 
-def test_secret_scan_workflow_pins_gitleaks_and_redacts(repo):
-    """secrets.yml 要固定 gitleaks 版本、核對 checksum、遮罩結果，而且只有唯讀權限。"""
+
+def _workflow_step(workflow, name):
+    return next(st for st in workflow["jobs"]["gitleaks"]["steps"] if st.get("name") == name)
+
+
+def test_secret_scan_workflow_pins_gitleaks_and_is_read_only(repo):
+    """secrets.yml 固定 gitleaks 版本並核對 checksum、只有唯讀權限、不上傳報告，掃描交給 secret-scan.sh。"""
     import re
 
-    text = (repo / ".github" / "workflows" / "secrets.yml").read_text(encoding="utf-8")
-    workflow = yaml.safe_load(text)
+    workflow = yaml.safe_load((repo / ".github" / "workflows" / "secrets.yml").read_text(encoding="utf-8"))
     assert workflow["permissions"] == {"contents": "read"}
     assert re.fullmatch(r"\d+\.\d+\.\d+", workflow["env"]["GITLEAKS_VERSION"])
     assert re.fullmatch(r"[0-9a-f]{64}", workflow["env"]["GITLEAKS_SHA256"])
-    assert "sha256sum -c" in text and "--redact" in text and "--exit-code 1" in text
-    assert "upload-artifact" not in text, "報告檔不上傳，避免把找到的東西帶出去"
+    assert "sha256sum -c" in _workflow_step(workflow, "安裝 gitleaks（核對 checksum）")["run"]
+    scan = _workflow_step(workflow, "掃描")["run"]
+    assert scan.count("bash .github/scripts/secret-scan.sh") == 3
+    steps = workflow["jobs"]["gitleaks"]["steps"]
+    assert not any("upload-artifact" in str(st.get("uses", "")) for st in steps), "報告檔不上傳"
+
+
+@pytest.fixture
+def scan_repo(repo, tmp_path):
+    """有兩個 commit 的暫存 git repo，加上一個只記下參數的假 gitleaks。"""
+    work = tmp_path / "work"
+    (work / ".github" / "scripts").mkdir(parents=True)
+    (work / ".github" / "scripts" / "secret-scan.sh").write_bytes(
+        (repo / ".github" / "scripts" / "secret-scan.sh").read_bytes())
+    git = ["git", "-C", str(work), "-c", "user.email=t@t", "-c", "user.name=t"]
+    subprocess.run([*git, "init", "-q"], check=True)
+    shas = []
+    for i in range(2):
+        (work / f"f{i}.txt").write_text(str(i), encoding="utf-8")
+        subprocess.run([*git, "add", "-A"], check=True)
+        subprocess.run([*git, "commit", "-qm", f"c{i}"], check=True)
+        shas.append(subprocess.run([*git, "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip())
+    stub = tmp_path / "gitleaks"
+    stub.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$(dirname "$0")/args.txt"\n', encoding="utf-8")
+    stub.chmod(0o755)
+
+    def run(*args):
+        return subprocess.run(["bash", ".github/scripts/secret-scan.sh", str(stub), *args],
+                              cwd=work, capture_output=True, text=True, check=False)
+
+    return work, shas, run, tmp_path / "args.txt"
+
+
+def test_secret_scan_uses_fixed_config_and_redacts(scan_repo):
+    _, (a, b), run, args = scan_repo
+    assert run(a, b).returncode == 0
+    called = args.read_text(encoding="utf-8").splitlines()
+    assert called[:2] == ["git", "."]
+    for flag in ("--redact", "-v", "--ignore-gitleaks-allow"):
+        assert flag in called
+    assert called[called.index("--config") + 1] == ".github/gitleaks.toml"
+    assert called[called.index("--gitleaks-ignore-path") + 1] == ".github/gitleaksignore"
+    assert called[called.index("--exit-code") + 1] == "1"
+    assert f"--log-opts={a}..{b}" in called
+
+
+def test_secret_scan_without_range_scans_all_history(scan_repo):
+    _, _, run, args = scan_repo
+    assert run().returncode == 0
+    assert "--log-opts=--all" in args.read_text(encoding="utf-8").splitlines()
+
+
+@pytest.mark.parametrize("bad", ["0" * 40, "deadbeef" * 5, ""])
+def test_secret_scan_fails_when_range_is_missing_instead_of_passing(scan_repo, bad):
+    """gitleaks 遇到無效範圍會顯示沒發現、exit 0；腳本要先擋下（force push、分支重建）。"""
+    _, (_, b), run, args = scan_repo
+    result = run(bad, b)
+    assert result.returncode == 1 and "拿不到" in result.stdout
+    assert not args.exists(), "範圍無效時不能呼叫 gitleaks"
+
+
+def test_secret_scan_refuses_root_ignore_file(scan_repo):
+    """gitleaks 一定會讀根目錄的 .gitleaksignore；PR 不能自己加忽略清單。"""
+    work, (a, b), run, args = scan_repo
+    (work / ".gitleaksignore").write_text("x:y:z:1\n", encoding="utf-8")
+    result = run(a, b)
+    assert result.returncode == 1 and ".github/gitleaksignore" in result.stdout
+    assert not args.exists()
+
+
+def test_gitleaks_config_extends_the_default_rules(repo):
+    config = tomllib.loads((repo / ".github" / "gitleaks.toml").read_text(encoding="utf-8"))
+    assert config["extend"] == {"useDefault": True}

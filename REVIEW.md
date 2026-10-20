@@ -19,7 +19,7 @@
 
 `.github/workflows/pr-gate.yml` 檢查 PR 說明的勾選與變更的檔案是否一致：單向門（第 2 節）與驗證證據（改到知識圖譜或指令列工具時，對應的驗證項目必須勾選）。
 
-`.github/workflows/secrets.yml` 用 gitleaks 掃 PR 新增的 commit 有沒有密碼或金鑰（結果遮罩；目前不是必過檢查）。掃到時不要自己改歷史或加允許清單，回報給人決定。
+`.github/workflows/secrets.yml` 用 gitleaks 掃有沒有密碼或金鑰：PR 與 push 到 main 掃新增的 commit，每週一與手動執行時掃全部歷史（結果遮罩；目前不是必過檢查）。掃描範圍拿不到時會失敗，不會悄悄通過；merge commit 裡解衝突時才寫進去的內容掃不到，審查時仍要看。掃到時不要自己改歷史或加允許清單（`.github/gitleaks.toml`、`.github/gitleaksignore`），回報給人決定。
 
 這些通過就不用再逐項看。審查重點放在工具抓不到的事：數字對不對、該不該這樣改、是不是做了需求以外的事。
 

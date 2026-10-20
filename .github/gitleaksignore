@@ -1,0 +1,2 @@
+# gitleaks 的忽略清單（每行一個 fingerprint），workflow 用 --gitleaks-ignore-path 固定讀這個檔。
+# 由人決定後才加；加的時候在同一行上方註明原因與日期。
