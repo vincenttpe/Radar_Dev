@@ -140,17 +140,40 @@ th.num { text-align: right; }
 
 .notice { border-left: 3px solid var(--check); padding: 8px 12px; background: var(--check-bg); border-radius: 0 8px 8px 0; font-size: 14px; max-width: 72ch; }
 .notes { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 14px; display: grid; gap: 4px; max-width: 72ch; }
+
+/* 檢視範圍：每個畫面都固定顯示資料是哪一天、哪個時段 */
+.period { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; font-size: 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.period b { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-weight: 500; }
+.period .tag { font-size: 12px; font-weight: 700; letter-spacing: .06em; padding: 1px 8px; border-radius: 999px; background: var(--sim-bg); color: var(--sim-ink); }
+
+/* 事件卡：一件事的警報、裝置解除、人員處置放在一起 */
+.incident { display: grid; gap: 8px; padding: 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); border-left: 4px solid var(--device); }
+.incident.urgent { border-left-color: var(--urgent); }
+.incident.check { border-left-color: var(--check); }
+.incident .top { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.incident .top .t { font: 500 15px var(--f-mono); font-variant-numeric: tabular-nums; }
+.incident .top strong { font-size: 16px; }
+.incident .prompt { font-size: 16px; font-weight: 500; }
+.state { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 4px 10px; font-size: 14px; }
+.state dt { color: var(--muted); }
+.state dd { margin: 0; }
+.state .warn { color: var(--check); font-weight: 700; }
+.state .ok { color: var(--ok); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.actions .hint { margin-left: 4px; }
+details.about { font-size: 14px; color: var(--muted); }
+details.about summary { cursor: pointer; font-weight: 500; color: var(--ink); }
+details.about ul { margin: 8px 0 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 72ch; }
+.menu button[aria-checked="true"] { background: var(--accent-soft); border-color: var(--accent); }
 </style>
 
 <div class="sim"><div class="wrap">
-  <strong>模擬資料</strong>
-  <span>非真實裝置紀錄；裝置名稱 DEMO-SIM-01～03、長者代號 DEMO-ELDER-01 都是虛構的。句子由範本產生，尚未接上在地模型。</span>
+  <strong>模擬資料</strong><span>非真實裝置紀錄，裝置與長者代號都是虛構的</span>
 </div></div>
 
 <header class="top"><div class="wrap">
   <div class="eyebrow">介面易用性評估・試做</div>
   <h1>同一份雷達資料，三種讀者的看板</h1>
-  <p class="lede">評估要不要在官網 Dashboard 之外，提供更順手的介面；不是要取代官網。每種讀者只放他最常做的事，評估方式見 docs/17_介面易用性評估.md。</p>
 </div></header>
 
 <main><div class="wrap">
@@ -160,59 +183,69 @@ th.num { text-align: right; }
     <button type="button" role="tab" id="tab-admin" aria-controls="view-admin" data-role="admin">系統管理人員</button>
   </div>
 
-  <!-- 居服員：先看還有沒有要處理的，再看細節 -->
-  <div id="view-caregiver" role="tabpanel" aria-labelledby="tab-caregiver" class="view" style="display:grid;gap:24px">
+  <!-- 居服員：我現在要去哪裡、做什麼 → 每件事的狀態 → 紀錄與歷史 -->
+  <div id="view-caregiver" role="tabpanel" aria-labelledby="tab-caregiver" style="display:grid;gap:24px">
+    <div class="period" id="cg-period"></div>
     <section aria-labelledby="h-cg-now">
-      <h2 id="h-cg-now" hidden>現在要處理的事</h2>
-      <div class="now" id="cg-now"></div>
+      <h2 id="h-cg-now">待處理事項</h2>
+      <div class="now alert" id="cg-now"></div>
       <div class="status-row" id="cg-pills"></div>
     </section>
+    <section aria-labelledby="h-cg-inc">
+      <div class="head-row"><h2 id="h-cg-inc">事件</h2><span class="hint">每件事分開看裝置警報與人員處置；新的在上</span></div>
+      <div class="feed" id="cg-incidents"></div>
+    </section>
     <div class="split">
-      <section aria-labelledby="h-cg-feed">
-        <div class="head-row"><h2 id="h-cg-feed">處置提示</h2><span class="hint">新的在上；已解除的標上解除時間</span></div>
-        <div class="feed" id="cg-feed"></div>
-      </section>
       <section aria-labelledby="h-cg-rec">
         <div class="head-row"><h2 id="h-cg-rec">照護紀錄草稿</h2><button type="button" id="cg-copy">複製全部</button></div>
         <div class="panel"><ol class="records" id="cg-records"></ol><div class="copied" id="cg-copied" aria-live="polite"></div></div>
       </section>
+      <section aria-labelledby="h-cg-sum">
+        <h2 id="h-cg-sum">事件摘要</h2>
+        <div class="panel"><p class="summary" id="cg-summary"></p></div>
+      </section>
     </div>
-    <section aria-labelledby="h-cg-sum">
-      <h2 id="h-cg-sum">事件摘要</h2>
-      <div class="panel"><p class="summary" id="cg-summary"></p></div>
-    </section>
     <section aria-labelledby="h-cg-ask">
-      <div class="head-row"><h2 id="h-cg-ask">提問</h2><span class="hint">這一頁沒有接上在地模型，請直接點題目；答案和 radar-ask --pick 相同</span></div>
+      <div class="head-row"><h2 id="h-cg-ask">提問</h2><span class="hint">選一題看答案</span></div>
       <div class="panel" style="display:grid;gap:12px">
-        <div class="menu" id="cg-menu"></div>
+        <div class="menu" id="cg-menu" role="radiogroup" aria-labelledby="h-cg-ask"></div>
         <div class="answer" id="cg-answer" aria-live="polite"></div>
       </div>
     </section>
     <section aria-labelledby="h-cg-trend">
-      <div class="head-row"><h2 id="h-cg-trend">兩週使用趨勢</h2><span class="hint">場域統計，深色是凌晨 00:00–06:00</span></div>
-      <div class="panel" style="display:grid;gap:12px"><div class="chart" id="cg-chart"></div><ul class="lines" id="cg-trend-lines"></ul></div>
+      <div class="head-row"><h2 id="h-cg-trend">兩週使用趨勢</h2><span class="hint">另一份兩週模擬資料（10/1–10/14），和上方上午資料分開產生</span></div>
+      <div class="panel" style="display:grid;gap:12px">
+        <div class="chart" id="cg-chart"></div>
+        <ul class="lines" id="cg-trend-lines"></ul>
+        <p class="hint" style="margin:0" id="cg-trend-rule"></p>
+      </div>
     </section>
   </div>
 
-  <!-- 家屬：今天還好嗎、發生過什麼、最近兩週 -->
-  <div id="view-family" role="tabpanel" aria-labelledby="tab-family" class="view" style="display:grid;gap:24px" hidden>
-    <p class="notice">模擬情境：假設這間浴廁只有 DEMO-ELDER-01 一位長者使用。現有的雷達資料是多人共用的場域資料，依讀者權限家屬不能看；家屬版的用語也還沒擬定與審核，所以這裡只放已確認的事件摘要、事件時間與每日次數，不放處置提示與照護紀錄。</p>
-    <section aria-labelledby="h-fm-today">
-      <h2 id="h-fm-today">今天的情形</h2>
-      <div class="panel"><p class="big" id="fm-summary"></p></div>
+  <!-- 家屬：發生什麼事、有人處理了嗎 → 歷史 → 趨勢 -->
+  <div id="view-family" role="tabpanel" aria-labelledby="tab-family" style="display:grid;gap:24px" hidden>
+    <div class="period" id="fm-period"></div>
+    <p class="notice">模擬情境：假設這間浴廁只有 DEMO-ELDER-01 一位長者使用。現有的雷達資料是多人共用的場域資料，家屬不能看。家屬版的用語還沒擬定與審核，下面的事件摘要沿用居服員版。</p>
+    <section aria-labelledby="h-fm-now">
+      <h2 id="h-fm-now">發生什麼事、有人處理了嗎</h2>
+      <div class="feed" id="fm-incidents"></div>
+      <p class="hint" style="margin:0" id="fm-offline"></p>
+    </section>
+    <section aria-labelledby="h-fm-sum">
+      <h2 id="h-fm-sum">事件摘要</h2>
+      <div class="panel"><p class="summary" id="fm-summary"></p></div>
     </section>
     <section aria-labelledby="h-fm-tl">
-      <div class="head-row"><h2 id="h-fm-tl">發生過什麼</h2><span class="hint" id="fm-span"></span></div>
+      <h2 id="h-fm-tl">時間軸</h2>
       <div class="panel" style="display:grid;gap:10px">
         <div class="track" id="fm-track" aria-hidden="true"></div>
         <div class="ticks" id="fm-ticks" aria-hidden="true"></div>
         <div class="legend">
           <span><i style="background:var(--accent-soft);border:1px solid var(--accent)"></i>在浴廁</span>
-          <span><i style="background:var(--urgent)"></i>警報</span>
-          <span><i style="background:var(--ok)"></i>解除</span>
-          <span><i style="background:var(--device)"></i>裝置斷線</span>
+          <span><i style="background:var(--urgent)"></i>要立即到場的警報</span>
+          <span><i style="background:var(--check)"></i>久待警報</span>
+          <span><i style="border:1px dashed var(--device)"></i>裝置斷線</span>
         </div>
-        <div class="feed" id="fm-feed"></div>
       </div>
     </section>
     <section aria-labelledby="h-fm-days">
@@ -221,10 +254,11 @@ th.num { text-align: right; }
     </section>
   </div>
 
-  <!-- 系統管理人員：哪台不在線、哪台資料有問題；不看照護事件 -->
-  <div id="view-admin" role="tabpanel" aria-labelledby="tab-admin" class="view" style="display:grid;gap:24px" hidden>
+  <!-- 系統管理人員：哪台有問題 → 多久沒資料 → 診斷資訊 -->
+  <div id="view-admin" role="tabpanel" aria-labelledby="tab-admin" style="display:grid;gap:24px" hidden>
+    <div class="period" id="ad-period"></div>
     <section aria-labelledby="h-ad-now">
-      <h2 id="h-ad-now" hidden>裝置狀態總覽</h2>
+      <h2 id="h-ad-now">異常裝置</h2>
       <div class="now" id="ad-now"></div>
       <div class="status-row" id="ad-pills"></div>
     </section>
@@ -232,27 +266,30 @@ th.num { text-align: right; }
       <div class="head-row"><h2 id="h-ad-table">裝置清單</h2><span class="hint">只有裝置狀態，不含照護事件的內容</span></div>
       <div class="panel table-wrap">
         <table>
-          <thead><tr><th>裝置</th><th>地點</th><th>狀態</th><th>最後收到資料</th><th>斷線時段</th><th class="num">紀錄筆數</th><th class="num">無法判讀</th><th>要處理的事</th></tr></thead>
+          <thead><tr><th>裝置</th><th>地點</th><th>狀態</th><th>最後收到資料</th><th>斷線時段</th><th class="num">紀錄筆數</th><th class="num">無法判讀</th><th class="num">裝置錯誤</th></tr></thead>
           <tbody id="ad-rows"></tbody>
         </table>
       </div>
     </section>
     <section aria-labelledby="h-ad-tl">
-      <div class="head-row"><h2 id="h-ad-tl">在線時段</h2><span class="hint" id="ad-span"></span></div>
+      <h2 id="h-ad-tl">在線時段</h2>
       <div class="panel devices" id="ad-lines"></div>
-      <div class="legend"><span><i style="background:var(--ok-bg);border:1px solid var(--ok)"></i>在線</span><span><i style="border:1px dashed var(--device)"></i>斷線</span></div>
+      <div class="legend"><span><i style="background:var(--ok-bg);border:1px solid var(--ok)"></i>在線</span><span><i style="border:1px dashed var(--device)"></i>斷線或沒收到資料</span></div>
     </section>
   </div>
 
-  <section aria-labelledby="h-notes">
-    <h2 id="h-notes">試做的說明</h2>
-    <ul class="notes">
-      <li>全部是模擬資料：居服員與家屬看的是同一個模擬上午（原型頁 demo/prototype.html 的資料），系統管理人員看三台模擬裝置。</li>
-      <li>居服員畫面的每一句話都和 radar-caregiver、radar-ask 的輸出相同，並先通過輸出檢查。</li>
+  <details class="about">
+    <summary>原型說明</summary>
+    <ul>
+      <li>用途：評估要不要在官網 Dashboard 之外提供更順手的介面，不是要取代官網。評估方式見 docs/17_介面易用性評估.md。</li>
+      <li>全部是模擬資料：居服員與家屬看的是同一個模擬上午（原型頁 demo/prototype.html 的資料），系統管理人員看四台模擬裝置。</li>
+      <li>居服員畫面的處置提示、照護紀錄、事件摘要、提問答案與趨勢句子，和 radar-caregiver、radar-ask --pick 的輸出相同，並先通過輸出檢查；「待處理事項」的件數與狀態文字是這一頁依資料整理的。句子由範本產生，尚未接上在地模型。</li>
+      <li>這份資料沒有人員處置紀錄，所以每件事的人員處置都是「尚未確認」；「接手處理」「記錄處置」按鈕只是示意，不會保存。要不要人工結案，由照護流程決定。</li>
       <li>家屬畫面是模擬的個人情境；家屬版用語擬定、讀者怎麼登入與長者怎麼對應（會議清單 F4）確定前，不會正式提供。</li>
       <li>系統管理人員這個讀者類型還沒正式加進讀者權限（audience.py），這裡只示意他需要看到的裝置資訊。</li>
+      <li>網址加 #caregiver、#family、#admin 可以直接打開該讀者的畫面。</li>
     </ul>
-  </section>
+  </details>
 </div></main>
 
 <script>
@@ -484,11 +521,82 @@ const DATA = {
      "recent": true
     }
    ]
-  }
+  },
+  "period": {
+   "day": "10/14",
+   "from": "08:00",
+   "to": "11:59",
+   "visits": 5
+  },
+  "incidents": [
+   {
+    "at": "2026-10-14 08:32:10",
+    "label": "08:32",
+    "level": "urgent",
+    "title": "跌倒警報",
+    "prompt": "請立即到場確認。",
+    "cleared": {
+     "label": "08:32",
+     "title": "回覆沒事",
+     "prompt": "長者回覆沒事，警報已解除；可視情況前往關心。"
+    },
+    "human": null
+   },
+   {
+    "at": "2026-10-14 09:16:20",
+    "label": "09:16",
+    "level": "urgent",
+    "title": "跌倒警報",
+    "prompt": "長者回覆需要協助，請立即到場。",
+    "cleared": {
+     "label": "09:19",
+     "title": "起身解除",
+     "prompt": "已偵測到起身，警報已解除。"
+    },
+    "human": null
+   },
+   {
+    "at": "2026-10-14 10:03:15",
+    "label": "10:03",
+    "level": "urgent",
+    "title": "主動呼救",
+    "prompt": "長者主動呼救，請立即到場。",
+    "cleared": {
+     "label": "10:05",
+     "title": "起身解除",
+     "prompt": "已偵測到起身，警報已解除。"
+    },
+    "human": null
+   },
+   {
+    "at": "2026-10-14 10:45:00",
+    "label": "10:45",
+    "level": "check",
+    "title": "久待警報",
+    "prompt": "停留超過設定時間，請前往查看。",
+    "cleared": null,
+    "human": null
+   }
+  ],
+  "offline_sentences": [
+   "11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。"
+  ],
+  "trend_rule": "判定方式：兩週各至少要有 5 天可比較（當天在線 23 小時以上）；平均每日相差 1 次以上，而且每日次數相差前一週的 30%（凌晨 50%）以上，才寫「增加」或「減少」，否則寫「差不多」。",
+  "counted_days": [
+   7,
+   6
+  ]
  },
  "family": {
+  "source": "sim",
   "elder": "DEMO-ELDER-01",
   "place": "DEMO-ELDER-01 房間的浴廁",
+  "period": {
+   "day": "10/14",
+   "from": "08:00",
+   "to": "11:59",
+   "visits": 5
+  },
   "from": "2026-10-14 08:00:00",
   "to": "2026-10-14 11:59:55",
   "summary": "DEMO-ELDER-01 房間的浴廁 10/14：有人使用 5 次，最長一次 22 分鐘。在線期間跌倒警報 2 次（08:32、09:16）。在線期間主動呼救 1 次（10:03）。語音回覆沒事 1 次。在線期間久待警報 1 次（10:45）。11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。",
@@ -520,54 +628,47 @@ const DATA = {
     "2026-10-14 11:25:00"
    ]
   ],
-  "events": [
+  "offline_sentences": [
+   "11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。"
+  ],
+  "incidents": [
    {
     "at": "2026-10-14 08:32:10",
     "label": "08:32",
     "level": "urgent",
-    "title": "跌倒警報"
-   },
-   {
-    "at": "2026-10-14 08:32:40",
-    "label": "08:32",
-    "level": "resolved",
-    "title": "回覆沒事"
+    "title": "跌倒警報",
+    "cleared": {
+     "label": "08:32"
+    },
+    "human": null
    },
    {
     "at": "2026-10-14 09:16:20",
     "label": "09:16",
     "level": "urgent",
-    "title": "跌倒警報"
-   },
-   {
-    "at": "2026-10-14 09:19:30",
-    "label": "09:19",
-    "level": "resolved",
-    "title": "起身解除"
+    "title": "跌倒警報",
+    "cleared": {
+     "label": "09:19"
+    },
+    "human": null
    },
    {
     "at": "2026-10-14 10:03:15",
     "label": "10:03",
     "level": "urgent",
-    "title": "主動呼救"
-   },
-   {
-    "at": "2026-10-14 10:05:50",
-    "label": "10:05",
-    "level": "resolved",
-    "title": "起身解除"
+    "title": "主動呼救",
+    "cleared": {
+     "label": "10:05"
+    },
+    "human": null
    },
    {
     "at": "2026-10-14 10:45:00",
     "label": "10:45",
     "level": "check",
-    "title": "久待警報"
-   },
-   {
-    "at": "2026-10-14 11:10:00",
-    "label": "11:10–11:25",
-    "level": "device",
-    "title": "裝置斷線"
+    "title": "久待警報",
+    "cleared": null,
+    "human": null
    }
   ],
   "days": [
@@ -663,6 +764,8 @@ const DATA = {
    "place": "1 號廁所",
    "status": "recovered",
    "last_seen": "2026-10-14 11:59:55",
+   "since": null,
+   "minutes_without_data": null,
    "from": "2026-10-14 08:00:00",
    "online": [
     [
@@ -680,17 +783,17 @@ const DATA = {
      "2026-10-14 11:25:00"
     ]
    ],
-   "ended_offline": null,
    "records": 2708,
    "unreadable": 0,
-   "errors": 0,
-   "problems": []
+   "errors": 0
   },
   {
    "device": "DEMO-SIM-02",
    "place": "2 號廁所",
    "status": "online",
    "last_seen": "2026-10-14 11:59:55",
+   "since": null,
+   "minutes_without_data": null,
    "from": "2026-10-14 08:00:00",
    "online": [
     [
@@ -699,17 +802,17 @@ const DATA = {
     ]
    ],
    "offline": [],
-   "ended_offline": null,
    "records": 2880,
    "unreadable": 0,
-   "errors": 0,
-   "problems": []
+   "errors": 0
   },
   {
    "device": "DEMO-SIM-03",
    "place": "3 號廁所",
    "status": "offline",
    "last_seen": "2026-10-14 11:40:05",
+   "since": "2026-10-14 11:40:05",
+   "minutes_without_data": 19,
    "from": "2026-10-14 08:00:00",
    "online": [
     [
@@ -718,22 +821,37 @@ const DATA = {
     ]
    ],
    "offline": [],
-   "ended_offline": "2026-10-14 11:40:05",
    "records": 2643,
    "unreadable": 1,
-   "errors": 0,
-   "problems": [
-    "另有 1 筆紀錄無法判讀，請通知資訊人員。"
-   ]
+   "errors": 0
+  },
+  {
+   "device": "DEMO-SIM-04",
+   "place": "4 號廁所",
+   "status": "silent",
+   "last_seen": "2026-10-14 10:30:00",
+   "since": "2026-10-14 10:30:00",
+   "minutes_without_data": 89,
+   "from": "2026-10-14 08:00:00",
+   "online": [
+    [
+     "2026-10-14 08:00:00",
+     "2026-10-14 10:30:00"
+    ]
+   ],
+   "offline": [],
+   "records": 1801,
+   "unreadable": 0,
+   "errors": 0
   }
- ]
+ ],
+ "devices_ref": "2026-10-14 11:59:55"
 };
 const $ = id => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 // 時間都是 "YYYY-MM-DD HH:MM:SS"、沒有時區；當成 UTC 解析只為了算位置，不做時區換算
 const sec = s => Date.parse(s.replace(" ", "T") + "Z") / 1000;
 const hm = s => s.slice(11, 16);
-const md = s => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
 
 // 讀者切換：網址加 #caregiver、#family、#admin 可以直接打開那一頁
 const ROLES = ["caregiver", "family", "admin"];
@@ -744,15 +862,21 @@ function show(role) {
     $("tab-" + r).tabIndex = r === role ? 0 : -1;
   });
 }
+const fromHash = () => ROLES.includes(location.hash.slice(1)) ? location.hash.slice(1) : "caregiver";
 document.querySelectorAll(".roles button").forEach(b => b.addEventListener("click", () => { show(b.dataset.role); try { history.replaceState(null, "", "#" + b.dataset.role); } catch (e) {} }));
 document.querySelector(".roles").addEventListener("keydown", e => {
-  const i = ROLES.indexOf(ROLES.find(r => $("tab-" + r).getAttribute("aria-selected") === "true"));
-  if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-  const next = ROLES[(i + (e.key === "ArrowRight" ? 1 : ROLES.length - 1)) % ROLES.length];
-  show(next); $("tab-" + next).focus();
+  const i = ROLES.findIndex(r => $("tab-" + r).getAttribute("aria-selected") === "true");
+  const to = { ArrowRight: (i + 1) % 3, ArrowLeft: (i + 2) % 3, Home: 0, End: 2 }[e.key];
+  if (to === undefined) return;
+  e.preventDefault(); show(ROLES[to]); $("tab-" + ROLES[to]).focus();
 });
+window.addEventListener("hashchange", () => show(fromHash()));
 
-// 時間軸：起訖、段落、標記
+function period(target, p, extra) {
+  target.append(el("span", "tag", "模擬歷史資料"), "檢視日期 ", el("b", null, p.day), "上午 ", el("b", null, `${p.from}–${p.to}`), `上午使用 ${p.visits} 次`);
+  if (extra) target.append(extra);
+}
+
 function timeline(track, ticks, from, to) {
   const t0 = sec(from), t1 = Math.max(sec(to), t0 + 60);
   const pct = s => ((sec(s) - t0) / (t1 - t0) * 100).toFixed(3) + "%";
@@ -766,162 +890,187 @@ function timeline(track, ticks, from, to) {
   return { band, mark: (cls, at) => { const m = el("div", "mark " + cls); m.style.left = pct(at); track.append(m); } };
 }
 
-// 每日使用次數：在線不足的日子畫虛線、不畫成 0
+// 每日使用次數：用 SVG 元素逐一建立（不拼 HTML 字串）；在線不足的日子畫虛線、不畫成 0
+const SVG = "http://www.w3.org/2000/svg";
+function svg(tag, attrs, text) { const e = document.createElementNS(SVG, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; return e; }
 function chart(target, days) {
   const W = 960, H = 240, L = 34, R = 8, T = 26, B = 26;
   const max = Math.max(10, ...days.map(d => d.visits || 0));
   const top = Math.ceil(max / 5) * 5, y = v => T + (H - T - B) * (1 - v / top);
   const step = (W - L - R) / days.length, bw = step * 0.62;
-  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="兩週每日使用次數">`;
-  for (let v = 0; v <= top; v += 5) s += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`;
+  const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "兩週每日使用次數" });
+  for (let v = 0; v <= top; v += 5) { root.append(svg("line", { class: "grid", x1: L, x2: W - R, y1: y(v), y2: y(v) }), svg("text", { x: L - 6, y: y(v) + 4, "text-anchor": "end" }, v)); }
   const mid = L + step * 7;
-  s += `<line class="sep" x1="${mid}" x2="${mid}" y1="${T - 14}" y2="${H - B + 4}"/>`;
-  s += `<text x="${L + step * 3.5}" y="${T - 10}" text-anchor="middle">前一週</text><text x="${L + step * 10.5}" y="${T - 10}" text-anchor="middle">近 7 天</text>`;
+  root.append(svg("line", { class: "sep", x1: mid, x2: mid, y1: T - 14, y2: H - B + 4 }),
+    svg("text", { x: L + step * 3.5, y: T - 10, "text-anchor": "middle" }, "前一週"),
+    svg("text", { x: L + step * 10.5, y: T - 10, "text-anchor": "middle" }, "近 7 天"));
   days.forEach((d, i) => {
     const x = L + step * i + (step - bw) / 2, cx = x + bw / 2;
     if (d.visits == null) {
-      s += `<rect class="miss" x="${x}" y="${y(top * 0.5)}" width="${bw}" height="${y(0) - y(top * 0.5)}"/><text x="${cx}" y="${y(top * 0.5) - 6}" text-anchor="middle">不列入</text>`;
+      root.append(svg("rect", { class: "miss", x, y: y(top * 0.5), width: bw, height: y(0) - y(top * 0.5) }), svg("text", { x: cx, y: y(top * 0.5) - 6, "text-anchor": "middle" }, "不列入"));
     } else {
-      s += `<rect class="bar" x="${x}" y="${y(d.visits)}" width="${bw}" height="${y(0) - y(d.visits)}"/>`;
-      if (d.dawn) s += `<rect class="dawn" x="${x}" y="${y(d.dawn)}" width="${bw}" height="${y(0) - y(d.dawn)}"/>`;
-      s += `<text class="val" x="${cx}" y="${y(d.visits) - 5}" text-anchor="middle">${d.visits}</text>`;
+      root.append(svg("rect", { class: "bar", x, y: y(d.visits), width: bw, height: y(0) - y(d.visits) }));
+      if (d.dawn) root.append(svg("rect", { class: "dawn", x, y: y(d.dawn), width: bw, height: y(0) - y(d.dawn) }));
+      root.append(svg("text", { class: "val", x: cx, y: y(d.visits) - 5, "text-anchor": "middle" }, d.visits));
     }
-    s += `<text x="${cx}" y="${H - B + 18}" text-anchor="middle">${d.day}</text>`;
+    root.append(svg("text", { x: cx, y: H - B + 18, "text-anchor": "middle" }, d.day));
   });
-  target.innerHTML = s + "</svg>";
+  target.replaceChildren(root);
+  target.scrollLeft = target.scrollWidth;  // 手機寬度先看到近 7 天
 }
 
-// 警報解除對應到它之前、還沒解除的那一則要到場的通知
-function settled(events) {
-  const by = {}, open = [];
-  events.forEach((e, i) => {
-    if (e.level === "urgent") open.push(i);
-    if (e.level === "resolved" && open.length) by[open.pop()] = e.label;
-  });
-  return { by, open };
+// 事件卡：裝置警報與人員處置分開寫；沒有人員處置紀錄就寫「尚未確認」
+function incidentCard(c, opts) {
+  const card = el("article", "incident " + c.level), top = el("div", "top"), dl = el("dl", "state");
+  top.append(el("span", "t", c.label), el("strong", null, c.title));
+  if (opts.place) top.append(el("span", "hint", opts.place));
+  card.append(top);
+  if (opts.prompt) card.append(el("div", "prompt", c.prompt));
+  const row = (k, v, cls) => { dl.append(el("dt", null, k), el("dd", cls, v)); };
+  if (c.cleared) row("裝置警報", `${c.cleared.label} ${opts.prompt ? c.cleared.prompt : "已解除"}`, "ok");
+  else row("裝置警報", "未解除（資料裡沒有解除紀錄）", "warn");
+  const human = el("dd", "warn", "尚未確認");
+  dl.append(el("dt", null, "人員處置"), human);
+  card.append(dl);
+  if (opts.actions) {
+    const acts = el("div", "actions"), note = el("span", "hint", "");
+    for (const [label, done] of [["接手處理", "已接手"], ["記錄處置", "已記錄處置"]]) {
+      const b = el("button", null, label); b.type = "button";
+      b.onclick = () => { human.textContent = `${done}（示意，這一頁不會保存）`; human.className = ""; note.textContent = ""; };
+      acts.append(b);
+    }
+    acts.append(note); card.append(acts);
+  }
+  return card;
 }
 
 /* ---------- 居服員 ---------- */
 (function caregiver() {
-  const C = DATA.caregiver, ev = C.events, { by, open } = settled(ev);
-  const count = lv => ev.filter(e => e.level === lv).length;
+  const C = DATA.caregiver, inc = C.incidents;
+  period($("cg-period"), C.period);
+  const active = inc.filter(c => !c.cleared);
   const now = $("cg-now");
-  if (open.length) {
-    now.classList.add("alert");
-    now.append(el("strong", null, `還有 ${open.length} 則要立即到場的通知沒有解除`));
-    open.forEach(i => now.append(el("div", null, `${ev[i].label} ${ev[i].title}：${ev[i].prompt}`)));
-  } else {
-    now.append(el("strong", null, "目前沒有未解除的警報"));
-    now.append(el("div", "hint", `${C.place} ${md(C.from)} ${hm(C.from)}–${hm(C.to)}，要立即到場的通知 ${count("urgent")} 則都已解除。`));
-  }
-  const pill = (cls, label, n) => { const p = el("span", "pill " + cls); p.append(label, el("b", null, String(n))); $("cg-pills").append(p); };
-  pill("urgent", "要立即到場", count("urgent"));
-  pill("check", "前往查看", count("check"));
-  pill("ok", "警報解除", count("resolved"));
-  pill("device", "裝置斷線", count("device"));
+  now.append(el("strong", null, `有 ${inc.length} 件尚未有人員確認`));
+  if (active.length) now.append(el("div", null, `其中 ${active.length} 件裝置警報仍未解除：` + active.map(c => `${c.label} ${c.title}`).join("、") + "。"));
+  C.offline_sentences.forEach(s => now.append(el("div", null, s)));
+  now.append(el("div", "hint", "這份資料沒有人員處置紀錄，每一件都顯示「尚未確認」。"));
+  const urgent = inc.filter(c => c.level === "urgent"), check = inc.filter(c => c.level === "check");
+  const pill = (cls, text) => $("cg-pills").append(el("span", "pill " + cls, text));
+  pill("urgent", `本時段立即到場通知：${urgent.length} 件，裝置警報${urgent.every(c => c.cleared) ? "均已解除" : `${urgent.filter(c => !c.cleared).length} 件未解除`}`);
+  pill("check", `前往查看通知：${check.length} 件，裝置警報${check.filter(c => !c.cleared).length ? `${check.filter(c => !c.cleared).length} 件未解除` : "均已解除"}`);
+  pill("device", `裝置斷線：${C.offline.length} 段`);
 
-  for (let i = ev.length - 1; i >= 0; i--) {
-    const e = ev[i], card = el("article", "card " + e.level), body = el("div", "body"), chips = el("div", "chips");
-    card.append(el("div", "t", e.label));
-    chips.append(el("span", "chip " + e.level, e.title));
-    if (i in by) chips.append(el("span", "chip done", `${by[i]} 已解除`));
-    body.append(chips, el("div", "prompt", e.prompt));
-    card.append(body); $("cg-feed").append(card);
-  }
-  ev.forEach(e => $("cg-records").append(el("li", null, e.record)));
+  for (let i = inc.length - 1; i >= 0; i--) $("cg-incidents").append(incidentCard(inc[i], { prompt: true, actions: true, place: C.place }));
+  const devices = C.events.filter(e => e.level === "device");
+  devices.slice().reverse().forEach(e => {
+    const card = el("article", "incident"), top = el("div", "top");
+    top.append(el("span", "t", e.label), el("strong", null, e.title));
+    card.append(top, el("div", "prompt", e.prompt)); $("cg-incidents").append(card);
+  });
+
+  C.events.forEach(e => $("cg-records").append(el("li", null, e.record)));
   $("cg-copy").onclick = () => {
-    const text = ev.map(e => e.record).join("\n");
+    const text = C.events.map(e => e.record).join("\n");
     const fallback = () => { const r = document.createRange(); r.selectNodeContents($("cg-records")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("cg-copied").textContent = "已選取，請按 Ctrl+C 複製。"; };
-    try { navigator.clipboard.writeText(text).then(() => { $("cg-copied").textContent = `已複製 ${ev.length} 行。`; }, fallback); } catch (err) { fallback(); }
+    try { navigator.clipboard.writeText(text).then(() => { $("cg-copied").textContent = `已複製 ${C.events.length} 行。`; }, fallback); } catch (err) { fallback(); }
   };
   $("cg-summary").textContent = C.summary;
 
+  // 提問一次選一題：單選（radio）
   let asked = null;
   const buttons = C.ask.map(q => {
-    const b = el("button", null, q.text); b.type = "button";
+    const b = el("button", null, q.text); b.type = "button"; b.setAttribute("role", "radio");
     b.onclick = () => { asked = q.id; render(); };
     $("cg-menu").append(b); return b;
   });
   function render() {
     const out = $("cg-answer"); out.replaceChildren();
-    buttons.forEach((b, i) => b.setAttribute("aria-pressed", String(C.ask[i].id === asked)));
+    buttons.forEach((b, i) => { b.setAttribute("aria-checked", String(C.ask[i].id === asked)); b.tabIndex = (C.ask[i].id === asked || (!asked && i === 0)) ? 0 : -1; });
     const q = C.ask.find(x => x.id === asked);
-    if (!q) { out.append(el("p", "hint", "點一個題目看答案。")); return; }
+    if (!q) { out.append(el("p", "hint", "選一題看答案。")); return; }
     q.answer.split("\n").forEach(line => out.append(el("p", null, line)));
   }
+  $("cg-menu").addEventListener("keydown", e => {
+    const i = Math.max(0, C.ask.findIndex(q => q.id === asked));
+    const to = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault(); asked = C.ask[(to + C.ask.length) % C.ask.length].id; render(); buttons[C.ask.findIndex(q => q.id === asked)].focus();
+  });
   render();
 
   chart($("cg-chart"), C.trend.days);
-  C.trend.lines.slice(1).forEach(line => $("cg-trend-lines").append(el("li", null, line)));
+  C.trend.lines.forEach(line => $("cg-trend-lines").append(el("li", null, line)));
+  $("cg-trend-rule").textContent = `${C.trend_rule}這兩週可比較的天數：前一週 ${C.counted_days[0]} 天、近 7 天 ${C.counted_days[1]} 天。`;
 })();
 
 /* ---------- 家屬 ---------- */
 (function family() {
   const F = DATA.family;
+  period($("fm-period"), F.period);
+  for (let i = F.incidents.length - 1; i >= 0; i--) $("fm-incidents").append(incidentCard(F.incidents[i], { prompt: false, actions: false }));
+  $("fm-offline").textContent = F.offline_sentences.join("");
   $("fm-summary").textContent = F.summary;
-  $("fm-span").textContent = `${md(F.from)} ${hm(F.from)}–${hm(F.to)}`;
   const tl = timeline($("fm-track"), $("fm-ticks"), F.from, F.to);
   F.visits.forEach(([a, b]) => tl.band("visit", a, b));
   F.offline.forEach(([a, b]) => tl.band("off", a, b));
-  F.events.forEach(e => tl.mark(e.level, e.at));
-  const { by } = settled(F.events);
-  F.events.forEach((e, i) => {
-    const card = el("article", "card"), body = el("div", "body"), chips = el("div", "chips");
-    card.append(el("div", "t", e.label));
-    chips.append(el("span", "chip " + e.level, e.title));
-    if (i in by) chips.append(el("span", "chip done", `${by[i]} 已解除`));
-    body.append(chips); card.append(body); $("fm-feed").append(card);
-  });
+  F.incidents.forEach(c => tl.mark(c.level, c.at));
   chart($("fm-chart"), F.days);
 })();
 
 /* ---------- 系統管理人員 ---------- */
 (function admin() {
-  const D = DATA.devices;
-  const LABEL = { online: ["ok", "在線"], recovered: ["check", "曾斷線，已恢復"], offline: ["urgent", "斷線中"] };
-  const n = s => D.filter(d => d.status === s).length;
-  const needs = D.filter(d => d.status === "offline" || d.problems.length);
+  const D = DATA.devices, ref = DATA.devices_ref;
+  const LABEL = { online: ["resolved", "在線"], recovered: ["check", "曾斷線，已恢復"], offline: ["urgent", "斷線中"], silent: ["urgent", "沒收到資料"] };
+  const p = el("span"); p.append("基準時間（所有裝置最晚收到資料）", el("b", null, hm(ref)));
+  $("ad-period").append(el("span", "tag", "模擬歷史資料"), "檢視日期 ", el("b", null, `${+ref.slice(5, 7)}/${+ref.slice(8, 10)}`), p);
+  const bad = D.filter(d => d.status === "offline" || d.status === "silent" || d.unreadable || d.errors);
   const now = $("ad-now");
-  if (needs.length) {
+  if (bad.length) {
     now.classList.add("alert");
-    now.append(el("strong", null, `${needs.length} 台裝置要處理`));
-    needs.forEach(d => now.append(el("div", null, `${d.device}（${d.place}）：${d.status === "offline" ? `${hm(d.ended_offline)} 起斷線，之後沒再收到資料。` : ""}${d.problems.join("")}`)));
+    now.append(el("strong", null, `${bad.length} 台裝置異常`));
+    bad.forEach(d => {
+      const facts = [];
+      if (d.status === "offline") facts.push(`${hm(d.since)} 送出斷線訊息，之後 ${d.minutes_without_data} 分鐘沒收到資料`);
+      if (d.status === "silent") facts.push(`最後收到資料 ${hm(d.since)}，之後 ${d.minutes_without_data} 分鐘沒收到資料，也沒有斷線訊息`);
+      if (d.unreadable) facts.push(`無法判讀的紀錄 ${d.unreadable} 筆`);
+      if (d.errors) facts.push(`裝置錯誤 ${d.errors} 次`);
+      now.append(el("div", null, `${d.device}（${d.place}）：${facts.join("；")}。`));
+    });
   } else {
-    now.append(el("strong", null, "所有裝置都在線，沒有要處理的事"));
+    now.append(el("strong", null, "沒有異常裝置"));
   }
-  const pill = (cls, label, v) => { const p = el("span", "pill " + cls); p.append(label, el("b", null, String(v))); $("ad-pills").append(p); };
-  pill("ok", "在線", n("online"));
-  pill("check", "曾斷線，已恢復", n("recovered"));
-  pill("urgent", "斷線中", n("offline"));
-  pill("device", "有無法判讀的紀錄", D.filter(d => d.unreadable).length);
+  const n = s => D.filter(d => d.status === s).length;
+  const pill = (cls, text) => $("ad-pills").append(el("span", "pill " + cls, text));
+  pill("ok", `在線 ${n("online")}`);
+  pill("check", `曾斷線、已恢復 ${n("recovered")}`);
+  pill("urgent", `斷線中 ${n("offline")}`);
+  pill("urgent", `沒收到資料 ${n("silent")}`);
 
   D.forEach(d => {
     const tr = el("tr"), [cls, text] = LABEL[d.status];
-    const status = el("td"); status.append(el("span", "chip " + (cls === "ok" ? "resolved" : cls), text));
-    const spans = [...d.offline.map(([a, b]) => `${hm(a)}–${hm(b)}`), ...(d.ended_offline ? [`${hm(d.ended_offline)} 起`] : [])];
+    const status = el("td"); status.append(el("span", "chip " + cls, text));
+    const spans = [...d.offline.map(([a, b]) => `${hm(a)}–${hm(b)}`), ...(d.since ? [`${hm(d.since)} 起`] : [])];
     tr.append(el("td", "mono", d.device), el("td", "nowrap", d.place), status,
-      el("td", "mono", `${md(d.last_seen)} ${d.last_seen.slice(11)}`), el("td", "mono", spans.join("、") || "—"),
-      el("td", "num", d.records.toLocaleString("en-US")), el("td", "num", String(d.unreadable)),
-      el("td", null, [d.status === "offline" ? "確認裝置電源與網路" : "", ...d.problems].filter(Boolean).join(" ") || "—"));
+      el("td", "mono", d.last_seen.slice(11)), el("td", "mono", spans.join("、") || "—"),
+      el("td", "num", d.records.toLocaleString("en-US")), el("td", "num", String(d.unreadable)), el("td", "num", String(d.errors)));
     $("ad-rows").append(tr);
   });
 
-  const from = D.map(d => d.from).sort()[0], to = D.map(d => d.last_seen).sort().at(-1);
-  $("ad-span").textContent = `${md(from)} ${hm(from)}–${hm(to)}`;
+  const from = D.map(d => d.from).sort()[0];
   D.forEach((d, i) => {
-    const line = el("div", "device-line"), track = el("div", "track");
-    const name = el("div"); name.append(el("div", "mono", d.device), el("div", "hint", d.place)); line.append(name);
+    const line = el("div", "device-line"), track = el("div", "track"), name = el("div");
+    name.append(el("div", "mono", d.device), el("div", "hint", d.place));
     const box = el("div"); box.style.display = "grid"; box.style.gap = "4px"; box.append(track);
     const ticks = i === D.length - 1 ? el("div", "ticks") : null;
     if (ticks) box.append(ticks);
-    line.append(box); $("ad-lines").append(line);
-    const tl = timeline(track, ticks, from, to);
+    line.append(name, box); $("ad-lines").append(line);
+    const tl = timeline(track, ticks, from, ref);
     d.online.forEach(([a, b]) => tl.band("on", a, b));
     d.offline.forEach(([a, b]) => tl.band("off", a, b));
-    if (d.ended_offline) tl.band("off", d.ended_offline, to);
+    if (d.since) tl.band("off", d.since, ref);
   });
 })();
 
-show(ROLES.includes(location.hash.slice(1)) ? location.hash.slice(1) : "caregiver");
+show(fromHash());
 </script>
 </html>

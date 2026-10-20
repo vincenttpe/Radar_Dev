@@ -36,35 +36,91 @@ def test_caregiver_view_uses_the_radar_caregiver_and_radar_ask_output(repo, data
     out = capsys.readouterr().out.splitlines()
     cg = data["caregiver"]
     assert cg["summary"] == out[1]
+    prompts = out[out.index("【處置提示】") + 1:out.index("【照護紀錄草稿】") - 1]
+    assert [f"{e['label']} {e['prompt']}" for e in cg["events"]] == prompts
     assert [e["record"] for e in cg["events"]] == out[out.index("【照護紀錄草稿】") + 1:]
-    assert ask_main([events, "--place", "1 號廁所", "--pick", "falls", "--json"]) == 0
-    assert next(q for q in cg["ask"] if q["id"] == "falls")["answer"] == json.loads(capsys.readouterr().out)["answer"]
+    for q in cg["ask"]:
+        assert ask_main([events, "--place", "1 號廁所", "--pick", q["id"], "--json"]) == 0
+        assert q["answer"] == json.loads(capsys.readouterr().out)["answer"], q["id"]
+    assert cg["offline_sentences"] == ["11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。"]
 
 
-def test_family_view_has_no_caregiver_prompts_records_or_site_trend_sentences(data):
+def test_incidents_keep_device_state_and_human_state_apart(data):
+    """裝置解除不等於有人處理：久待警報沒有解除紀錄；這份資料沒有人員處置，一律是尚未確認。"""
+    cards = data["caregiver"]["incidents"]
+    assert [(c["label"], c["title"], c["cleared"] and c["cleared"]["label"]) for c in cards] == [
+        ("08:32", "跌倒警報", "08:32"), ("09:16", "跌倒警報", "09:19"),
+        ("10:03", "主動呼救", "10:05"), ("10:45", "久待警報", None)]
+    assert all(c["human"] is None for c in cards)
+
+
+def test_incidents_never_pair_a_resolution_with_a_longstay(build):
+    events = [{"at": "a", "label": "10:00", "level": "check", "title": "久待警報", "prompt": "p"},
+              {"at": "b", "label": "10:01", "level": "resolved", "title": "起身解除", "prompt": "q"}]
+    assert build.incidents(events)[0]["cleared"] is None
+
+
+def test_family_view_is_simulated_and_has_no_caregiver_prompts_or_records(data):
     family = data["family"]
+    assert family["source"] == "sim"
     assert family["summary"].startswith("DEMO-ELDER-01 房間的浴廁 10/14：")
-    assert all(set(e) == {"at", "label", "level", "title"} for e in family["events"])
+    assert all(set(c) == {"at", "label", "level", "title", "cleared", "human"} for c in family["incidents"])
     text = json.dumps(family, ensure_ascii=False)
-    assert "請立即到場" not in text and "場域" not in text and "lines" not in family
+    assert "請立即到場" not in text and "請前往查看" not in text and "場域" not in text
     assert len(family["days"]) == 14
+
+
+def test_family_view_only_reads_the_simulated_morning(build, monkeypatch):
+    """家屬畫面不能被拿去跑實測資料：dashboard_data 不接受資料路徑，demo_data 也只用預設的模擬資料。"""
+    import inspect
+
+    assert not inspect.signature(build.dashboard_data).parameters
+    seen = []
+    real = build._load_build
+
+    def spy():
+        module = real()
+        original = module.demo_data
+        module.demo_data = lambda events=None, place=module.PLACE: seen.append(events) or original(events, place)
+        return module
+
+    monkeypatch.setattr(build, "_load_build", spy)
+    build.dashboard_data()
+    assert seen and all(e is None for e in seen)
 
 
 def test_admin_view_shows_device_status_without_care_events(data):
     devices = {d["device"]: d for d in data["devices"]}
     assert {k: d["status"] for k, d in devices.items()} == {
-        "DEMO-SIM-01": "recovered", "DEMO-SIM-02": "online", "DEMO-SIM-03": "offline"}
+        "DEMO-SIM-01": "recovered", "DEMO-SIM-02": "online", "DEMO-SIM-03": "offline", "DEMO-SIM-04": "silent"}
     assert devices["DEMO-SIM-01"]["offline"] == [["2026-10-14 11:10:00", "2026-10-14 11:25:00"]]
-    assert devices["DEMO-SIM-03"]["ended_offline"] == "2026-10-14 11:40:05"
-    assert devices["DEMO-SIM-03"]["problems"] == ["另有 1 筆紀錄無法判讀，請通知資訊人員。"]
+    assert devices["DEMO-SIM-03"]["since"] == "2026-10-14 11:40:05"
+    assert devices["DEMO-SIM-03"]["unreadable"] == 1
+    assert (devices["DEMO-SIM-04"]["since"], devices["DEMO-SIM-04"]["minutes_without_data"]) == ("2026-10-14 10:30:00", 89)
     text = json.dumps(data["devices"], ensure_ascii=False)
-    assert "跌倒" not in text and "呼救" not in text
+    assert "跌倒" not in text and "呼救" not in text and "請通知" not in text
+
+
+def test_device_that_stops_sending_without_offline_is_not_online(build):
+    """只看自己的紀錄會以為一直在線；要和其他裝置最晚收到資料的時間比。"""
+    quiet = build._heartbeats("radar10/X-1", "08:00:00", "09:00:00")
+    busy = build._heartbeats("radar10/X-2", "08:00:00", "11:00:00")
+    ref, rows = build.device_rows([("X-1", "甲", quiet), ("X-2", "乙", busy)])
+    assert ref == "2026-10-14 11:00:00"
+    assert [r["status"] for r in rows] == ["silent", "online"]
+    _, rows = build.device_rows([("X-1", "甲", quiet[:-3]), ("X-2", "乙", quiet)])
+    assert [r["status"] for r in rows] == ["online", "online"], "落後不到心跳間隔（30 秒）不算沒收到資料"
+
+
+def test_trend_rule_follows_the_caregiver_constants(data):
+    assert data["caregiver"]["trend_rule"].startswith("判定方式：兩週各至少要有 5 天可比較（當天在線 23 小時以上）")
+    assert data["caregiver"]["trend"]["lines"][0].startswith("【使用趨勢】1 號廁所 10/8–10/14 與前一週")
 
 
 def test_page_is_labelled_simulated_and_not_a_replacement(repo):
     page = (repo / "demo" / "dashboard.html").read_text(encoding="utf-8")
-    assert "模擬資料" in page and "尚未接上在地模型" in page and "不是要取代官網" in page
-    assert "依讀者權限家屬不能看" in page
+    assert "模擬資料" in page and "模擬歷史資料" in page and "不是要取代官網" in page
+    assert "家屬不能看" in page and "尚未確認" in page
 
 
 def test_embedded_data_cannot_close_the_script_tag(build, data):
