@@ -379,6 +379,17 @@ def _contrast(a: str, b: str) -> float:
     return (hi + 0.05) / (lo + 0.05)
 
 
+def test_template_css_braces_balance(repo):
+    """多一個或少一個大括號，後面的規則會整條失效（例如焦點框），瀏覽器不會報錯。"""
+    css = (repo / "demo" / "dashboard_template.html").read_text(encoding="utf-8").split("<style>", 1)[1].split("</style>", 1)[0]
+    css = re.sub(r"/\*.*?\*/|\"[^\"]*\"", "", css, flags=re.S)
+    depth = 0
+    for ch in css:
+        depth += {"{": 1, "}": -1}.get(ch, 0)
+        assert depth >= 0, "多了一個 }"
+    assert depth == 0, "少了一個 }"
+
+
 def test_colors_meet_wcag_contrast_in_light_and_dark(repo):
     """WCAG 2.1 AA：說明文字對背景 4.5:1；輸入框與按鈕的框線對背景 3:1（1.4.11）。深色模式另外算。"""
     css = (repo / "demo" / "dashboard_template.html").read_text(encoding="utf-8")
