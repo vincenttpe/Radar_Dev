@@ -77,7 +77,7 @@ def test_family_view_is_simulated_and_has_no_caregiver_prompts_or_records(data):
 
 
 def test_family_view_only_reads_the_simulated_morning(build, monkeypatch):
-    """家屬畫面不能被拿去跑實測資料：dashboard_data 不接受資料路徑，demo_data 也只用預設的模擬資料。"""
+    """家屬畫面不能被拿去跑實測資料：dashboard_data 不接受資料路徑，demo_data 只拿到模擬上午（原樣或平靜版）。"""
     import inspect
 
     assert not inspect.signature(build.dashboard_data).parameters
@@ -87,12 +87,29 @@ def test_family_view_only_reads_the_simulated_morning(build, monkeypatch):
     def spy():
         module = real()
         original = module.demo_data
-        module.demo_data = lambda events=None, place=module.PLACE: seen.append(events) or original(events, place)
+        def demo_data(events=None, place=module.PLACE, records=None):
+            seen.append((events, {r["topic"] for r in records}))
+            return original(events, place, records)
+        module.demo_data = demo_data
         return module
 
     monkeypatch.setattr(build, "_load_build", spy)
     build.dashboard_data()
-    assert seen and all(e is None for e in seen)
+    assert seen and all(e is None and topics == {"radar10/DEMO-SIM-01"} for e, topics in seen)
+
+
+def test_calm_morning_has_no_alerts_and_every_device_online(data):
+    """「平靜的上午」：同一個模擬上午，有人進出照舊，但沒有任何通知、裝置一直在線。句子仍然來自 radar-caregiver。"""
+    calm = data["calm"]
+    assert set(calm) == {"caregiver", "family", "devices", "devices_ref"}, "維修紀錄與後台不隨情境變"
+    cg = calm["caregiver"]
+    assert cg["incidents"] == [] and cg["events"] == [] and cg["orphans"] == [] and cg["offline"] == []
+    assert cg["summary"] == "1 號廁所 10/14：有人使用 5 次，最長一次 22 分鐘。跌倒警報 0 次。主動呼救 0 次。久待警報 0 次。這段時間裝置都在線。"
+    assert len(cg["visits"]) == len(data["caregiver"]["visits"]), "進出次數和事情多的上午一樣"
+    assert cg["trend"] == data["caregiver"]["trend"]
+    assert calm["family"]["incidents"] == [] and calm["family"]["source"] == "sim"
+    assert {d["device"]: d["status"] for d in calm["devices"]} == dict.fromkeys(
+        ["DEMO-SIM-01", "DEMO-SIM-02", "DEMO-SIM-03", "DEMO-SIM-04"], "online")
 
 
 def test_admin_view_shows_device_status_without_care_events(data):
@@ -151,7 +168,7 @@ def test_ui_text_that_fails_the_wording_check_stops_the_build(build, monkeypatch
 
 def test_embedded_data_cannot_close_the_script_tag(build, data):
     html = build.fragment({**data, "x": "</script><b>"})
-    payload = html.split("const DATA = ", 1)[1].split(";\n", 1)[0]
+    payload = html.split("const RAW = ", 1)[1].split(";\n", 1)[0]
     assert "</script>" not in payload and json.loads(payload)["x"] == "</script><b>"
 
 

@@ -74,13 +74,17 @@ def ask_data(summary: Summary, place: str) -> list[dict[str, str]]:
     return out
 
 
-def demo_data(events: Path | None = None, place: str = PLACE) -> dict[str, Any]:
-    """events 為 None 時用 Demo 模擬資料（含兩週趨勢）；否則是遮罩過的實測資料（不含趨勢）。"""
+def demo_data(events: Path | None = None, place: str = PLACE,
+              records: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """events 為 None 時用 Demo 模擬資料（含兩週趨勢）；否則是遮罩過的實測資料（不含趨勢）。
+
+    records：直接給另一份模擬紀錄（例如看板的「平靜的上午」），一樣附兩週趨勢。
+    """
     if events is not None:
         if MAC_LIKE.search(events.read_text(encoding="utf-8")):
             raise ValueError(f"{events} 裡還有像 MAC 的字串，請先用 radar-field-data mask 遮罩")
         records = _jsonl(events)
-    else:
+    elif records is None:
         records = _jsonl(REPO / "data" / "samples_demo" / "bathroom_morning.jsonl")
     summary = summarize(records)
     if not summary.online:
