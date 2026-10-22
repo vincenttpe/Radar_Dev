@@ -158,7 +158,7 @@ def test_embedded_data_cannot_close_the_script_tag(build, data):
 CONTROL_LABELS = {
     "不列入", "人員處置", "備註", "儲存處置", "兩週每日使用次數", "前一週", "取消", "回報問題", "急迫程度", "接手",
     "接手處理", "時段 ", "檢視日期 ", "現場已檢查", "確認接手", "網路", "處置結果", "裝置警報", "複製回報內容",
-    "記錄處置", "請選擇", "近 7 天", "送出（示意）", "電源",
+    "記錄處置", "請選擇", "近 7 天", "送出（示意）", "電源", "狀態", "處理結果",
 }
 
 
@@ -200,7 +200,7 @@ def test_diagnostics_survive_almost_no_data(build):
 
 
 def test_places_come_from_the_device_registry(build, data):
-    """畫面與回報單上的地點都查裝置設定紀錄；移機後顯示新地點；沒有紀錄的裝置算異常。"""
+    """居服員、系統管理人員畫面與回報單上的地點都查裝置設定紀錄；移機後顯示新地點；沒有紀錄的裝置算異常。"""
     registry = build.load_registry()
     assert {d["device"]: d["place"] for d in data["devices"]} == {k: v["place"] for k, v in registry.items()}
     assert data["caregiver"]["place"] == registry["DEMO-SIM-01"]["place"]
@@ -250,6 +250,10 @@ def test_family_never_sees_a_pointer_to_notes_it_cannot_read(data):
     ({"device": "X", "place": "甲", "area": "乙", "use": "丙", "history": []}, "缺欄位或是空的"),
     ({"device": "X", "place": "甲", "area": "乙", "history": [{"at": "1", "by": "2", "change": "3"}]}, "缺欄位或是空的"),
     ({"device": "X", "place": "甲", "area": "乙", "use": "丙", "history": [{"at": "1", "change": "3"}]}, "變更紀錄缺欄位"),
+    ({"device": "X", "place": "甲", "area": "乙", "use": "丙",
+      "history": [{"at": "1", "by": "2", "change": "3"}]}, "地點和變更紀錄對不上"),
+    ({"device": "X", "place": "甲", "area": "乙", "use": "丙",
+      "history": [{"at": "1", "by": "2", "change": "3", "place": "丁"}]}, "地點和變更紀錄對不上"),
 ])
 def test_registry_is_checked_when_loaded(build, tmp_path, entry, message):
     path = tmp_path / "registry.json"
@@ -259,7 +263,7 @@ def test_registry_is_checked_when_loaded(build, tmp_path, entry, message):
 
 
 def test_registry_rejects_a_device_registered_twice(build, tmp_path):
-    entry = {"device": "X", "place": "甲", "area": "乙", "use": "丙", "history": [{"at": "1", "by": "2", "change": "3"}]}
+    entry = {"device": "X", "place": "甲", "area": "乙", "use": "丙", "history": [{"at": "1", "by": "2", "change": "3", "place": "甲"}]}
     path = tmp_path / "registry.json"
     path.write_text(json.dumps({"devices": [entry, entry]}, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(ValueError, match="重複登記"):
@@ -286,3 +290,63 @@ def test_last_seen_is_the_device_not_the_broker_offline_message(data):
     assert third["last_seen"] == third["diag"]["last_device"] == "2026-10-14 11:40:00"
     assert third["diag"]["all_records"] == third["records"] == 2643
     assert (third["diag"]["device_records"], third["unreadable"], third["diag"]["offline_records"]) == (2641, 1, 1)
+
+
+def test_admin_sees_only_its_own_site_tickets(data):
+    assert {t["id"] for t in data["own_tickets"]} == {"TS-20261010-01", "TS-20261012-01"}
+    assert all(t["site"] == "SITE-A" for t in data["own_tickets"])
+
+
+def test_ticket_place_is_where_the_device_was_when_reported(build, data):
+    """DEMO-SIM-03 在 10/12 移機：10/10 的回報單要顯示當時的 5 號廁所，不是現在的 3 號廁所。"""
+    places = {t["id"]: t["place"] for t in data["own_tickets"]}
+    assert places == {"TS-20261010-01": "5 號廁所", "TS-20261012-01": "4 號廁所"}
+    registry = build.load_registry()
+    assert build.place_at("DEMO-SIM-03", "2026-10-12 16:10", registry) == "3 號廁所"
+    assert build.place_at("DEMO-SIM-03", "2026-09-01 00:00", registry) == "未登記地點"
+    assert build.place_at("X-9", "2026-10-12 16:10", registry) == "未登記地點"
+
+
+def test_ticket_text_goes_through_the_wording_check(build):
+    _, tickets = build.load_maintenance()
+    tickets[0] = {**tickets[0], "action": "診斷後給藥"}
+    with pytest.raises(ValueError, match="沒通過用語檢查"):
+        build.check_ui_text(None, tickets)
+
+
+def test_ops_findings_follow_the_rules(build, data):
+    findings = data["ops"]["findings"]
+    assert findings[0].startswith("韌體 1.2 的「資料逾時」回報 7 件（每台 1.17 件）")
+    assert any(f.startswith("硬體批次 B1 更換電源供應器 4 次") for f in findings)
+    assert any(f.startswith("「無法判讀」2 件都以「重新設定時間同步」處理") for f in findings)
+    # 斷線在 1.2 剛好是其他版本的 2 倍：不列（那 3 件其實是 B1 的電源問題）
+    assert not any("「斷線」" in f and f.startswith("韌體") for f in findings)
+    by_fw = {r["fw"]: r for r in data["ops"]["by_fw"]}
+    assert by_fw["1.2"]["devices"] == 6, "用過 1.2 的裝置包含後來更新到 1.3 的兩台"
+
+
+def test_ops_data_has_no_place_names_mac_or_care_events(data):
+    text = json.dumps(data["ops"], ensure_ascii=False)
+    places = {d["place"] for d in data["devices"]}
+    assert not any(p in text for p in places), "維運後台只用場域代號與裝置代號"
+    assert "radar10/" not in text and "跌倒" not in text and "呼救" not in text
+
+
+def test_ops_finding_with_medical_wording_stops_the_build(build, monkeypatch):
+    monkeypatch.setitem(build.UI_TEXT, "f_batch", "批次 {batch} 需要診斷{part}（{n}/{d}/{o}）")
+    with pytest.raises(ValueError, match="用語檢查"):
+        build.dashboard_data()
+
+
+def test_record_counts_add_up_even_with_unknown_events(build):
+    """規格外的 event 算在無法判讀，不重複算進裝置紀錄；加總要等於收到的筆數。"""
+    from radar_agent.device_events import summarize
+
+    rows = build._heartbeats("radar10/X-1", "08:00:00", "08:01:00")
+    rows.append({"timestamp": "2026-10-14 08:01:05", "topic": "radar10/X-1", "resolution": None,
+                 "payload": {"event": "dance"}})
+    summary = summarize(rows)
+    diag = build.diagnostics(rows, summary)
+    unreadable = len(summary.unreadable) + len(summary.unknown_events)
+    assert unreadable == 1
+    assert diag["device_records"] + unreadable + diag["offline_records"] == diag["all_records"] == len(rows)

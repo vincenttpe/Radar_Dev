@@ -9,6 +9,8 @@
   現有資料是場域資料，依 audience.py 家屬不能看；這裡是模擬的個人情境，頁面一直標明（2026-10-20 決定，F4 前不改 audience.py）。
 - 系統管理人員：四台模擬裝置的狀態（在線、斷線、資料逾時、最後收到資料、紀錄筆數、無法判讀的紀錄），不看照護事件內容；
   異常裝置可以「回報問題」，回報單自動帶入遠端判斷需要的裝置資訊（diagnostics()）。
+  本場域的維修紀錄（回報單狀態與處理結果）也在這裡。
+- 維運後台（團隊或廠商）：跨場域的維修統計與給韌體、硬體更新的參考（ops_data()），只用場域代號與裝置代號。
 
 每件事分成「裝置警報」與「人員處置」兩種狀態：這份資料沒有人員處置紀錄，人員處置從「尚未確認」開始，頁面上可以示意接手與記錄處置
 （只存在分頁），不從裝置訊號推論已處理（2026-10-20 使用者檢視意見）。頁面上陳述事實的句子都在 UI_TEXT，建置時跑用語檢查。
@@ -49,6 +51,9 @@ REPO = HERE.parent
 PLACEHOLDER = "/*DASHBOARD_DATA*/null"
 REGISTRY = HERE / "device_registry.json"   # 模擬的裝置設定紀錄：裝置代號 → 安裝地點與設定變更
 CARE_DEVICE = "DEMO-SIM-01"                  # 居服員與家屬畫面用的模擬上午來自這台（data/samples_demo/bathroom_morning.jsonl）
+MAINTENANCE = HERE / "maintenance_sim.json"  # 模擬的裝置清單與維修紀錄（維運後台用）
+OWN_SITE = "SITE-A"                          # 這一頁的系統管理人員所在的場域：只看得到自己場域的維修紀錄
+CATEGORY = {"offline": "斷線", "silent": "資料逾時", "unreadable": "無法判讀", "error": "裝置錯誤"}
 FAMILY_ELDER = "DEMO-ELDER-01"
 FAMILY_PLACE = f"{FAMILY_ELDER} 房間的浴廁"
 DAY = "2026-10-14"
@@ -82,6 +87,7 @@ def load_registry(path: Path = REGISTRY) -> dict[str, dict[str, Any]]:
     """裝置設定紀錄：{裝置代號: {place, area, use, history}}。居服員、系統管理人員畫面與回報單上的地點都從這裡查。
 
     人工維護的檔案，建置時先檢查：欄位齊全、至少一筆變更紀錄、同一台不能登記兩次。
+    安裝與移機的紀錄帶 place，回報單依回報當時查地點（place_at）；第一筆一定要有地點，最後一次設定的地點要等於現在的地點。
     """
     entries = json.loads(path.read_text(encoding="utf-8"))["devices"]
     registry: dict[str, dict[str, Any]] = {}
@@ -91,15 +97,140 @@ def load_registry(path: Path = REGISTRY) -> dict[str, dict[str, Any]]:
             raise ValueError(f"裝置設定紀錄缺欄位或是空的：{e.get('device', '?')} {missing}")
         if any(not all(h.get(k) for k in ("at", "by", "change")) for h in e["history"]):
             raise ValueError(f"裝置設定紀錄的變更紀錄缺欄位：{e['device']}")
+        set_places = [h["place"] for h in e["history"] if h.get("place")]
+        if not e["history"][0].get("place") or set_places[-1] != e["place"]:
+            raise ValueError(f"裝置設定紀錄的地點和變更紀錄對不上：{e['device']}")
         if e["device"] in registry:
             raise ValueError(f"裝置設定紀錄重複登記：{e['device']}")
         registry[e["device"]] = e
     return registry
 
 
+TICKET_FIELDS = ("id", "device", "category", "fw", "reported", "accepted", "resolved", "outcome",
+                 "action", "part", "fw_after", "downtime_min", "handler")
+
+
+def load_maintenance(path: Path = MAINTENANCE) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
+    """(裝置清單, 回報單)。裝置清單的韌體是現在的版本；回報單記的是當時的版本。"""
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    fleet = [dict(zip(("device", "site", "batch", "fw"), row, strict=True)) for row in raw["fleet"]]
+    tickets = [dict(zip(TICKET_FIELDS, row, strict=True)) for row in raw["tickets"]]
+    sites = {f["device"]: f for f in fleet}
+    for t in tickets:
+        t["site"], t["batch"] = sites[t["device"]]["site"], sites[t["device"]]["batch"]
+    return fleet, tickets
+
+
+def _hours(a: str, b: str) -> float:
+    return (datetime.fromisoformat(b) - datetime.fromisoformat(a)).total_seconds() / 3600
+
+
+def _median(values: list[float]) -> float | None:
+    values = sorted(values)
+    if not values:
+        return None
+    mid = len(values) // 2
+    return values[mid] if len(values) % 2 else (values[mid - 1] + values[mid]) / 2
+
+
+def _per_device(n: int, devices: int) -> str:
+    return f"{n / devices:.2f}" if devices else "—"
+
+
+def ops_data(fleet: list[dict[str, str]], tickets: list[dict[str, Any]]) -> dict[str, Any]:
+    """維運後台：跨場域的維修統計與給韌體、硬體更新的參考。只用場域代號與裝置代號。
+
+    韌體的分母是「用過這個版本的裝置」：現在是這一版的，加上回報單上記載曾經是這一版、後來更新的。
+    參考清單是固定規則找出來的「值得檢查」，不是原因判斷；門檻寫在這裡，改了要一起改 docs/17。
+    """
+    fw_devices: dict[str, set[str]] = {}
+    for f in fleet:
+        fw_devices.setdefault(f["fw"], set()).add(f["device"])
+    for t in tickets:
+        fw_devices.setdefault(t["fw"], set()).add(t["device"])
+    batch_devices: dict[str, set[str]] = {}
+    for f in fleet:
+        batch_devices.setdefault(f["batch"], set()).add(f["device"])
+
+    by_category: list[dict[str, Any]] = []
+    for key, label in CATEGORY.items():
+        rows = [t for t in tickets if t["category"] == key]
+        done = [t for t in rows if t["resolved"]]
+        by_category.append({"key": key, "label": label, "n": len(rows),
+                            "median_h": _median([_hours(t["reported"], t["resolved"]) for t in done]),
+                            "actions": sorted({t["action"] for t in done})})
+    by_fw = [{"fw": fw, "devices": len(devs), "n": sum(t["fw"] == fw for t in tickets),
+              "by_category": {k: sum(t["fw"] == fw and t["category"] == k for t in tickets) for k in CATEGORY}}
+             for fw, devs in sorted(fw_devices.items())]
+    parts = sorted({t["part"] for t in tickets if t["part"]})
+    by_batch = [{"batch": b, "devices": len(devs), "n": sum(t["batch"] == b for t in tickets),
+                 "parts": {p: sum(t["batch"] == b and t["part"] == p for t in tickets) for p in parts}}
+                for b, devs in sorted(batch_devices.items())]
+    counts: dict[str, list[dict[str, Any]]] = {}
+    for t in tickets:
+        counts.setdefault(t["device"], []).append(t)
+    repeat = [{"device": d, "site": ts[0]["site"], "n": len(ts), "categories": [CATEGORY[t["category"]] for t in ts]}
+              for d, ts in sorted(counts.items()) if len(ts) >= REPEAT_AT_LEAST]
+
+    findings = []
+    # 韌體：某一版的某類問題每台件數超過其他版本的 2 倍、而且至少 3 件（剛好 2 倍不列：容易被硬體問題混進來）
+    for key, label in CATEGORY.items():
+        for row in by_fw:
+            n, others = row["by_category"][key], [r for r in by_fw if r is not row]
+            other_n = sum(r["by_category"][key] for r in others)
+            other_dev = sum(r["devices"] for r in others)
+            if n >= FINDING_AT_LEAST and other_dev and n / row["devices"] > FINDING_RATIO * max(other_n / other_dev, 1e-9):
+                findings.append(UI_TEXT["f_fw"].format(fw=row["fw"], cat=label, n=n, r=_per_device(n, row["devices"]),
+                                                      o=_per_device(other_n, other_dev)))
+    # 硬體：某批次更換某零件的次數，至少 3 次、而且其他批次合計不到它的一半
+    for part in parts:
+        for row in by_batch:
+            n = row["parts"][part]
+            other = sum(r["parts"][part] for r in by_batch if r is not row)
+            if n >= FINDING_AT_LEAST and other * 2 < n:
+                findings.append(UI_TEXT["f_batch"].format(batch=row["batch"], part=part, n=n, d=row["devices"], o=other))
+    # 同一類問題都用同一種方式處理：可以考慮在韌體裡自動處理或自我檢查
+    for row in by_category:
+        done = [t for t in tickets if t["category"] == row["key"] and t["resolved"]]
+        if len(done) >= 2 and len(row["actions"]) == 1:
+            findings.append(UI_TEXT["f_action"].format(cat=row["label"], n=len(done), action=row["actions"][0]))
+    for r in repeat:
+        findings.append(UI_TEXT["f_repeat"].format(device=r["device"], site=r["site"], n=r["n"], cats="、".join(r["categories"])))
+
+    done_all = [t for t in tickets if t["resolved"]]
+    period = [min(t["reported"] for t in tickets)[:10], max(t["reported"] for t in tickets)[:10]]
+    return {
+        "period": period,
+        "sites": sorted({f["site"] for f in fleet}),
+        "fleet": len(fleet),
+        "tickets": tickets,
+        "open": sum(not t["resolved"] for t in tickets),
+        "median_h": _median([_hours(t["reported"], t["resolved"]) for t in done_all]),
+        "downtime_h": round(sum(t["downtime_min"] or 0 for t in done_all) / 60, 1),
+        "by_category": by_category,
+        "by_fw": by_fw,
+        "by_batch": by_batch,
+        "parts": parts,
+        "repeat": repeat,
+        "findings": findings,
+    }
+
+
+REPEAT_AT_LEAST = 2     # 同一台回報幾次以上列為「反覆出問題」
+FINDING_AT_LEAST = 3    # 參考清單：至少幾件才列
+FINDING_RATIO = 2       # 韌體：每台件數要超過其他版本的幾倍
+
+
 def place_of(device: str, registry: dict[str, dict[str, Any]]) -> str:
     entry = registry.get(device)
     return str(entry["place"]) if entry else UI_TEXT["place_unknown"]
+
+
+def place_at(device: str, when: str, registry: dict[str, dict[str, Any]]) -> str:
+    """某個時間點的地點：取那之前最後一次設定的地點。回報單是過去的事，不能用移機後的地點。"""
+    entry = registry.get(device)
+    earlier = [h["place"] for h in entry["history"] if h.get("place") and h["at"] <= when] if entry else []
+    return str(earlier[-1]) if earlier else UI_TEXT["place_unknown"]
 
 
 def simulated_devices(morning: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
@@ -138,7 +269,9 @@ def diagnostics(records: list[dict[str, Any]], summary: Summary) -> dict[str, An
         payload = r.get("payload")
         return payload.get("event") if isinstance(payload, dict) else None
 
-    device = [t for t, r in readable if event(r) != "offline"]
+    # 規格外的 event 算在「無法判讀」裡，不重複算進裝置紀錄
+    unknown = {id(r) for r in summary.unknown_events}
+    device = [t for t, r in readable if event(r) != "offline" and id(r) not in unknown]
     offline_msgs = [t for t, r in readable if event(r) == "offline"]
     online_msgs = [(t, r) for t, r in readable if event(r) == "online"]
     pairs = list(pairwise(device))
@@ -343,9 +476,11 @@ UI_TEXT: dict[str, str] = {
     "r_basis_unreadable": "裝置在線，但有 {n} 筆無法判讀的紀錄",
     "r_basis_errors": "裝置在線，但回報錯誤 {n} 次",
     "r_base": "基準時間：{ref}；距最後收到資料 {min} 分鐘",
+    "r_base_offline": "基準時間：{ref}；距收到斷線訊息 {min} 分鐘",
     "r_topic": "裝置主題：{topic}",
     "r_online": "這段時間的在線時段：{spans}",
-    "r_records": "紀錄：收到可判讀時間的裝置紀錄 {n} 筆（另有無法判讀 {u} 筆、斷線訊息 {o} 筆，共 {t} 筆）；從第一筆到裝置最後一筆，以每 {s} 秒一筆估算約 {e} 筆",
+    "r_records": "紀錄：收到可判讀的裝置紀錄 {n} 筆（另有無法判讀 {u} 筆、斷線訊息 {o} 筆{other}，共 {t} 筆）；各在線時段從第一筆到裝置最後一筆，以每 {s} 秒一筆估算約 {e} 筆",
+    "r_other": "、重複或伺服器指令 {n} 筆",
     "r_median": "紀錄間隔中位數 {m} 秒",
     "r_maxgap": "明顯較長的紀錄間隔：{g} 秒（{a}–{b}）",
     "r_last": "裝置最後一筆紀錄：{time}",
@@ -367,6 +502,30 @@ UI_TEXT: dict[str, str] = {
     "need_urgency": "請選擇急迫程度。",
     "need_desc": "請填問題描述。",
     "report_sent": "已送出（示意）：回報單 {id}，等待技術支援回覆。這一頁不會真的寄出。",
+    # 維修紀錄（系統管理人員看自己場域）與維運後台（2026-10-22 使用者：維修紀錄自動回報、系統後台整理維護經驗幫助韌體與硬體更新）
+    "t_sent": "已送出 {time}",
+    "t_accepted": "已受理 {time}",
+    "t_doing": "處理中",
+    "t_done": "{outcome} {time}",
+    "t_result": "處理方式：{action}",
+    "t_part": "更換零件：{part}",
+    "t_fw": "韌體：{a} → {b}",
+    "t_downtime": "停機約 {h} 小時",
+    "t_handler": "處理人：{who}",
+    "t_waiting": "等待技術支援受理（示意）",
+    "own_tickets_note": "只顯示本場域（{site}）的回報單；處理結果由技術支援結案時自動回到這裡（模擬資料）。",
+    "ops_note": "跨場域的維修統計，只用場域代號與裝置代號，不含地點名稱、MAC、照護事件與長者資料（模擬資料）。",
+    "ops_period": "{a}–{b}，{s} 個場域、{d} 台裝置",
+    "ops_total": "回報單 {n} 件",
+    "ops_open": "處理中 {n} 件",
+    "ops_median": "從送出到結案的時間中位數 {h} 小時",
+    "ops_downtime": "停機合計約 {h} 小時",
+    "ops_none": "目前沒有符合規則的項目。",
+    "ops_rule": "列入規則：韌體每台件數超過其他版本的 {r} 倍且至少 {n} 件；硬體批次更換同一零件至少 {n} 次且其他批次合計不到一半；同一類問題都用同一種方式處理；同一台回報 {k} 次以上。這是值得檢查的項目，不是原因判斷。",
+    "f_fw": "韌體 {fw} 的「{cat}」回報 {n} 件（每台 {r} 件），其他版本每台 {o} 件；建議列入韌體檢查。",
+    "f_batch": "硬體批次 {batch} 更換{part} {n} 次（這批共 {d} 台），其他批次合計 {o} 次；建議檢查這批的{part}。",
+    "f_action": "「{cat}」{n} 件都以「{action}」處理；可以考慮讓韌體自己檢查這一項。",
+    "f_repeat": "{device}（{site}）回報 {n} 次：{cats}；建議追蹤這台。",
 }
 # 記錄處置的結果選項：只描述做了什麼，不判斷長者狀況（判斷寫在備註，由人負責）
 RESULTS = ["已到場確認", "已到場協助", "以電話或語音確認", "其他（見備註）"]
@@ -374,12 +533,16 @@ RESULTS = ["已到場確認", "已到場協助", "以電話或語音確認", "�
 FAMILY_RESULTS = {"其他（見備註）": "其他處置"}
 
 
-def check_ui_text(registry: dict[str, dict[str, Any]] | None = None) -> None:
+def check_ui_text(registry: dict[str, dict[str, Any]] | None = None,
+                  tickets: list[dict[str, Any]] | None = None) -> None:
     texts = [*UI_TEXT.items(), *((f"result{i}", r) for i, r in enumerate(RESULTS)), *FAMILY_RESULTS.items(),
-             *CAUSE.items(), ("trend_rule", trend_rule())]
+             *CAUSE.items(), *CATEGORY.items(), ("trend_rule", trend_rule())]
     for device, entry in (registry or {}).items():
         texts += [(f"{device}.{k}", str(entry[k])) for k in ("place", "area", "use")]
         texts += [(f"{device}.history", h["change"]) for h in entry["history"]]
+    # 回報單的處理結果會直接顯示在頁面上
+    for t in tickets or []:
+        texts += [(f"{t['id']}.{k}", str(t[k])) for k in ("outcome", "action", "part") if t[k]]
     for key, text in texts:
         problems = wording_problems(text)
         if problems:
@@ -436,10 +599,18 @@ def dashboard_data() -> dict[str, Any]:
         "days": family_full["trend"]["days"],
     }
     ref, devices = device_rows(simulated_devices(morning), registry)
-    check_ui_text(registry)
+    fleet, tickets = load_maintenance()
+    ops = ops_data(fleet, tickets)
+    check_ui_text(registry, tickets)
+    problems = [f for f in ops["findings"] if wording_problems(f)]
+    if problems:
+        raise ValueError(f"維運後台的參考清單沒通過用語檢查：{problems}")
     return {"caregiver": caregiver, "family": family, "devices": devices, "devices_ref": ref,
             "gap_s": int(HEARTBEAT_GAP.total_seconds()),
             "heartbeat_s": int(HEARTBEAT.total_seconds()), "firmware_keys": "、".join(FIRMWARE_KEYS),
+            "own_site": OWN_SITE, "own_tickets": [{**t, "place": place_at(t["device"], t["reported"], registry)}
+                            for t in tickets if t["site"] == OWN_SITE], "ops": ops,
+            "categories": CATEGORY, "ops_rule": {"r": FINDING_RATIO, "n": FINDING_AT_LEAST, "k": REPEAT_AT_LEAST},
             "text": UI_TEXT, "results": RESULTS, "family_results": FAMILY_RESULTS}
 
 
