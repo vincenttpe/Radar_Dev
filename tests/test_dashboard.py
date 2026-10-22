@@ -151,3 +151,39 @@ def test_embedded_data_cannot_close_the_script_tag(build, data):
     html = build.fragment({**data, "x": "</script><b>"})
     payload = html.split("const DATA = ", 1)[1].split(";\n", 1)[0]
     assert "</script>" not in payload and json.loads(payload)["x"] == "</script><b>"
+
+
+# 頁面 JS 裡允許直接寫的中文：只有按鈕、欄位與圖表的標籤，不陳述事實；陳述事實的句子都要在 UI_TEXT
+CONTROL_LABELS = {
+    "不列入", "人員處置", "備註", "儲存處置", "兩週每日使用次數", "前一週", "取消", "回報問題", "急迫程度", "接手",
+    "接手處理", "時段 ", "檢視日期 ", "現場已檢查", "確認接手", "網路", "處置結果", "裝置警報", "複製回報內容",
+    "記錄處置", "請選擇", "近 7 天", "送出（示意）", "電源",
+}
+
+
+def test_script_writes_no_sentences_outside_the_checked_table(repo):
+    import re
+
+    page = (repo / "demo" / "dashboard_template.html").read_text(encoding="utf-8")
+    script = page.split("<script>", 1)[1].split("</script>", 1)[0]
+    literals = {a or b for a, b in re.findall(r'"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`', script)}
+    chinese = {t for t in literals if re.search(r"[一-鿿]", t)}
+    assert chinese <= CONTROL_LABELS, f"這些句子要搬進 UI_TEXT 或確認只是標籤：{chinese - CONTROL_LABELS}"
+
+
+def test_device_report_carries_what_a_remote_engineer_needs_but_no_care_data(data):
+    """回報單自動帶入遠端判斷要的裝置資訊；讀不懂的紀錄只留形狀，不帶 payload 內容（有沒有人等照護資訊）。"""
+    diag = {d["device"]: d["diag"] for d in data["devices"]}
+    third = diag["DEMO-SIM-03"]
+    assert third["topic"] == "radar10/DEMO-SIM-03" and third["median_gap_s"] == 5
+    assert third["last_times"][-1] == "2026-10-14 11:40:05"
+    assert json.loads(third["unreadable_sample"]) == {
+        "timestamp": "2026-10-14T09:00", "topic": "radar10/DEMO-SIM-03", "payload 欄位": ["event"]}
+    assert diag["DEMO-SIM-01"]["max_gap"] == ["2026-10-14 11:10:00", "2026-10-14 11:25:00", 900]
+    text = json.dumps(diag, ensure_ascii=False)
+    assert "absence" not in text and "moving" not in text and "fall" not in text
+
+
+def test_family_never_sees_a_pointer_to_notes_it_cannot_read(data):
+    assert all(r in data["results"] for r in data["family_results"])
+    assert data["family_results"]["其他（見備註）"] == "其他處置"

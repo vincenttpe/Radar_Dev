@@ -7,9 +7,11 @@
 - 家屬：模擬「單人房、有長者代號 DEMO-ELDER-01」的情境，只放事件摘要、今天發生過什麼（時間與種類）
   與每日使用次數。家屬版的用語還沒擬定與審核，所以不放處置提示與照護紀錄，也不放寫著「場域統計」的趨勢句子。
   現有資料是場域資料，依 audience.py 家屬不能看；這裡是模擬的個人情境，頁面一直標明（2026-10-20 決定，F4 前不改 audience.py）。
-- 系統管理人員：四台模擬裝置的狀態（在線、斷線、沒收到資料、最後收到資料、紀錄筆數、無法判讀的紀錄），不看照護事件內容。
+- 系統管理人員：四台模擬裝置的狀態（在線、斷線、資料逾時、最後收到資料、紀錄筆數、無法判讀的紀錄），不看照護事件內容；
+  異常裝置可以「回報問題」，回報單自動帶入遠端判斷需要的裝置資訊（diagnostics()）。
 
-每件事分成「裝置警報」與「人員處置」兩種狀態：這份資料沒有人員處置紀錄，一律寫「尚未確認」，不從裝置訊號推論已處理（2026-10-20 使用者檢視意見）。
+每件事分成「裝置警報」與「人員處置」兩種狀態：這份資料沒有人員處置紀錄，人員處置從「尚未確認」開始，頁面上可以示意接手與記錄處置
+（只存在分頁），不從裝置訊號推論已處理（2026-10-20 使用者檢視意見）。頁面上陳述事實的句子都在 UI_TEXT，建置時跑用語檢查。
 
 重新產生（tests/test_dashboard.py 會檢查）：
     python demo/dashboard_build.py                  # → demo/dashboard.html
@@ -32,7 +34,7 @@ from radar_agent.caregiver import (
     MIN_COUNTED_DAYS,
     offline_sentences,
 )
-from radar_agent.device_events import HEARTBEAT_GAP, disconnected, summarize
+from radar_agent.device_events import HEARTBEAT_GAP, TIMESTAMP_FORMAT, Summary, disconnected, summarize
 from radar_agent.output_check import wording_problems
 
 HERE = Path(__file__).resolve().parent
@@ -83,6 +85,48 @@ def simulated_devices(morning: list[dict[str, Any]]) -> list[tuple[str, str, lis
             ("DEMO-SIM-03", "3 號廁所", third), ("DEMO-SIM-04", "4 號廁所", fourth)]
 
 
+HEARTBEAT = timedelta(seconds=5)   # 實測心跳約每 5 秒一筆（docs/05 A10）
+
+
+def diagnostics(records: list[dict[str, Any]], summary: Summary) -> dict[str, Any]:
+    """遠端判斷問題要的裝置層資訊；不含 payload 的事件內容（有沒有人、跌倒等照護資訊不放進回報單）。"""
+    times = sorted(
+        datetime.strptime(r["timestamp"], TIMESTAMP_FORMAT) for r in records
+        if isinstance(r.get("timestamp"), str) and _readable(r["timestamp"]))
+    gaps = sorted((b - a for a, b in zip(times, times[1:], strict=False)), reverse=True)
+    biggest = max(zip(times, times[1:], strict=False), key=lambda ab: ab[1] - ab[0], default=None)
+    online = sum((p.end - p.start for p in summary.online), timedelta())
+    expected = int(online / HEARTBEAT) + len(summary.online)
+    median = gaps[len(gaps) // 2] if gaps else None
+    sample = (summary.unreadable + summary.unknown_events)[:1]
+    return {
+        "topic": next((str(r["topic"]) for r in records if r.get("topic")), ""),
+        "expected_records": expected,
+        "received_pct": round(len(times) / expected * 100) if expected else None,
+        "median_gap_s": int(median.total_seconds()) if median else None,
+        "max_gap": [_stamp(biggest[0]), _stamp(biggest[1]), int((biggest[1] - biggest[0]).total_seconds())] if biggest else None,
+        "last_times": [_stamp(t) for t in times[-3:]],
+        # 讀不懂的紀錄附一筆的形狀：時間與主題原樣（格式錯在哪），payload 只留欄位名稱，不帶有沒有人等照護資訊
+        "unreadable_sample": _shape(sample[0]) if sample else None,
+        "error_messages": [f"{_stamp(t)} {m}" for t, m in summary.errors][:3],
+    }
+
+
+def _shape(record: dict[str, Any]) -> str:
+    payload = record.get("payload")
+    keys = sorted(payload) if isinstance(payload, dict) else type(payload).__name__
+    return json.dumps({"timestamp": record.get("timestamp"), "topic": record.get("topic"), "payload 欄位": keys},
+                      ensure_ascii=False)[:200]
+
+
+def _readable(stamp: str) -> bool:
+    try:
+        datetime.strptime(stamp, TIMESTAMP_FORMAT)
+    except ValueError:
+        return False
+    return True
+
+
 def device_rows(devices: list[tuple[str, str, list[dict[str, Any]]]]) -> tuple[str, list[dict[str, Any]]]:
     """系統管理人員看的裝置清單：只有裝置狀態，不含照護事件。
 
@@ -118,6 +162,7 @@ def device_rows(devices: list[tuple[str, str, list[dict[str, Any]]]]) -> tuple[s
             "records": len(records),
             "unreadable": len(summary.unreadable) + len(summary.unknown_events),
             "errors": len(summary.errors),
+            "diag": diagnostics(records, summary),
         })
     return _stamp(ref), rows
 
@@ -193,13 +238,57 @@ UI_TEXT: dict[str, str] = {
     "status_recovered": "在線（曾斷線）",
     "status_offline": "斷線中",
     "status_silent": "資料逾時",
+    # 頁面上其他陳述事實的句子（#74 審查 N1）
+    "period_visits": "在線期間有人使用 {n} 次",
+    "counted_days": "這兩週可比較的天數：前一週 {a} 天、近 7 天 {b} 天。",
+    "copied": "已複製 {n} 行。",
+    "copy_fallback": "已選取，請按 Ctrl+C 複製。",
+    "ask_hint": "選一題看答案。",
+    "admin_row": "{device}（{place}）：{facts}。",
+    "since": "{time} 起",
+    "human_taken": "{who} {time} 接手",
+    "label_who": "處理人代號（英數字，例如 CW-01，不填姓名）",
+    "label_take_time": "接手時間（{day}）",
+    "label_done_time": "處置時間（{day}）",
+    "label_note": "備註（選填，最多 200 字，不寫長者或人員姓名）",
+    "need_code": "處理人代號只能用英文字母、數字與「-」，最多 20 字。",
+    "too_early_event": "時間不能早於事件發生的 {time}。",
+    "too_early_taken": "處置時間不能早於接手時間 {time}。",
+    # 裝置問題回報：系統自動整理遠端判斷需要的裝置資訊，管理員只補描述（2026-10-22 使用者：Demo 用，說明 UI 能自動傳達足夠資訊）
+    "report_title": "回報給技術支援窗口（待確認）",
+    "report_intro": "下面是系統自動整理的裝置資訊，不含照護事件與長者資料；補上描述就能送出。",
+    "r_head": "【裝置問題回報】{device}（{place}）",
+    "r_status": "狀態：{status}。判斷依據：{basis}",
+    "r_basis_offline": "{time} 收到斷線訊息（由 broker 發出），之後沒有再收到資料",
+    "r_basis_silent": "最後收到資料 {time}，之後超過心跳間隔（30 秒）沒有資料，也沒有收到斷線訊息",
+    "r_basis_unreadable": "裝置在線，但有無法判讀的紀錄",
+    "r_base": "基準時間：{ref}；距最後收到資料 {min} 分鐘",
+    "r_topic": "裝置主題：{topic}",
+    "r_online": "這段時間的在線時段：{spans}",
+    "r_records": "紀錄：收到 {n} 筆，在線期間預期約 {e} 筆（每 5 秒一筆）；心跳間隔中位數 {m} 秒；最大間隔 {g} 秒（{a}–{b}）",
+    "r_last": "最後三筆紀錄時間：{times}",
+    "r_unreadable": "無法判讀的紀錄 {n} 筆，第一筆的形狀（payload 只留欄位名稱）：{sample}",
+    "r_errors": "裝置錯誤 {n} 次：{list}",
+    "r_peers": "同時段其他裝置：{list}",
+    "r_urgency": "急迫程度：{u}",
+    "r_checked": "現場已檢查：{list}",
+    "r_desc": "管理員描述：{text}",
+    "urgency_care": "影響照護，請盡快處理",
+    "urgency_later": "可排程處理",
+    "checked_none": "尚未檢查",
+    "label_desc": "問題描述（不寫長者或人員姓名）",
+    "need_desc": "請填問題描述。",
+    "report_sent": "已送出（示意）：回報單 {id}，等待技術支援回覆。這一頁不會真的寄出。",
 }
 # 記錄處置的結果選項：只描述做了什麼，不判斷長者狀況（判斷寫在備註，由人負責）
 RESULTS = ["已到場確認", "已到場協助", "以電話或語音確認", "其他（見備註）"]
+# 家屬看不到備註：「其他（見備註）」在家屬畫面改寫成「其他處置」（#74 審查 N2）
+FAMILY_RESULTS = {"其他（見備註）": "其他處置"}
 
 
 def check_ui_text() -> None:
-    for key, text in [*UI_TEXT.items(), *((f"result{i}", r) for i, r in enumerate(RESULTS))]:
+    texts = [*UI_TEXT.items(), *((f"result{i}", r) for i, r in enumerate(RESULTS)), *FAMILY_RESULTS.items()]
+    for key, text in texts:
         problems = wording_problems(text)
         if problems:
             raise ValueError(f"頁面固定句型「{key}」沒通過用語檢查：{problems}")
@@ -253,7 +342,7 @@ def dashboard_data() -> dict[str, Any]:
     ref, devices = device_rows(simulated_devices(morning))
     check_ui_text()
     return {"caregiver": caregiver, "family": family, "devices": devices, "devices_ref": ref,
-            "text": UI_TEXT, "results": RESULTS}
+            "text": UI_TEXT, "results": RESULTS, "family_results": FAMILY_RESULTS}
 
 
 def fragment(data: dict[str, Any]) -> str:
