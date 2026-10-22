@@ -251,6 +251,35 @@ def place_at(device: str, when: str, registry: dict[str, dict[str, Any]]) -> str
     return str(earlier[-1]) if earlier else UI_TEXT["place_unknown"]
 
 
+def calm_morning(morning: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """「平靜的上午」：同一個模擬上午拿掉跌倒、呼救、久待與裝置解除，斷線那段補上心跳。
+
+    Demo 用來呈現平常打開看板的樣子；有人進出照舊，只是沒有任何通知、裝置一直在線。
+    """
+    drop = {"fall", "resolved", "longstay", "offline"}
+    first_online = morning[0]["timestamp"]
+    calm = []
+    for r in morning:
+        event = r["payload"].get("event") if isinstance(r.get("payload"), dict) else None
+        if event in drop or (event == "online" and r["timestamp"] != first_online):
+            continue
+        # 一直靜止不動才會變成久待：改成走動
+        calm.append({**r, "payload": {**r["payload"], "event": "moving"}} if event == "static" else r)
+    # 斷線時段從資料讀，不寫死：樣本改了也補得對
+    seen = {r["timestamp"] for r in calm}
+    topic = calm[-1]["topic"]
+    online = summarize(morning).online
+    gap = [r for a, b in pairwise(online)
+           for r in _heartbeats(topic, f"{a.end:%H:%M:%S}", f"{b.start:%H:%M:%S}")[1:] if r["timestamp"] not in seen]
+    return sorted(calm + gap, key=lambda r: r["timestamp"])
+
+
+def calm_devices(morning: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
+    """「平靜的上午」的四台裝置：代號和事情多的上午相同，都在線到最後，沒有無法判讀的紀錄。"""
+    others = [d for d, _ in simulated_devices(morning)[1:]]
+    return [(CARE_DEVICE, morning), *((d, _heartbeats(f"radar10/{d}", "08:00:00", "11:59:55")) for d in others)]
+
+
 def simulated_devices(morning: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
     """四台模擬裝置：(裝置代號, 紀錄)。DEMO-SIM-01 就是原型頁的那一個上午；地點查裝置設定紀錄。"""
     second = _heartbeats("radar10/DEMO-SIM-02", "08:00:00", "11:59:55", busy=("09:00:00", "09:04:00"))
@@ -426,6 +455,8 @@ UI_TEXT: dict[str, str] = {
     "tag": "模擬歷史資料",
     "head_pending": "有 {n} 件待接手",
     "head_none": "沒有待接手的事件",
+    "records_none": "這段時間沒有要寫進照護紀錄的事件。",
+    "events_none": "這段時間沒有跌倒、呼救或久待的通知。",
     "no_clear": "{n} 件未收到裝置解除紀錄，狀態待確認：{list}",
     "local_note": "這份資料本身沒有人員處置紀錄；下面的接手與處置只存在這個分頁，重新整理就會清掉。",
     "count_pending": "待接手 {n} 件",
@@ -442,6 +473,7 @@ UI_TEXT: dict[str, str] = {
     "human_done": "已完成：{result}（{who}，{time}）",
     "family_handling": "處理中（{time} 接手）",
     "family_done": "已完成：{result}（{time}）",
+    "family_head_none": "這段時間沒有通知。",
     "family_head": "這段時間有 {n} 件通知：人員已處置 {done} 件、處理中 {doing} 件、尚未確認 {pending} 件。",
     "family_note": "這份資料本身沒有人員處置紀錄，所以先顯示「尚未確認」；居服員在這一頁示意接手或記錄處置後，這裡會同步顯示。",
     "orphan": "{time} {title}：找不到對應的警報",
@@ -586,15 +618,11 @@ def trend_rule() -> str:
             f"（凌晨 {int(CHANGE_RATIO['dawn'] * 100)}%）以上，才寫「增加」或「減少」，否則寫「差不多」。")
 
 
-def dashboard_data() -> dict[str, Any]:
-    build = _load_build()
-    morning = build._jsonl(REPO / "data" / "samples_demo" / "bathroom_morning.jsonl")
+def scenario_data(build: Any, morning: list[dict[str, Any]], devices: list[tuple[str, list[dict[str, Any]]]],
+                  registry: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """一個情境（同一個模擬上午）下會變的部分：居服員、家屬、系統管理人員的裝置狀態。維修紀錄與後台是歷史統計，不隨情境變。"""
     summary = summarize(morning)
-    registry = load_registry()
-    # 居服員畫面的句子會進照護紀錄：裝置沒有設定紀錄就不產生（不能出現「未登記地點雷達偵測到…」）
-    if CARE_DEVICE not in registry:
-        raise ValueError(f"{CARE_DEVICE} 沒有裝置設定紀錄，居服員畫面寫不出地點")
-    caregiver = build.demo_data(place=place_of(CARE_DEVICE, registry))
+    caregiver = build.demo_data(place=place_of(CARE_DEVICE, registry), records=morning)
     days = caregiver["trend"]["days"]
     caregiver.update({
         "period": _period(caregiver),
@@ -604,7 +632,7 @@ def dashboard_data() -> dict[str, Any]:
         "trend_rule": trend_rule(),
         "counted_days": [sum(d["visits"] is not None for d in days[:7]), sum(d["visits"] is not None for d in days[7:])],
     })
-    family_full = build.demo_data(place=FAMILY_PLACE)
+    family_full = build.demo_data(place=FAMILY_PLACE, records=morning)
     family = {
         "source": "sim",  # 家屬畫面只能用模擬資料：現有資料是場域資料，依 audience.py 家屬不能看
         "elder": FAMILY_ELDER,
@@ -622,14 +650,28 @@ def dashboard_data() -> dict[str, Any]:
                        "cleared": c["cleared"]} for c in incidents(family_full["events"])[0]],
         "days": family_full["trend"]["days"],
     }
-    ref, devices = device_rows(simulated_devices(morning), registry)
+    ref, rows = device_rows(devices, registry)
+    return {"caregiver": caregiver, "family": family, "devices": rows, "devices_ref": ref}
+
+
+def dashboard_data() -> dict[str, Any]:
+    """預設是「事情多的上午」；calm 是「平靜的上午」要換掉的部分，頁面依網址（#caregiver/calm）合併。"""
+    build = _load_build()
+    morning = build._jsonl(REPO / "data" / "samples_demo" / "bathroom_morning.jsonl")
+    registry = load_registry()
+    # 居服員畫面的句子會進照護紀錄：裝置沒有設定紀錄就不產生（不能出現「未登記地點雷達偵測到…」）
+    if CARE_DEVICE not in registry:
+        raise ValueError(f"{CARE_DEVICE} 沒有裝置設定紀錄，居服員畫面寫不出地點")
+    busy = scenario_data(build, morning, simulated_devices(morning), registry)
+    calm_records = calm_morning(morning)
+    calm = scenario_data(build, calm_records, calm_devices(calm_records), registry)
     fleet, tickets = load_maintenance()
     ops = ops_data(fleet, tickets)
     check_ui_text(registry, tickets)
     problems = [f for f in ops["findings"] if wording_problems(f)]
     if problems:
         raise ValueError(f"維運後台的參考清單沒通過用語檢查：{problems}")
-    return {"caregiver": caregiver, "family": family, "devices": devices, "devices_ref": ref,
+    return {**busy, "calm": calm,
             "gap_s": int(HEARTBEAT_GAP.total_seconds()),
             "heartbeat_s": int(HEARTBEAT.total_seconds()), "firmware_keys": "、".join(FIRMWARE_KEYS),
             "own_site": OWN_SITE, "own_tickets": [{**t, "place": place_at(t["device"], t["reported"], registry)}

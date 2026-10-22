@@ -56,6 +56,26 @@ section { display: grid; gap: 12px; min-width: 0; }
 .roles { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; gap: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 4px; width: fit-content; max-width: 100%; }
 .roles button { flex: none; white-space: nowrap; font: 500 15px var(--f-body); color: var(--muted); background: transparent; border: 0; border-radius: 7px; padding: 8px 16px; cursor: pointer; }
 .roles button[aria-selected="true"] { background: var(--accent); color: var(--surface); }
+.switches { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; min-width: 0; }
+.switches .roles { min-width: 0; }
+.scenario { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.scenario button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
+
+/* 手機上的裝置清單改成一台一張卡：欄名放在每一格前面（data-label 由程式從表頭抄過來） */
+@media (max-width: 560px) {
+  .stack table { min-width: 0; }
+  .stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  /* 第一行：裝置、地點、狀態；下面兩行：最後收到資料、斷線時段（欄名和數值同一行；欄名的替代文字是空的，螢幕閱讀器照表頭念，不重複） */
+  .stack tr { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; align-items: baseline; gap: 2px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .stack tr:first-child { padding-top: 0; }
+  .stack td { padding: 0; border: 0; text-align: left; min-width: 0; }
+  .stack td:first-child { font-weight: 600; }
+  .stack td:nth-child(4), .stack td:nth-child(5) { grid-column: 1 / -1; font-size: 13px; }
+  .stack td:nth-child(4)::before, .stack td:nth-child(5)::before { content: attr(data-label) "：" / ""; color: var(--muted); font-family: var(--f-body); }
+  .stack td .chip { display: inline-block; }
+  /* 筆數與錯誤在異常裝置摘要和回報單裡，手機卡片不放 */
+  .stack td:nth-child(n+6), .stack th:nth-child(n+6) { display: none; }
+}
 .roles button:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 button { font: 500 14px var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--control); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
 button:hover { border-color: var(--accent); }
@@ -85,6 +105,7 @@ button:hover { border-color: var(--accent); }
 .pill.check { background: var(--check-bg); border-color: var(--check); color: var(--check); }
 .pill.device { background: var(--device-bg); border-color: var(--device); color: var(--device); }
 .pill.ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+.pill.zero { color: var(--muted); }
 .now { display: grid; gap: 6px; padding: 16px; border-radius: 10px; border: 2px solid var(--ok); background: var(--ok-bg); }
 .now.alert { border-color: var(--urgent); background: var(--urgent-bg); }
 .now strong { font-size: 18px; }
@@ -214,11 +235,18 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 </div></header>
 
 <main><div class="wrap">
+  <div class="switches">
   <div class="roles" role="tablist" aria-label="切換讀者">
     <button type="button" role="tab" id="tab-caregiver" aria-controls="view-caregiver" data-role="caregiver">居服員</button>
     <button type="button" role="tab" id="tab-family" aria-controls="view-family" data-role="family">家屬</button>
     <button type="button" role="tab" id="tab-admin" aria-controls="view-admin" data-role="admin">系統管理人員</button>
     <button type="button" role="tab" id="tab-ops" aria-controls="view-ops" data-role="ops">維運後台</button>
+  </div>
+  <div class="scenario" role="group" aria-labelledby="scenario-label">
+    <span class="hint" id="scenario-label">模擬情境</span>
+    <button type="button" data-scenario="busy">事情多的上午</button>
+    <button type="button" data-scenario="calm">平靜的上午</button>
+  </div>
   </div>
 
   <!-- 居服員：我現在要去哪裡、做什麼 → 每件事的狀態與處置 → 紀錄與歷史 -->
@@ -227,7 +255,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
     <section aria-labelledby="h-cg-now">
       <h2 id="h-cg-now">待處理事項</h2>
       <div class="now" id="cg-now" aria-live="polite"></div>
-      <div class="status-row"><span class="group" id="cg-counts"></span><span class="sep" aria-hidden="true"></span><span class="group" id="cg-pills"></span></div>
+      <div class="status-row"><span class="group" id="cg-counts"></span><span class="sep" id="cg-sep" aria-hidden="true"></span><span class="group" id="cg-pills"></span></div>
     </section>
     <section aria-labelledby="h-cg-inc">
       <div class="head-row"><h2 id="h-cg-inc">事件</h2><span class="hint">每件事分開看裝置警報與人員處置；立即到場的排前面，同一類新的在上</span></div>
@@ -308,7 +336,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
     </section>
     <section aria-labelledby="h-ad-table">
       <div class="head-row"><h2 id="h-ad-table">裝置清單</h2><span class="hint">只有裝置狀態，不含照護事件的內容</span></div>
-      <div class="panel table-wrap">
+      <div class="panel table-wrap stack">
         <table>
           <thead><tr><th>裝置</th><th>地點</th><th>狀態</th><th>最後收到資料</th><th>斷線時段</th><th class="num">紀錄筆數</th><th class="num">無法判讀</th><th class="num">裝置錯誤</th></tr></thead>
           <tbody id="ad-rows"></tbody>
@@ -391,7 +419,11 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 </div></main>
 
 <script>
-const DATA = /*DASHBOARD_DATA*/null;
+const RAW = /*DASHBOARD_DATA*/null;
+// 網址 #caregiver/calm 是「平靜的上午」：只換掉居服員、家屬與裝置狀態；維修紀錄與後台是歷史統計，兩個情境相同
+const scenarioOf = hash => hash.slice(1).split("/")[1] === "calm" ? "calm" : "busy";
+const SCENARIO = scenarioOf(location.hash);
+const DATA = SCENARIO === "calm" ? { ...RAW, ...RAW.calm } : RAW;
 const T = DATA.text;
 // 固定句型在 dashboard_build.py 的 UI_TEXT；這裡只把 {欄位} 換成資料裡的數字與時間
 const say = (key, fields = {}) => T[key].replace(/\{(\w+)\}/g, (_, k) => String(fields[k]));
@@ -409,7 +441,7 @@ function show(role, setHash) {
     $("tab-" + r).setAttribute("aria-selected", String(r === role));
     $("tab-" + r).tabIndex = r === role ? 0 : -1;
   });
-  if (setHash) { try { history.replaceState(null, "", "#" + role); } catch (e) {} }
+  if (setHash) { try { history.replaceState(null, "", hashFor(role, SCENARIO)); } catch (e) {} }
   // 隱藏時畫的圖設不了捲動位置；切過去時再捲到近 7 天
   document.querySelectorAll("#view-" + role + " .chart").forEach(c => { c.scrollLeft = c.scrollWidth; });
   scrollables();
@@ -428,7 +460,8 @@ function scrollables() {
   });
 }
 addEventListener("resize", scrollables);
-const fromHash = () => ROLES.includes(location.hash.slice(1)) ? location.hash.slice(1) : "caregiver";
+const fromHash = () => { const r = location.hash.slice(1).split("/")[0]; return ROLES.includes(r) ? r : "caregiver"; };
+const hashFor = (role, scenario) => "#" + role + (scenario === "calm" ? "/calm" : "");
 document.querySelectorAll(".roles button").forEach(b => b.addEventListener("click", () => show(b.dataset.role, true)));
 document.querySelector(".roles").addEventListener("keydown", e => {
   const i = ROLES.findIndex(r => $("tab-" + r).getAttribute("aria-selected") === "true");
@@ -436,7 +469,15 @@ document.querySelector(".roles").addEventListener("keydown", e => {
   if (to === undefined) return;
   e.preventDefault(); show(ROLES[to], true); $("tab-" + ROLES[to]).focus();
 });
-window.addEventListener("hashchange", () => show(fromHash()));
+// 換情境要重新載入：兩個情境的資料不同，畫面上示意的接手與處置也會清掉
+window.addEventListener("hashchange", () => {
+  if (scenarioOf(location.hash) !== SCENARIO) location.reload();
+  else show(fromHash());
+});
+document.querySelectorAll(".scenario button").forEach(b => {
+  b.setAttribute("aria-pressed", String(b.dataset.scenario === SCENARIO));
+  b.addEventListener("click", () => { if (b.dataset.scenario !== SCENARIO) location.hash = hashFor(fromHash(), b.dataset.scenario); });
+});
 
 function period(target, p) {
   target.append(el("span", "tag", T.tag), "檢視日期 ", el("b", null, p.day), "時段 ", el("b", null, `${p.from}–${p.to}`), say("period_visits", { n: p.visits }));
@@ -505,10 +546,10 @@ function renderCaregiverTop() {
   const unknown = inc.filter(c => !c.cleared);
   if (unknown.length) now.append(el("div", null, say("no_clear", { n: unknown.length, list: unknown.map(c => `${c.label} ${c.title}`).join("、") })));
   C.offline_sentences.forEach(s => now.append(el("div", null, s)));
-  now.append(el("div", "hint", say("local_note")));
+  if (inc.length) now.append(el("div", "hint", say("local_note")));
   const counts = $("cg-counts"); counts.replaceChildren();
   [["urgent", "count_pending", pending.length], ["check", "count_handling", by("handling").length], ["ok", "count_done", by("done").length]]
-    .forEach(([cls, key, n]) => counts.append(el("span", "pill " + cls, say(key, { n }))));
+    .forEach(([cls, key, n]) => counts.append(el("span", "pill " + (n ? cls : "zero"), say(key, { n }))));  // 0 件不用警示色
 }
 
 // 立即到場在前、前往查看在後；同一類新的在上（排序固定，不隨接手狀態跳動）
@@ -537,6 +578,7 @@ function renderCaregiverCards() {
     const card = el("article", "incident"); card.append(cardTop(e), el("div", "prompt", say("prompt_then", { prompt: e.prompt }))); box.append(card);
   });
   C.orphans.forEach(o => box.append(el("p", "hint", say("orphan", { time: o.label, title: o.title }))));
+  if (!box.children.length) box.append(el("p", "hint", say("events_none")));
 }
 
 function caregiverCard(c) {
@@ -623,6 +665,8 @@ function openForm(card, c, mode) {
   if (check) pill("check", say("pill_check", { n: check }));
   if (C.offline.length) pill("device", say("pill_offline", { n: C.offline.length }));
   C.events.forEach(e => $("cg-records").append(el("li", null, e.record)));
+  if (!C.events.length) { $("cg-records").append(el("li", "hint", say("records_none"))); $("cg-copy").hidden = true; }
+  if (!$("cg-pills").children.length) $("cg-sep").hidden = true;
   $("cg-copy").onclick = () => {
     const text = C.events.map(e => e.record).join("\n");
     const fallback = () => { const r = document.createRange(); r.selectNodeContents($("cg-records")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("cg-copied").textContent = say("copy_fallback"); };
@@ -662,7 +706,10 @@ function renderFamilyCards() {
   const box = $("fm-incidents"); box.replaceChildren();
   const n = s => F.incidents.filter(c => human(c.id).status === s).length;
   $("fm-now").className = "now" + (n("pending") ? " alert" : "");
-  $("fm-now").replaceChildren(el("strong", null, say("family_head", { n: F.incidents.length, done: n("done"), doing: n("handling"), pending: n("pending") })));
+  $("fm-now").replaceChildren(el("strong", null, F.incidents.length
+    ? say("family_head", { n: F.incidents.length, done: n("done"), doing: n("handling"), pending: n("pending") })
+    : say("family_head_none")));
+  if (!F.incidents.length) box.append(el("p", "hint", say("events_none")));
   for (let i = F.incidents.length - 1; i >= 0; i--) {
     const c = F.incidents[i], h = human(c.id), card = el("article", "incident " + c.level), dl = el("dl", "state");
     card.append(cardTop(c));
@@ -676,7 +723,7 @@ function renderFamilyCards() {
 }
 (function familyStatic() {
   period($("fm-period"), F.period);
-  $("fm-note").textContent = say("family_note");
+  $("fm-note").textContent = F.incidents.length ? say("family_note") : "";
   $("fm-offline").textContent = F.offline_sentences.join("");
   $("fm-summary").textContent = F.summary;
   const tl = timeline($("fm-track"), $("fm-ticks"), F.from, F.to);
@@ -900,6 +947,12 @@ function renderFamilyCards() {
     ["mono", t.fw], [null, t.outcome || say("t_doing")], [null, t.action || "—"], ["num", t.downtime_min == null ? "—" : hours(t.downtime_min)]]));
   function hours(m) { return (m / 60).toFixed(1); }
 })();
+
+// 卡片式表格：每一格前面標上欄名（從表頭抄，不另寫文字）
+document.querySelectorAll(".stack table").forEach(t => {
+  const heads = [...t.querySelectorAll("thead th")].map(th => th.textContent);
+  t.querySelectorAll("tbody tr").forEach(tr => [...tr.children].forEach((td, i) => { if (heads[i]) td.dataset.label = heads[i]; }));
+});
 
 renderAll();
 show(fromHash());

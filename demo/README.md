@@ -7,7 +7,7 @@
 | `prototype.html` | 產生出來的頁面，直接用瀏覽器開；不連網也能顯示（字型會改用系統字型） |
 | `template.html` | 頁面的版面、樣式與互動；改畫面請改這裡 |
 | `build.py` | 跑 `radar-caregiver` 的同一套函式，把輸出放進 `template.html`，產生 `prototype.html` |
-| `dashboard.html`、`dashboard_template.html`、`dashboard_build.py` | 四種角色（居服員、家屬、系統管理人員、維運後台）的 Dashboard 試做頁（模擬資料），評估要不要在官網之外提供更順手的介面；`python demo/dashboard_build.py` 產生，網址加 `#caregiver`、`#family`、`#admin`、`#ops` 切換，評估方式見 `docs/17_介面易用性評估.md`。系統管理人員可以一鍵回報裝置問題（回報單自動帶入遠端判斷需要的資訊）；裝置地點查 `device_registry.json`（模擬的裝置設定紀錄）；維修紀錄與維運後台（`#ops`）用 `maintenance_sim.json`（模擬） |
+| `dashboard.html`、`dashboard_template.html`、`dashboard_build.py` | 四種角色（居服員、家屬、系統管理人員、維運後台）的 Dashboard 試做頁（模擬資料），評估要不要在官網之外提供更順手的介面；`python demo/dashboard_build.py` 產生，網址加 `#caregiver`、`#family`、`#admin`、`#ops` 切換（後面加 `/calm` 是「平靜的上午」情境），評估方式見 `docs/17_介面易用性評估.md`。系統管理人員可以一鍵回報裝置問題（回報單自動帶入遠端判斷需要的資訊）；裝置地點查 `device_registry.json`（模擬的裝置設定紀錄）；維修紀錄與維運後台（`#ops`）用 `maintenance_sim.json`（模擬） |
 | `kg_demo.html`、`kg_template.html`、`kg_build.py` | 知識圖譜 Demo（模擬資料、換算規則草案，內部確認功能用）；`python demo/kg_build.py` 產生，見 `docs/11_Demo規劃.md`「知識圖譜 Demo」 |
 
 ```bash
