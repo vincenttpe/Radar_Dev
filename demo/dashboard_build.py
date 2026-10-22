@@ -87,6 +87,7 @@ def load_registry(path: Path = REGISTRY) -> dict[str, dict[str, Any]]:
     """裝置設定紀錄：{裝置代號: {place, area, use, history}}。居服員、系統管理人員畫面與回報單上的地點都從這裡查。
 
     人工維護的檔案，建置時先檢查：欄位齊全、至少一筆變更紀錄、同一台不能登記兩次。
+    安裝與移機的紀錄帶 place，回報單依回報當時查地點（place_at）；第一筆一定要有地點，最後一次設定的地點要等於現在的地點。
     """
     entries = json.loads(path.read_text(encoding="utf-8"))["devices"]
     registry: dict[str, dict[str, Any]] = {}
@@ -96,6 +97,9 @@ def load_registry(path: Path = REGISTRY) -> dict[str, dict[str, Any]]:
             raise ValueError(f"裝置設定紀錄缺欄位或是空的：{e.get('device', '?')} {missing}")
         if any(not all(h.get(k) for k in ("at", "by", "change")) for h in e["history"]):
             raise ValueError(f"裝置設定紀錄的變更紀錄缺欄位：{e['device']}")
+        set_places = [h["place"] for h in e["history"] if h.get("place")]
+        if not e["history"][0].get("place") or set_places[-1] != e["place"]:
+            raise ValueError(f"裝置設定紀錄的地點和變更紀錄對不上：{e['device']}")
         if e["device"] in registry:
             raise ValueError(f"裝置設定紀錄重複登記：{e['device']}")
         registry[e["device"]] = e
@@ -220,6 +224,13 @@ FINDING_RATIO = 2       # 韌體：每台件數要超過其他版本的幾倍
 def place_of(device: str, registry: dict[str, dict[str, Any]]) -> str:
     entry = registry.get(device)
     return str(entry["place"]) if entry else UI_TEXT["place_unknown"]
+
+
+def place_at(device: str, when: str, registry: dict[str, dict[str, Any]]) -> str:
+    """某個時間點的地點：取那之前最後一次設定的地點。回報單是過去的事，不能用移機後的地點。"""
+    entry = registry.get(device)
+    earlier = [h["place"] for h in entry["history"] if h.get("place") and h["at"] <= when] if entry else []
+    return str(earlier[-1]) if earlier else UI_TEXT["place_unknown"]
 
 
 def simulated_devices(morning: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
@@ -522,12 +533,16 @@ RESULTS = ["已到場確認", "已到場協助", "以電話或語音確認", "�
 FAMILY_RESULTS = {"其他（見備註）": "其他處置"}
 
 
-def check_ui_text(registry: dict[str, dict[str, Any]] | None = None) -> None:
+def check_ui_text(registry: dict[str, dict[str, Any]] | None = None,
+                  tickets: list[dict[str, Any]] | None = None) -> None:
     texts = [*UI_TEXT.items(), *((f"result{i}", r) for i, r in enumerate(RESULTS)), *FAMILY_RESULTS.items(),
-             *CAUSE.items(), ("trend_rule", trend_rule())]
+             *CAUSE.items(), *CATEGORY.items(), ("trend_rule", trend_rule())]
     for device, entry in (registry or {}).items():
         texts += [(f"{device}.{k}", str(entry[k])) for k in ("place", "area", "use")]
         texts += [(f"{device}.history", h["change"]) for h in entry["history"]]
+    # 回報單的處理結果會直接顯示在頁面上
+    for t in tickets or []:
+        texts += [(f"{t['id']}.{k}", str(t[k])) for k in ("outcome", "action", "part") if t[k]]
     for key, text in texts:
         problems = wording_problems(text)
         if problems:
@@ -586,14 +601,15 @@ def dashboard_data() -> dict[str, Any]:
     ref, devices = device_rows(simulated_devices(morning), registry)
     fleet, tickets = load_maintenance()
     ops = ops_data(fleet, tickets)
-    check_ui_text(registry)
+    check_ui_text(registry, tickets)
     problems = [f for f in ops["findings"] if wording_problems(f)]
     if problems:
         raise ValueError(f"維運後台的參考清單沒通過用語檢查：{problems}")
     return {"caregiver": caregiver, "family": family, "devices": devices, "devices_ref": ref,
             "gap_s": int(HEARTBEAT_GAP.total_seconds()),
             "heartbeat_s": int(HEARTBEAT.total_seconds()), "firmware_keys": "、".join(FIRMWARE_KEYS),
-            "own_site": OWN_SITE, "own_tickets": [t for t in tickets if t["site"] == OWN_SITE], "ops": ops,
+            "own_site": OWN_SITE, "own_tickets": [{**t, "place": place_at(t["device"], t["reported"], registry)}
+                            for t in tickets if t["site"] == OWN_SITE], "ops": ops,
             "categories": CATEGORY, "ops_rule": {"r": FINDING_RATIO, "n": FINDING_AT_LEAST, "k": REPEAT_AT_LEAST},
             "text": UI_TEXT, "results": RESULTS, "family_results": FAMILY_RESULTS}
 

@@ -250,6 +250,10 @@ def test_family_never_sees_a_pointer_to_notes_it_cannot_read(data):
     ({"device": "X", "place": "甲", "area": "乙", "use": "丙", "history": []}, "缺欄位或是空的"),
     ({"device": "X", "place": "甲", "area": "乙", "history": [{"at": "1", "by": "2", "change": "3"}]}, "缺欄位或是空的"),
     ({"device": "X", "place": "甲", "area": "乙", "use": "丙", "history": [{"at": "1", "change": "3"}]}, "變更紀錄缺欄位"),
+    ({"device": "X", "place": "甲", "area": "乙", "use": "丙",
+      "history": [{"at": "1", "by": "2", "change": "3"}]}, "地點和變更紀錄對不上"),
+    ({"device": "X", "place": "甲", "area": "乙", "use": "丙",
+      "history": [{"at": "1", "by": "2", "change": "3", "place": "丁"}]}, "地點和變更紀錄對不上"),
 ])
 def test_registry_is_checked_when_loaded(build, tmp_path, entry, message):
     path = tmp_path / "registry.json"
@@ -259,7 +263,7 @@ def test_registry_is_checked_when_loaded(build, tmp_path, entry, message):
 
 
 def test_registry_rejects_a_device_registered_twice(build, tmp_path):
-    entry = {"device": "X", "place": "甲", "area": "乙", "use": "丙", "history": [{"at": "1", "by": "2", "change": "3"}]}
+    entry = {"device": "X", "place": "甲", "area": "乙", "use": "丙", "history": [{"at": "1", "by": "2", "change": "3", "place": "甲"}]}
     path = tmp_path / "registry.json"
     path.write_text(json.dumps({"devices": [entry, entry]}, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(ValueError, match="重複登記"):
@@ -289,9 +293,25 @@ def test_last_seen_is_the_device_not_the_broker_offline_message(data):
 
 
 def test_admin_sees_only_its_own_site_tickets(data):
-    assert data["own_site"] == "SITE-A"
     assert {t["id"] for t in data["own_tickets"]} == {"TS-20261010-01", "TS-20261012-01"}
     assert all(t["site"] == "SITE-A" for t in data["own_tickets"])
+
+
+def test_ticket_place_is_where_the_device_was_when_reported(build, data):
+    """DEMO-SIM-03 在 10/12 移機：10/10 的回報單要顯示當時的 5 號廁所，不是現在的 3 號廁所。"""
+    places = {t["id"]: t["place"] for t in data["own_tickets"]}
+    assert places == {"TS-20261010-01": "5 號廁所", "TS-20261012-01": "4 號廁所"}
+    registry = build.load_registry()
+    assert build.place_at("DEMO-SIM-03", "2026-10-12 16:10", registry) == "3 號廁所"
+    assert build.place_at("DEMO-SIM-03", "2026-09-01 00:00", registry) == "未登記地點"
+    assert build.place_at("X-9", "2026-10-12 16:10", registry) == "未登記地點"
+
+
+def test_ticket_text_goes_through_the_wording_check(build):
+    _, tickets = build.load_maintenance()
+    tickets[0] = {**tickets[0], "action": "診斷後給藥"}
+    with pytest.raises(ValueError, match="沒通過用語檢查"):
+        build.check_ui_text(None, tickets)
 
 
 def test_ops_findings_follow_the_rules(build, data):

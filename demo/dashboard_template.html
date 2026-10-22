@@ -661,11 +661,10 @@ function renderFamilyCards() {
   });
   // 維修紀錄：本場域的回報單與處理結果（模擬）；這一頁送出的回報單排在最上面，狀態是等待受理
   const sentReports = [];
-  const placeOf = dev => (D.find(x => x.device === dev) || {}).place || say("place_unknown");
   const hours = m => (m / 60).toFixed(1);
   function ticketCard(t) {
     const card = el("article", "incident"), top = el("div", "top"), dl = el("dl", "state");
-    top.append(el("span", "t", t.id), el("strong", null, DATA.categories[t.category]), el("span", "hint", `${t.device}・${placeOf(t.device)}`));
+    top.append(el("span", "t", t.id), el("strong", null, DATA.categories[t.category]), el("span", "hint", `${t.device}・${t.place}`));
     card.append(top);
     if (!t.reported) {
       dl.append(el("dt", null, "狀態"), el("dd", "warn", say("t_waiting")));
@@ -754,7 +753,7 @@ function renderFamilyCards() {
       reportSeq += 1;
       const id = `TS-${ref.slice(0, 10).replaceAll("-", "")}-${String(reportSeq).padStart(2, "0")}`;
       box.querySelector("pre").textContent = reportText(d, extra());
-      sentReports.unshift({ id, device: d.device, category: d.status === "offline" ? "offline" : d.status === "silent" ? "silent" : d.errors ? "error" : "unreadable" });
+      sentReports.unshift({ id, device: d.device, place: d.place, category: d.status === "offline" ? "offline" : d.status === "silent" ? "silent" : d.errors ? "error" : "unreadable" });
       renderOwnTickets();
       const done = el("p", "notice", say("report_sent", { id }));
       done.setAttribute("role", "status"); done.tabIndex = -1;
