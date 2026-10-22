@@ -78,7 +78,8 @@ def demo_data(events: Path | None = None, place: str = PLACE,
               records: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """events 為 None 時用 Demo 模擬資料（含兩週趨勢）；否則是遮罩過的實測資料（不含趨勢）。
 
-    records：直接給另一份模擬紀錄（例如看板的「平靜的上午」），一樣附兩週趨勢。
+    records：直接給另一份模擬紀錄（例如看板的「平靜的上午」），一樣附兩週趨勢。只接受程式產生的模擬紀錄：
+    這條路不做 MAC 檢查，實測資料一律走 events（先遮罩）。
     """
     if events is not None:
         if MAC_LIKE.search(events.read_text(encoding="utf-8")):

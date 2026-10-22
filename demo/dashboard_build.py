@@ -265,16 +265,19 @@ def calm_morning(morning: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         # 一直靜止不動才會變成久待：改成走動
         calm.append({**r, "payload": {**r["payload"], "event": "moving"}} if event == "static" else r)
+    # 斷線時段從資料讀，不寫死：樣本改了也補得對
     seen = {r["timestamp"] for r in calm}
     topic = calm[-1]["topic"]
-    gap = [r for r in _heartbeats(topic, "11:10:00", "11:25:00")[1:] if r["timestamp"] not in seen]
+    online = summarize(morning).online
+    gap = [r for a, b in pairwise(online)
+           for r in _heartbeats(topic, f"{a.end:%H:%M:%S}", f"{b.start:%H:%M:%S}")[1:] if r["timestamp"] not in seen]
     return sorted(calm + gap, key=lambda r: r["timestamp"])
 
 
 def calm_devices(morning: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
-    """「平靜的上午」的四台裝置：都在線到最後，沒有無法判讀的紀錄。"""
-    others = [(d, _heartbeats(f"radar10/{d}", "08:00:00", "11:59:55")) for d in ("DEMO-SIM-02", "DEMO-SIM-03", "DEMO-SIM-04")]
-    return [("DEMO-SIM-01", morning), *others]
+    """「平靜的上午」的四台裝置：代號和事情多的上午相同，都在線到最後，沒有無法判讀的紀錄。"""
+    others = [d for d, _ in simulated_devices(morning)[1:]]
+    return [(CARE_DEVICE, morning), *((d, _heartbeats(f"radar10/{d}", "08:00:00", "11:59:55")) for d in others)]
 
 
 def simulated_devices(morning: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
