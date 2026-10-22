@@ -260,6 +260,7 @@ body { font-size: 16px; }
 /* 手機：讀者切換移到畫面底部，大拇指點得到 */
 @media (max-width: 640px) {
   body { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+  html { scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }  /* Tab 移過去的元素不被底部讀者列蓋住 */
   .switches .roles { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; width: auto; max-width: none; border-radius: 0; border-width: 1px 0 0; padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px)); gap: 4px; box-shadow: 0 -6px 20px rgba(0,0,0,.08); }
   .roles button { flex: 1 1 0; white-space: normal; line-height: 1.25; font-size: 13px; padding: 8px 4px; min-height: 52px; }
   .incident > .actions button { flex: 1 1 140px; }
