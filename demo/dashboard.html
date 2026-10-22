@@ -1,0 +1,1520 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>雷達照護三方看板</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 版面：頂端模擬資料橫幅 → 讀者切換（居服員／家屬／系統管理人員）→ 該讀者最常做的事放最上面，細節往下。色票沿用 demo/template.html */
+:root {
+  --bg: #eef2f3; --surface: #ffffff; --ink: #16232a; --muted: #56676f; --line: #d3dce0;
+  --accent: #1c6a72; --accent-soft: #d5e8ea;
+  --urgent: #b3302a; --urgent-bg: #fbe8e6; --check: #925f00; --check-bg: #faf0d9;
+  --device: #4f5d65; --device-bg: #e3e8eb; --ok: #2a7548; --ok-bg: #e2f2e8;
+  --sim-bg: #2b2438; --sim-ink: #f4effa;
+  --f-display: "Noto Serif TC", "Songti TC", serif;
+  --f-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f161a; --surface: #172227; --ink: #e2eaed; --muted: #94a5ad; --line: #2a3940;
+  --accent: #66b6be; --accent-soft: #1d3a3e;
+  --urgent: #f28b80; --urgent-bg: #3b1f1c; --check: #e2b45c; --check-bg: #342a18;
+  --device: #a9b6bd; --device-bg: #222e34; --ok: #7fd09f; --ok-bg: #1a3325;
+  --sim-bg: #3a3150; --sim-ink: #f4effa; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #0f161a; --surface: #172227; --ink: #e2eaed; --muted: #94a5ad; --line: #2a3940;
+  --accent: #66b6be; --accent-soft: #1d3a3e;
+  --urgent: #f28b80; --urgent-bg: #3b1f1c; --check: #e2b45c; --check-bg: #342a18;
+  --device: #a9b6bd; --device-bg: #222e34; --ok: #7fd09f; --ok-bg: #1a3325;
+  --sim-bg: #3a3150; --sim-ink: #f4effa; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.65 var(--f-body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--sim-bg); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.sim { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--sim-bg); color: var(--sim-ink); font-size: 13px; }
+.sim .wrap { display: flex; flex-wrap: wrap; gap: 4px 16px; padding-block: 8px; align-items: baseline; }
+.sim strong { letter-spacing: .08em; }
+header.top .wrap { padding-block: 24px 4px; display: grid; gap: 4px; }
+.eyebrow { font-size: 12px; letter-spacing: .12em; color: var(--muted); }
+h1 { font: 600 clamp(22px, 3.6vw, 30px)/1.25 var(--f-display); margin: 0; text-wrap: balance; }
+h2 { font: 600 18px/1.3 var(--f-display); margin: 0; text-wrap: balance; }
+.lede { color: var(--muted); margin: 0; max-width: 64ch; }
+main .wrap { display: grid; gap: 24px; padding-block: 12px 48px; }
+section { display: grid; gap: 12px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.hint { font-size: 13px; color: var(--muted); }
+.head-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+
+/* 讀者切換 */
+.roles { display: flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 4px; width: fit-content; max-width: 100%; }
+.roles button { font: 500 15px var(--f-body); color: var(--muted); background: transparent; border: 0; border-radius: 7px; padding: 8px 16px; cursor: pointer; }
+.roles button[aria-selected="true"] { background: var(--accent); color: var(--surface); }
+.roles button:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+button { font: 500 14px var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+
+/* 狀態摘要：一眼看出要不要處理 */
+.status-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 14px; border: 1px solid var(--line); background: var(--surface); }
+.pill b { font: 500 17px var(--f-mono); font-variant-numeric: tabular-nums; }
+.pill.urgent { background: var(--urgent-bg); border-color: var(--urgent); color: var(--urgent); }
+.pill.check { background: var(--check-bg); border-color: var(--check); color: var(--check); }
+.pill.device { background: var(--device-bg); border-color: var(--device); color: var(--device); }
+.pill.ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+.now { display: grid; gap: 6px; padding: 16px; border-radius: 10px; border: 2px solid var(--ok); background: var(--ok-bg); }
+.now.alert { border-color: var(--urgent); background: var(--urgent-bg); }
+.now strong { font-size: 18px; }
+
+/* 事件清單 */
+.split { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 760px) { .split { grid-template-columns: minmax(0, 1fr); } }
+.feed { display: grid; gap: 8px; }
+.card { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 4px 12px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); }
+.card .t { font: 500 14px var(--f-mono); font-variant-numeric: tabular-nums; padding-top: 2px; }
+.card .body { display: grid; gap: 4px; min-width: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12px; font-weight: 700; letter-spacing: .04em; padding: 1px 8px; border-radius: 999px; background: var(--device-bg); color: var(--device); }
+.chip.urgent { background: var(--urgent); color: var(--surface); }
+.chip.check { background: var(--check); color: var(--surface); }
+.chip.device { background: var(--device); color: var(--surface); }
+.chip.resolved, .chip.done { background: var(--ok-bg); color: var(--ok); }
+.card .prompt { font-size: 16px; font-weight: 500; line-height: 1.5; }
+.card.resolved .prompt { font-size: 14px; color: var(--muted); font-weight: 400; }
+.records { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 14.5px; }
+.records li { padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.records li:last-child { border-bottom: 0; }
+.copied { font-size: 13px; color: var(--ok); min-height: 1.2em; }
+.summary { font-size: 16px; line-height: 1.8; max-width: 68ch; margin: 0; }
+.big { font-size: 18px; line-height: 1.8; max-width: 60ch; margin: 0; }
+
+/* 提問 */
+.menu { display: flex; flex-wrap: wrap; gap: 8px; }
+.menu button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.answer { display: grid; gap: 4px; min-height: 1.6em; }
+.answer p { margin: 0; line-height: 1.7; max-width: 68ch; }
+
+/* 時間軸（家屬、系統管理人員） */
+.track { position: relative; height: 34px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+.track .visit { position: absolute; top: 9px; height: 14px; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 3px; }
+.track .on { position: absolute; top: 0; bottom: 0; background: var(--ok-bg); }
+.track .off { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, var(--device-bg) 0 6px, transparent 6px 12px); border-left: 1px dashed var(--device); border-right: 1px dashed var(--device); }
+.track .mark { position: absolute; top: 5px; width: 10px; height: 22px; margin-left: -5px; border-radius: 5px; border: 2px solid var(--surface); background: var(--device); }
+.track .mark.urgent { background: var(--urgent); } .track .mark.check { background: var(--check); } .track .mark.resolved { background: var(--ok); }
+.ticks { position: relative; height: 18px; font-size: 12px; color: var(--muted); }
+.ticks span { position: absolute; transform: translateX(-50%); }
+.ticks span:first-child { transform: none; } .ticks span:last-child { transform: translateX(-100%); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+/* 使用次數圖 */
+.chart { overflow-x: auto; }
+.chart svg { display: block; width: 100%; min-width: 560px; height: auto; }
+.chart text { fill: var(--muted); font: 12px var(--f-body); }
+.chart .val { fill: var(--ink); font: 500 12px var(--f-mono); }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .bar { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1; }
+.chart .dawn { fill: var(--accent); }
+.chart .miss { fill: none; stroke: var(--device); stroke-dasharray: 4 3; }
+.chart .sep { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 2 3; }
+.lines { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 72ch; }
+
+/* 裝置表 */
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 10px; border-bottom: 1px solid var(--line); }
+th { font-size: 12px; letter-spacing: .06em; color: var(--muted); font-weight: 500; }
+td.mono, td.nowrap, td .chip { white-space: nowrap; }
+td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; text-align: right; }
+th.num { text-align: right; }
+.devices { display: grid; gap: 14px; }
+.device-line { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 4px 12px; align-items: center; }
+@media (max-width: 560px) { .device-line { grid-template-columns: minmax(0, 1fr); } }
+
+.notice { border-left: 3px solid var(--check); padding: 8px 12px; background: var(--check-bg); border-radius: 0 8px 8px 0; font-size: 14px; max-width: 72ch; }
+.notes { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 14px; display: grid; gap: 4px; max-width: 72ch; }
+
+/* 檢視範圍：每個畫面都固定顯示資料是哪一天、哪個時段 */
+.period { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; font-size: 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.period b { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-weight: 500; }
+.period .tag { font-size: 12px; font-weight: 700; letter-spacing: .06em; padding: 1px 8px; border-radius: 999px; background: var(--sim-bg); color: var(--sim-ink); }
+
+/* 事件卡：一件事的警報、裝置解除、人員處置放在一起 */
+.incident { display: grid; gap: 8px; padding: 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); border-left: 4px solid var(--device); }
+.incident.urgent { border-left-color: var(--urgent); }
+.incident.check { border-left-color: var(--check); }
+.incident .top { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.incident .top .t { font: 500 15px var(--f-mono); font-variant-numeric: tabular-nums; }
+.incident .top strong { font-size: 16px; }
+.incident .prompt { font-size: 16px; font-weight: 500; }
+.state { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 4px 10px; font-size: 14px; }
+.state dt { color: var(--muted); }
+.state dd { margin: 0; }
+.state .warn { color: var(--check); font-weight: 700; }
+.state .ok { color: var(--ok); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.actions .hint { margin-left: 4px; }
+details.about { font-size: 14px; color: var(--muted); }
+details.about summary { cursor: pointer; font-weight: 500; color: var(--ink); }
+details.about ul { margin: 8px 0 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 72ch; }
+.menu button[aria-checked="true"] { background: var(--accent-soft); border-color: var(--accent); }
+/* 接手與記錄處置的表單 */
+.form { display: grid; gap: 10px; padding: 12px; border: 1px dashed var(--accent); border-radius: 8px; background: var(--bg); }
+.form label { display: grid; gap: 4px; font-size: 14px; }
+.form .row { display: flex; flex-wrap: wrap; gap: 10px; }
+.form .row label { flex: 1 1 160px; min-width: 0; }
+.form input, .form select, .form textarea { font: 15px var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
+.form textarea { min-height: 3.2em; resize: vertical; }
+.form input:focus-visible, .form select:focus-visible, .form textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.form .err { color: var(--urgent); font-size: 13px; min-height: 1.2em; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.counts { display: flex; flex-wrap: wrap; gap: 8px; }
+.counts .pill b { font-weight: 500; }
+.state .done { color: var(--ok); font-weight: 700; }
+.state .doing { color: var(--accent); font-weight: 700; }
+.report { display: grid; gap: 12px; }
+.report pre { margin: 0; padding: 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font: 13.5px/1.7 var(--f-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.report fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; }
+.report legend { padding: 0; margin-bottom: 4px; color: var(--muted); }
+.now .line { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+</style>
+
+<div class="sim"><div class="wrap">
+  <strong>模擬資料</strong><span>非真實裝置紀錄，裝置與長者代號都是虛構的</span>
+</div></div>
+
+<header class="top"><div class="wrap">
+  <div class="eyebrow">介面易用性評估・試做</div>
+  <h1>同一份雷達資料，三種讀者的看板</h1>
+</div></header>
+
+<main><div class="wrap">
+  <div class="roles" role="tablist" aria-label="切換讀者">
+    <button type="button" role="tab" id="tab-caregiver" aria-controls="view-caregiver" data-role="caregiver">居服員</button>
+    <button type="button" role="tab" id="tab-family" aria-controls="view-family" data-role="family">家屬</button>
+    <button type="button" role="tab" id="tab-admin" aria-controls="view-admin" data-role="admin">系統管理人員</button>
+  </div>
+
+  <!-- 居服員：我現在要去哪裡、做什麼 → 每件事的狀態與處置 → 紀錄與歷史 -->
+  <div id="view-caregiver" role="tabpanel" aria-labelledby="tab-caregiver" style="display:grid;gap:24px">
+    <div class="period" id="cg-period"></div>
+    <section aria-labelledby="h-cg-now">
+      <h2 id="h-cg-now">待處理事項</h2>
+      <div class="now" id="cg-now" aria-live="polite"></div>
+      <div class="counts" id="cg-counts"></div>
+      <div class="status-row" id="cg-pills"></div>
+    </section>
+    <section aria-labelledby="h-cg-inc">
+      <div class="head-row"><h2 id="h-cg-inc">事件</h2><span class="hint">每件事分開看裝置警報與人員處置；新的在上</span></div>
+      <div class="feed" id="cg-incidents"></div>
+    </section>
+    <div class="split">
+      <section aria-labelledby="h-cg-rec">
+        <div class="head-row"><h2 id="h-cg-rec">照護紀錄草稿</h2><button type="button" id="cg-copy">複製全部</button></div>
+        <div class="panel"><ol class="records" id="cg-records"></ol><div class="copied" id="cg-copied" aria-live="polite"></div></div>
+      </section>
+      <section aria-labelledby="h-cg-sum">
+        <h2 id="h-cg-sum">事件摘要</h2>
+        <div class="panel"><p class="summary" id="cg-summary"></p></div>
+      </section>
+    </div>
+    <section aria-labelledby="h-cg-ask">
+      <div class="head-row"><h2 id="h-cg-ask">提問</h2><span class="hint">選一題看答案</span></div>
+      <div class="panel" style="display:grid;gap:12px">
+        <div class="menu" id="cg-menu" role="radiogroup" aria-labelledby="h-cg-ask"></div>
+        <div class="answer" id="cg-answer" aria-live="polite"></div>
+      </div>
+    </section>
+    <section aria-labelledby="h-cg-trend">
+      <div class="head-row"><h2 id="h-cg-trend">兩週使用趨勢</h2><span class="hint">另一份兩週模擬資料（10/1–10/14），和上方上午資料分開產生</span></div>
+      <div class="panel" style="display:grid;gap:12px">
+        <div class="chart" id="cg-chart"></div>
+        <ul class="lines" id="cg-trend-lines"></ul>
+        <p class="hint" style="margin:0" id="cg-trend-rule"></p>
+      </div>
+    </section>
+  </div>
+
+  <!-- 家屬：發生什麼事、有人處理了嗎 → 歷史 → 趨勢 -->
+  <div id="view-family" role="tabpanel" aria-labelledby="tab-family" style="display:grid;gap:24px" hidden>
+    <div class="period" id="fm-period"></div>
+    <p class="notice">模擬情境：假設這間浴廁只有 DEMO-ELDER-01 一位長者使用。現有的雷達資料是多人共用的場域資料，家屬不能看。家屬版的用語還沒擬定與審核，下面的事件摘要沿用居服員版。這間浴廁的地點也是假設的，不在裝置設定紀錄裡。</p>
+    <section aria-labelledby="h-fm-now">
+      <h2 id="h-fm-now">發生什麼事、有人處理了嗎</h2>
+      <p class="hint" style="margin:0" id="fm-note"></p>
+      <div class="feed" id="fm-incidents"></div>
+      <p class="hint" style="margin:0" id="fm-offline"></p>
+    </section>
+    <section aria-labelledby="h-fm-sum">
+      <h2 id="h-fm-sum">事件摘要</h2>
+      <div class="panel"><p class="summary" id="fm-summary"></p></div>
+    </section>
+    <section aria-labelledby="h-fm-tl">
+      <h2 id="h-fm-tl">時間軸</h2>
+      <div class="panel" style="display:grid;gap:10px">
+        <div class="track" id="fm-track" aria-hidden="true"></div>
+        <div class="ticks" id="fm-ticks" aria-hidden="true"></div>
+        <div class="legend">
+          <span><i style="background:var(--accent-soft);border:1px solid var(--accent)"></i>在浴廁</span>
+          <span><i style="background:var(--urgent)"></i>跌倒／呼救警報</span>
+          <span><i style="background:var(--check)"></i>久待警報</span>
+          <span><i style="border:1px dashed var(--device)"></i>裝置斷線</span>
+        </div>
+      </div>
+    </section>
+    <section aria-labelledby="h-fm-days">
+      <div class="head-row"><h2 id="h-fm-days">最近兩週每天使用次數</h2><span class="hint">深色是凌晨 00:00–06:00；虛線是當天在線不足，不列入</span></div>
+      <div class="panel"><div class="chart" id="fm-chart"></div></div>
+    </section>
+  </div>
+
+  <!-- 系統管理人員：哪台有問題 → 多久沒資料 → 診斷資訊 -->
+  <div id="view-admin" role="tabpanel" aria-labelledby="tab-admin" style="display:grid;gap:24px" hidden>
+    <div class="period" id="ad-period"></div>
+    <section aria-labelledby="h-ad-now">
+      <h2 id="h-ad-now">異常裝置</h2>
+      <div class="now" id="ad-now"></div>
+      <div class="status-row" id="ad-pills"></div>
+    </section>
+    <section aria-labelledby="h-ad-report" id="ad-report-section" hidden>
+      <h2 id="h-ad-report"></h2>
+      <div class="panel report" id="ad-report"></div>
+    </section>
+    <section aria-labelledby="h-ad-table">
+      <div class="head-row"><h2 id="h-ad-table">裝置清單</h2><span class="hint">只有裝置狀態，不含照護事件的內容</span></div>
+      <div class="panel table-wrap">
+        <table>
+          <thead><tr><th>裝置</th><th>地點</th><th>狀態</th><th>最後收到資料</th><th>斷線時段</th><th class="num">紀錄筆數</th><th class="num">無法判讀</th><th class="num">裝置錯誤</th></tr></thead>
+          <tbody id="ad-rows"></tbody>
+        </table>
+      </div>
+    </section>
+    <section aria-labelledby="h-ad-reg">
+      <div class="head-row"><h2 id="h-ad-reg">裝置設定紀錄</h2><span class="hint">地點與設定變更；居服員與系統管理人員畫面、回報單上的地點都從這裡查</span></div>
+      <div class="panel table-wrap">
+        <table>
+          <thead><tr><th>裝置</th><th>地點</th><th>區域</th><th>用途</th><th>最後更新</th><th>變更紀錄</th></tr></thead>
+          <tbody id="ad-registry"></tbody>
+        </table>
+      </div>
+    </section>
+    <section aria-labelledby="h-ad-tl">
+      <h2 id="h-ad-tl">在線時段</h2>
+      <div class="panel devices" id="ad-lines"></div>
+      <div class="legend"><span><i style="background:var(--ok-bg);border:1px solid var(--ok)"></i>在線</span><span><i style="border:1px dashed var(--device)"></i>斷線或資料逾時</span></div>
+    </section>
+  </div>
+
+  <details class="about">
+    <summary>原型說明</summary>
+    <ul>
+      <li>用途：評估要不要在官網 Dashboard 之外提供更順手的介面，不是要取代官網。評估方式見 docs/17_介面易用性評估.md。</li>
+      <li>全部是模擬資料：居服員與家屬看的是同一個模擬上午（原型頁 demo/prototype.html 的資料），系統管理人員看四台模擬裝置。</li>
+      <li>居服員畫面的處置提示、照護紀錄、事件摘要、提問答案與趨勢句子，和 radar-caregiver、radar-ask --pick 的輸出相同，並先通過輸出檢查。頁面上其他固定句型寫在 demo/dashboard_build.py 的 UI_TEXT，建置時也要通過用語檢查；頁面只填入數字與時間。句子由範本產生，尚未接上在地模型。</li>
+      <li>這份資料本身沒有人員處置紀錄。接手與記錄處置是示意流程：只存在這個瀏覽器分頁，重新整理就清掉；居服員與家屬畫面共用同一份狀態。要不要由人結案、處置結果有哪些選項，由照護流程決定。</li>
+      <li>家屬畫面是模擬的個人情境；家屬版用語擬定、讀者怎麼登入與長者怎麼對應（會議清單 F4）確定前，不會正式提供。</li>
+      <li>裝置問題回報是示意：回報單自動帶入遠端判斷需要的裝置資訊（安裝地點與設定紀錄、狀態與判斷依據、在線時段、收到的紀錄筆數與估算筆數、紀錄間隔、裝置最後一筆與斷線訊息的時間、無法判讀紀錄的形狀、同時段其他裝置），不含照護事件與長者資料；按「送出」不會真的寄出。回報對象（廠商、團隊或機構資訊人員）待確認。</li>
+      <li>裝置設定紀錄（demo/device_registry.json，模擬）記地點與設定變更；居服員、系統管理人員畫面與回報單的地點都從這裡查。家屬畫面的地點是假設的。</li>
+      <li>系統管理人員這個讀者類型還沒正式加進讀者權限（audience.py）。逾時的基準在這裡用「所有裝置最晚收到資料的時間」，正式版要改用伺服器目前時間。</li>
+      <li>網址加 #caregiver、#family、#admin 可以直接打開該讀者的畫面。</li>
+    </ul>
+  </details>
+</div></main>
+
+<script>
+const DATA = {
+ "caregiver": {
+  "source": "sim",
+  "place": "1 號廁所",
+  "day": "2026-10-14",
+  "from": "2026-10-14 08:00:00",
+  "to": "2026-10-14 11:59:55",
+  "summary": "1 號廁所 10/14：有人使用 5 次，最長一次 22 分鐘。在線期間跌倒警報 2 次（08:32、09:16）。在線期間主動呼救 1 次（10:03）。語音回覆沒事 1 次。在線期間久待警報 1 次（10:45）。11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。",
+  "visits": [
+   [
+    "2026-10-14 08:05:00",
+    "2026-10-14 08:09:00"
+   ],
+   [
+    "2026-10-14 08:31:00",
+    "2026-10-14 08:35:00"
+   ],
+   [
+    "2026-10-14 09:15:00",
+    "2026-10-14 09:21:00"
+   ],
+   [
+    "2026-10-14 10:02:00",
+    "2026-10-14 10:07:00"
+   ],
+   [
+    "2026-10-14 10:30:00",
+    "2026-10-14 10:52:00"
+   ]
+  ],
+  "offline": [
+   [
+    "2026-10-14 11:10:00",
+    "2026-10-14 11:25:00"
+   ]
+  ],
+  "events": [
+   {
+    "at": "2026-10-14 08:32:10",
+    "label": "08:32",
+    "level": "urgent",
+    "title": "跌倒警報",
+    "prompt": "請立即到場確認。",
+    "record": "08:32 1 號廁所雷達偵測到疑似跌倒，語音詢問 10 秒未獲回應。"
+   },
+   {
+    "at": "2026-10-14 08:32:40",
+    "label": "08:32",
+    "level": "resolved",
+    "title": "回覆沒事",
+    "prompt": "長者回覆沒事，警報已解除；可視情況前往關心。",
+    "record": "08:32 長者語音回覆沒事，警報解除。"
+   },
+   {
+    "at": "2026-10-14 09:16:20",
+    "label": "09:16",
+    "level": "urgent",
+    "title": "跌倒警報",
+    "prompt": "長者回覆需要協助，請立即到場。",
+    "record": "09:16 1 號廁所雷達偵測到疑似跌倒，長者語音回覆需要協助。"
+   },
+   {
+    "at": "2026-10-14 09:19:30",
+    "label": "09:19",
+    "level": "resolved",
+    "title": "起身解除",
+    "prompt": "已偵測到起身，警報已解除。",
+    "record": "09:19 偵測到長者起身，警報解除。"
+   },
+   {
+    "at": "2026-10-14 10:03:15",
+    "label": "10:03",
+    "level": "urgent",
+    "title": "主動呼救",
+    "prompt": "長者主動呼救，請立即到場。",
+    "record": "10:03 1 號廁所偵測到主動呼救。"
+   },
+   {
+    "at": "2026-10-14 10:05:50",
+    "label": "10:05",
+    "level": "resolved",
+    "title": "起身解除",
+    "prompt": "已偵測到起身，警報已解除。",
+    "record": "10:05 偵測到長者起身，警報解除。"
+   },
+   {
+    "at": "2026-10-14 10:45:00",
+    "label": "10:45",
+    "level": "check",
+    "title": "久待警報",
+    "prompt": "停留超過設定時間，請前往查看。",
+    "record": "10:45 1 號廁所停留超過設定時間（久待警報）。"
+   },
+   {
+    "at": "2026-10-14 11:10:00",
+    "label": "11:10–11:25",
+    "level": "device",
+    "title": "裝置斷線",
+    "prompt": "這段時間無法判斷是否有跌倒，請通知資訊人員。",
+    "record": "11:10–11:25 裝置斷線，期間狀況不明。"
+   }
+  ],
+  "ask": [
+   {
+    "id": "falls",
+    "text": "有沒有人跌倒？",
+    "answer": "1 號廁所 10/14 08:00–11:59：在線期間跌倒警報 2 次（08:32、09:16）。\n語音回覆沒事 1 次。\n11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。\n在線期間另有主動呼救 1 次（10:03）。"
+   },
+   {
+    "id": "calls",
+    "text": "有沒有人主動呼救？",
+    "answer": "1 號廁所 10/14 08:00–11:59：在線期間主動呼救 1 次（10:03）。\n11:10–11:25 裝置斷線，這段時間無法判斷是否有人呼救。"
+   },
+   {
+    "id": "longstay",
+    "text": "有沒有人待太久？",
+    "answer": "1 號廁所 10/14 08:00–11:59：在線期間久待警報 1 次（10:45）。\n11:10–11:25 裝置斷線，這段時間無法判斷是否有人待太久。"
+   },
+   {
+    "id": "visits",
+    "text": "用了幾次？最久待多久？",
+    "answer": "1 號廁所 10/14 08:00–11:59：有人使用 5 次，最長一次 22 分鐘。\n11:10–11:25 裝置斷線，這段時間無法判斷使用情形。"
+   },
+   {
+    "id": "offline",
+    "text": "裝置有沒有斷線？",
+    "answer": "1 號廁所 10/14 08:00–11:59：11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。"
+   },
+   {
+    "id": "alerts",
+    "text": "有哪些警報？要怎麼處理？",
+    "answer": "1 號廁所 10/14 08:00–11:59：警報與處置提示：\n08:32 跌倒警報：請立即到場確認。\n08:32 長者回覆沒事，警報已解除；可視情況前往關心。\n09:16 跌倒警報：長者回覆需要協助，請立即到場。\n09:19 起身解除：已偵測到起身，警報已解除。\n10:03 長者主動呼救，請立即到場。\n10:05 起身解除：已偵測到起身，警報已解除。\n10:45 久待警報：停留超過設定時間，請前往查看。\n11:10–11:25 裝置斷線：這段時間無法判斷是否有跌倒，請通知資訊人員。"
+   }
+  ],
+  "trend": {
+   "lines": [
+    "【使用趨勢】1 號廁所 10/8–10/14 與前一週（10/1–10/7）比較：",
+    "每日使用次數：平均每日 7.8 次，前一週 6.9 次，差不多。",
+    "凌晨（00:00–06:00）使用次數：平均每日 2.0 次，前一週 0.9 次，增加。",
+    "近 7 天：10/8 7 次（凌晨 1）、10/9 6 次（凌晨 1）、10/10 在線不足，不列入、10/11 7 次（凌晨 1）、10/12 9 次（凌晨 3）、10/13 8 次（凌晨 3）、10/14 10 次（凌晨 3）。",
+    "這是場域的統計，沒有個人 ID，不代表特定長者；供照護人員參考。"
+   ],
+   "days": [
+    {
+     "day": "10/1",
+     "visits": 7,
+     "dawn": 1,
+     "recent": false
+    },
+    {
+     "day": "10/2",
+     "visits": 6,
+     "dawn": 1,
+     "recent": false
+    },
+    {
+     "day": "10/3",
+     "visits": 7,
+     "dawn": 0,
+     "recent": false
+    },
+    {
+     "day": "10/4",
+     "visits": 7,
+     "dawn": 1,
+     "recent": false
+    },
+    {
+     "day": "10/5",
+     "visits": 7,
+     "dawn": 1,
+     "recent": false
+    },
+    {
+     "day": "10/6",
+     "visits": 6,
+     "dawn": 1,
+     "recent": false
+    },
+    {
+     "day": "10/7",
+     "visits": 8,
+     "dawn": 1,
+     "recent": false
+    },
+    {
+     "day": "10/8",
+     "visits": 7,
+     "dawn": 1,
+     "recent": true
+    },
+    {
+     "day": "10/9",
+     "visits": 6,
+     "dawn": 1,
+     "recent": true
+    },
+    {
+     "day": "10/10",
+     "visits": null,
+     "dawn": null,
+     "recent": true
+    },
+    {
+     "day": "10/11",
+     "visits": 7,
+     "dawn": 1,
+     "recent": true
+    },
+    {
+     "day": "10/12",
+     "visits": 9,
+     "dawn": 3,
+     "recent": true
+    },
+    {
+     "day": "10/13",
+     "visits": 8,
+     "dawn": 3,
+     "recent": true
+    },
+    {
+     "day": "10/14",
+     "visits": 10,
+     "dawn": 3,
+     "recent": true
+    }
+   ]
+  },
+  "period": {
+   "day": "10/14",
+   "from": "08:00",
+   "to": "11:59",
+   "visits": 5
+  },
+  "incidents": [
+   {
+    "id": "e1",
+    "at": "2026-10-14 08:32:10",
+    "label": "08:32",
+    "level": "urgent",
+    "title": "跌倒警報",
+    "prompt": "請立即到場確認。",
+    "cleared": {
+     "label": "08:32",
+     "cause": "長者回覆沒事"
+    }
+   },
+   {
+    "id": "e2",
+    "at": "2026-10-14 09:16:20",
+    "label": "09:16",
+    "level": "urgent",
+    "title": "跌倒警報",
+    "prompt": "長者回覆需要協助，請立即到場。",
+    "cleared": {
+     "label": "09:19",
+     "cause": "偵測到起身"
+    }
+   },
+   {
+    "id": "e3",
+    "at": "2026-10-14 10:03:15",
+    "label": "10:03",
+    "level": "urgent",
+    "title": "主動呼救",
+    "prompt": "長者主動呼救，請立即到場。",
+    "cleared": {
+     "label": "10:05",
+     "cause": "偵測到起身"
+    }
+   },
+   {
+    "id": "e4",
+    "at": "2026-10-14 10:45:00",
+    "label": "10:45",
+    "level": "check",
+    "title": "久待警報",
+    "prompt": "停留超過設定時間，請前往查看。",
+    "cleared": null
+   }
+  ],
+  "orphans": [],
+  "offline_sentences": [
+   "11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。"
+  ],
+  "trend_rule": "判定方式：兩週各至少要有 5 天可比較（當天在線 23 小時以上）；平均每日相差 1 次以上，而且每日次數相差前一週的 30%（凌晨 50%）以上，才寫「增加」或「減少」，否則寫「差不多」。",
+  "counted_days": [
+   7,
+   6
+  ]
+ },
+ "family": {
+  "source": "sim",
+  "elder": "DEMO-ELDER-01",
+  "place": "DEMO-ELDER-01 房間的浴廁",
+  "period": {
+   "day": "10/14",
+   "from": "08:00",
+   "to": "11:59",
+   "visits": 5
+  },
+  "from": "2026-10-14 08:00:00",
+  "to": "2026-10-14 11:59:55",
+  "summary": "DEMO-ELDER-01 房間的浴廁 10/14：有人使用 5 次，最長一次 22 分鐘。在線期間跌倒警報 2 次（08:32、09:16）。在線期間主動呼救 1 次（10:03）。語音回覆沒事 1 次。在線期間久待警報 1 次（10:45）。11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。",
+  "visits": [
+   [
+    "2026-10-14 08:05:00",
+    "2026-10-14 08:09:00"
+   ],
+   [
+    "2026-10-14 08:31:00",
+    "2026-10-14 08:35:00"
+   ],
+   [
+    "2026-10-14 09:15:00",
+    "2026-10-14 09:21:00"
+   ],
+   [
+    "2026-10-14 10:02:00",
+    "2026-10-14 10:07:00"
+   ],
+   [
+    "2026-10-14 10:30:00",
+    "2026-10-14 10:52:00"
+   ]
+  ],
+  "offline": [
+   [
+    "2026-10-14 11:10:00",
+    "2026-10-14 11:25:00"
+   ]
+  ],
+  "offline_sentences": [
+   "11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。"
+  ],
+  "incidents": [
+   {
+    "id": "e1",
+    "at": "2026-10-14 08:32:10",
+    "label": "08:32",
+    "level": "urgent",
+    "title": "跌倒警報",
+    "cleared": {
+     "label": "08:32",
+     "cause": "長者回覆沒事"
+    }
+   },
+   {
+    "id": "e2",
+    "at": "2026-10-14 09:16:20",
+    "label": "09:16",
+    "level": "urgent",
+    "title": "跌倒警報",
+    "cleared": {
+     "label": "09:19",
+     "cause": "偵測到起身"
+    }
+   },
+   {
+    "id": "e3",
+    "at": "2026-10-14 10:03:15",
+    "label": "10:03",
+    "level": "urgent",
+    "title": "主動呼救",
+    "cleared": {
+     "label": "10:05",
+     "cause": "偵測到起身"
+    }
+   },
+   {
+    "id": "e4",
+    "at": "2026-10-14 10:45:00",
+    "label": "10:45",
+    "level": "check",
+    "title": "久待警報",
+    "cleared": null
+   }
+  ],
+  "days": [
+   {
+    "day": "10/1",
+    "visits": 7,
+    "dawn": 1,
+    "recent": false
+   },
+   {
+    "day": "10/2",
+    "visits": 6,
+    "dawn": 1,
+    "recent": false
+   },
+   {
+    "day": "10/3",
+    "visits": 7,
+    "dawn": 0,
+    "recent": false
+   },
+   {
+    "day": "10/4",
+    "visits": 7,
+    "dawn": 1,
+    "recent": false
+   },
+   {
+    "day": "10/5",
+    "visits": 7,
+    "dawn": 1,
+    "recent": false
+   },
+   {
+    "day": "10/6",
+    "visits": 6,
+    "dawn": 1,
+    "recent": false
+   },
+   {
+    "day": "10/7",
+    "visits": 8,
+    "dawn": 1,
+    "recent": false
+   },
+   {
+    "day": "10/8",
+    "visits": 7,
+    "dawn": 1,
+    "recent": true
+   },
+   {
+    "day": "10/9",
+    "visits": 6,
+    "dawn": 1,
+    "recent": true
+   },
+   {
+    "day": "10/10",
+    "visits": null,
+    "dawn": null,
+    "recent": true
+   },
+   {
+    "day": "10/11",
+    "visits": 7,
+    "dawn": 1,
+    "recent": true
+   },
+   {
+    "day": "10/12",
+    "visits": 9,
+    "dawn": 3,
+    "recent": true
+   },
+   {
+    "day": "10/13",
+    "visits": 8,
+    "dawn": 3,
+    "recent": true
+   },
+   {
+    "day": "10/14",
+    "visits": 10,
+    "dawn": 3,
+    "recent": true
+   }
+  ]
+ },
+ "devices": [
+  {
+   "device": "DEMO-SIM-01",
+   "place": "1 號廁所",
+   "status": "recovered",
+   "last_seen": "2026-10-14 11:59:55",
+   "since": null,
+   "minutes_without_data": null,
+   "from": "2026-10-14 08:00:00",
+   "online": [
+    [
+     "2026-10-14 08:00:00",
+     "2026-10-14 11:10:00"
+    ],
+    [
+     "2026-10-14 11:25:00",
+     "2026-10-14 11:59:55"
+    ]
+   ],
+   "offline": [
+    [
+     "2026-10-14 11:10:00",
+     "2026-10-14 11:25:00"
+    ]
+   ],
+   "records": 2708,
+   "unreadable": 0,
+   "errors": 0,
+   "diag": {
+    "topic": "radar10/DEMO-SIM-01",
+    "device_records": 2707,
+    "offline_records": 1,
+    "all_records": 2708,
+    "expected_records": 2700,
+    "median_gap_s": 5,
+    "max_gap": [
+     "2026-10-14 11:09:55",
+     "2026-10-14 11:25:00",
+     905
+    ],
+    "last_device": "2026-10-14 11:59:55",
+    "offline_msg": "2026-10-14 11:10:00",
+    "offline_after_s": 5,
+    "last_online_msg": "2026-10-14 11:25:00",
+    "firmware": null,
+    "unreadable_sample": null,
+    "error_messages": []
+   },
+   "registry": {
+    "device": "DEMO-SIM-01",
+    "place": "1 號廁所",
+    "area": "A 棟 1 樓",
+    "use": "共用浴廁",
+    "history": [
+     {
+      "at": "2026-09-20 10:00",
+      "by": "IT-01",
+      "change": "安裝，地點設為 1 號廁所"
+     },
+     {
+      "at": "2026-09-25 14:20",
+      "by": "IT-01",
+      "change": "久待門檻設為 600 秒"
+     }
+    ]
+   }
+  },
+  {
+   "device": "DEMO-SIM-02",
+   "place": "2 號廁所",
+   "status": "online",
+   "last_seen": "2026-10-14 11:59:55",
+   "since": null,
+   "minutes_without_data": null,
+   "from": "2026-10-14 08:00:00",
+   "online": [
+    [
+     "2026-10-14 08:00:00",
+     "2026-10-14 11:59:55"
+    ]
+   ],
+   "offline": [],
+   "records": 2880,
+   "unreadable": 0,
+   "errors": 0,
+   "diag": {
+    "topic": "radar10/DEMO-SIM-02",
+    "device_records": 2880,
+    "offline_records": 0,
+    "all_records": 2880,
+    "expected_records": 2880,
+    "median_gap_s": 5,
+    "max_gap": null,
+    "last_device": "2026-10-14 11:59:55",
+    "offline_msg": null,
+    "offline_after_s": null,
+    "last_online_msg": "2026-10-14 08:00:00",
+    "firmware": null,
+    "unreadable_sample": null,
+    "error_messages": []
+   },
+   "registry": {
+    "device": "DEMO-SIM-02",
+    "place": "2 號廁所",
+    "area": "A 棟 1 樓",
+    "use": "共用浴廁",
+    "history": [
+     {
+      "at": "2026-09-20 10:30",
+      "by": "IT-01",
+      "change": "安裝，地點設為 2 號廁所"
+     }
+    ]
+   }
+  },
+  {
+   "device": "DEMO-SIM-03",
+   "place": "3 號廁所",
+   "status": "offline",
+   "last_seen": "2026-10-14 11:40:00",
+   "since": "2026-10-14 11:40:35",
+   "minutes_without_data": 19,
+   "from": "2026-10-14 08:00:00",
+   "online": [
+    [
+     "2026-10-14 08:00:00",
+     "2026-10-14 11:40:35"
+    ]
+   ],
+   "offline": [],
+   "records": 2643,
+   "unreadable": 1,
+   "errors": 0,
+   "diag": {
+    "topic": "radar10/DEMO-SIM-03",
+    "device_records": 2641,
+    "offline_records": 1,
+    "all_records": 2643,
+    "expected_records": 2641,
+    "median_gap_s": 5,
+    "max_gap": null,
+    "last_device": "2026-10-14 11:40:00",
+    "offline_msg": "2026-10-14 11:40:35",
+    "offline_after_s": 35,
+    "last_online_msg": "2026-10-14 08:00:00",
+    "firmware": null,
+    "unreadable_sample": "{\"timestamp\": \"2026-10-14T09:00\", \"topic\": \"radar10/DEMO-SIM-03\", \"payload 欄位\": [\"event\"]}",
+    "error_messages": []
+   },
+   "registry": {
+    "device": "DEMO-SIM-03",
+    "place": "3 號廁所",
+    "area": "A 棟 2 樓",
+    "use": "共用浴廁",
+    "history": [
+     {
+      "at": "2026-09-20 11:00",
+      "by": "IT-01",
+      "change": "安裝，地點設為 5 號廁所（B 棟 1 樓）"
+     },
+     {
+      "at": "2026-10-12 16:10",
+      "by": "IT-02",
+      "change": "移機，地點改為 3 號廁所（A 棟 2 樓）"
+     }
+    ]
+   }
+  },
+  {
+   "device": "DEMO-SIM-04",
+   "place": "4 號廁所",
+   "status": "silent",
+   "last_seen": "2026-10-14 10:30:00",
+   "since": "2026-10-14 10:30:00",
+   "minutes_without_data": 89,
+   "from": "2026-10-14 08:00:00",
+   "online": [
+    [
+     "2026-10-14 08:00:00",
+     "2026-10-14 10:30:00"
+    ]
+   ],
+   "offline": [],
+   "records": 1801,
+   "unreadable": 0,
+   "errors": 0,
+   "diag": {
+    "topic": "radar10/DEMO-SIM-04",
+    "device_records": 1801,
+    "offline_records": 0,
+    "all_records": 1801,
+    "expected_records": 1801,
+    "median_gap_s": 5,
+    "max_gap": null,
+    "last_device": "2026-10-14 10:30:00",
+    "offline_msg": null,
+    "offline_after_s": null,
+    "last_online_msg": "2026-10-14 08:00:00",
+    "firmware": null,
+    "unreadable_sample": null,
+    "error_messages": []
+   },
+   "registry": {
+    "device": "DEMO-SIM-04",
+    "place": "4 號廁所",
+    "area": "A 棟 2 樓",
+    "use": "共用浴廁",
+    "history": [
+     {
+      "at": "2026-09-21 09:15",
+      "by": "IT-02",
+      "change": "安裝，地點設為 4 號廁所"
+     }
+    ]
+   }
+  }
+ ],
+ "devices_ref": "2026-10-14 11:59:55",
+ "gap_s": 30,
+ "heartbeat_s": 5,
+ "firmware_keys": "fw、firmware、version",
+ "text": {
+  "tag": "模擬歷史資料",
+  "head_pending": "有 {n} 件待接手",
+  "head_none": "沒有待接手的事件",
+  "no_clear": "{n} 件未收到裝置解除紀錄，狀態待確認：{list}",
+  "local_note": "這份資料本身沒有人員處置紀錄；下面的接手與處置只存在這個分頁，重新整理就會清掉。",
+  "count_pending": "待接手 {n} 件",
+  "count_handling": "處理中 {n} 件",
+  "count_done": "已完成 {n} 件",
+  "pill_urgent": "在線期間立即到場通知：{n} 件",
+  "pill_check": "在線期間前往查看通知：{n} 件",
+  "pill_offline": "裝置斷線：{n} 段",
+  "prompt_then": "當時通知：{prompt}",
+  "device_cleared": "{time} {cause}，裝置警報解除",
+  "device_unknown": "未收到解除紀錄，狀態待確認",
+  "human_pending": "尚未確認",
+  "human_handling": "處理中：{who} {time} 接手",
+  "human_done": "已完成：{result}（{who}，{time}）",
+  "family_handling": "處理中（{time} 接手）",
+  "family_done": "已完成：{result}（{time}）",
+  "family_note": "這份資料本身沒有人員處置紀錄，所以先顯示「尚未確認」；居服員在這一頁示意接手或記錄處置後，這裡會同步顯示。",
+  "orphan": "{time} {title}：找不到對應的警報",
+  "need_who": "請填處理人代號。",
+  "need_time": "請填時間。",
+  "need_result": "請選擇處置結果。",
+  "saved": "已儲存（只存在這個分頁）。",
+  "admin_head": "{n} 台裝置異常",
+  "admin_none": "沒有異常裝置",
+  "admin_offline": "{time} 收到斷線訊息，之後 {min} 分鐘沒收到資料",
+  "admin_silent": "最後收到資料 {time}，之後 {min} 分鐘沒收到資料，也沒有收到斷線訊息",
+  "admin_unreadable": "無法判讀的紀錄 {n} 筆",
+  "admin_errors": "裝置錯誤 {n} 次",
+  "admin_online": "目前在線 {n} 台，其中 {m} 台曾斷線",
+  "admin_offline_n": "斷線中 {n} 台",
+  "admin_silent_n": "資料逾時 {n} 台",
+  "admin_base": "基準時間 {time}（模擬：所有裝置最晚收到資料的時間；正式版用伺服器目前時間）",
+  "status_online": "在線",
+  "status_recovered": "在線（曾斷線）",
+  "status_offline": "斷線中",
+  "status_silent": "資料逾時",
+  "period_visits": "在線期間有人使用 {n} 次",
+  "counted_days": "這兩週可比較的天數：前一週 {a} 天、近 7 天 {b} 天。",
+  "copied": "已複製 {n} 行。",
+  "copy_fallback": "已選取，請按 Ctrl+C 複製。",
+  "ask_hint": "選一題看答案。",
+  "admin_row": "{device}（{place}）：{facts}。",
+  "since": "{time} 起",
+  "human_taken": "{who} {time} 接手",
+  "label_who": "處理人代號（英數字，例如 CW-01，不填姓名）",
+  "label_take_time": "接手時間（{day}）",
+  "label_done_time": "處置時間（{day}）",
+  "label_note": "備註（選填，最多 200 字，不寫長者或人員姓名）",
+  "need_code": "處理人代號只能用英文字母、數字與「-」，最多 20 字。",
+  "too_early_event": "時間不能早於事件發生的 {time}。",
+  "too_early_taken": "處置時間不能早於接手時間 {time}。",
+  "place_unknown": "未登記地點",
+  "admin_unregistered": "沒有裝置設定紀錄，不知道裝在哪裡",
+  "r_place": "安裝地點：{place}（{area}，{use}）；設定紀錄最後更新 {at}，{by}：{change}",
+  "r_place_unknown": "安裝地點：沒有裝置設定紀錄",
+  "report_title": "回報給技術支援窗口（待確認）",
+  "report_intro": "下面是系統自動整理的裝置資訊，不含照護事件與長者資料；補上描述就能送出。",
+  "r_head": "【裝置問題回報（模擬）】{device}（{place}）",
+  "r_status": "狀態：{status}。判斷依據：{basis}",
+  "r_status_plain": "狀態：{status}",
+  "r_unregistered": "異常：沒有裝置設定紀錄，不知道裝在哪裡",
+  "r_basis_offline": "{time} 收到斷線訊息（由 broker 發出），之後沒有再收到資料",
+  "r_basis_silent": "最後收到資料 {time}，之後超過斷線判斷門檻（{gap} 秒，對應 keepalive）沒有資料，也沒有收到斷線訊息",
+  "r_basis_unreadable": "裝置在線，但有 {n} 筆無法判讀的紀錄",
+  "r_basis_errors": "裝置在線，但回報錯誤 {n} 次",
+  "r_base": "基準時間：{ref}；距最後收到資料 {min} 分鐘",
+  "r_topic": "裝置主題：{topic}",
+  "r_online": "這段時間的在線時段：{spans}",
+  "r_records": "紀錄：收到可判讀時間的裝置紀錄 {n} 筆（另有無法判讀 {u} 筆、斷線訊息 {o} 筆，共 {t} 筆）；從第一筆到裝置最後一筆，以每 {s} 秒一筆估算約 {e} 筆",
+  "r_median": "紀錄間隔中位數 {m} 秒",
+  "r_maxgap": "明顯較長的紀錄間隔：{g} 秒（{a}–{b}）",
+  "r_last": "裝置最後一筆紀錄：{time}",
+  "r_offline_msg": "收到斷線訊息：{time}（距裝置最後一筆 {s} 秒，可核對 keepalive）",
+  "r_last_online": "最近一次上線訊息：{time}",
+  "r_firmware": "韌體版本：{v}",
+  "r_firmware_none": "韌體版本：上線訊息裡沒有找到（已找 {keys}；欄位名稱待 A28 確認）",
+  "r_source": "資料來源：模擬資料（雲端保存的裝置事件格式）；時間是接收端收到時補上的，不是裝置時間",
+  "r_unreadable": "無法判讀的紀錄 {n} 筆，第一筆的形狀（payload 只留欄位名稱）：{sample}",
+  "r_errors": "裝置錯誤 {n} 次：{list}",
+  "r_peers": "同時段其他裝置：{list}",
+  "r_urgency": "急迫程度：{u}",
+  "r_checked": "現場已檢查：{list}",
+  "r_desc": "管理員描述：{text}",
+  "urgency_care": "影響照護，請盡快處理",
+  "urgency_later": "可排程處理",
+  "checked_none": "未勾選",
+  "label_desc": "問題描述（不寫長者或人員姓名）",
+  "need_urgency": "請選擇急迫程度。",
+  "need_desc": "請填問題描述。",
+  "report_sent": "已送出（示意）：回報單 {id}，等待技術支援回覆。這一頁不會真的寄出。"
+ },
+ "results": [
+  "已到場確認",
+  "已到場協助",
+  "以電話或語音確認",
+  "其他（見備註）"
+ ],
+ "family_results": {
+  "其他（見備註）": "其他處置"
+ }
+};
+const T = DATA.text;
+// 固定句型在 dashboard_build.py 的 UI_TEXT；這裡只把 {欄位} 換成資料裡的數字與時間
+const say = (key, fields = {}) => T[key].replace(/\{(\w+)\}/g, (_, k) => String(fields[k]));
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+// 時間都是 "YYYY-MM-DD HH:MM:SS"、沒有時區；當成 UTC 解析只為了算位置，不做時區換算
+const sec = s => Date.parse(s.replace(" ", "T") + "Z") / 1000;
+const hm = s => s.slice(11, 16);
+
+// 讀者切換：網址加 #caregiver、#family、#admin 可以直接打開那一頁
+const ROLES = ["caregiver", "family", "admin"];
+function show(role, setHash) {
+  ROLES.forEach(r => {
+    $("view-" + r).hidden = r !== role;
+    $("tab-" + r).setAttribute("aria-selected", String(r === role));
+    $("tab-" + r).tabIndex = r === role ? 0 : -1;
+  });
+  if (setHash) { try { history.replaceState(null, "", "#" + role); } catch (e) {} }
+  // 隱藏時畫的圖設不了捲動位置；切過去時再捲到近 7 天
+  document.querySelectorAll("#view-" + role + " .chart").forEach(c => { c.scrollLeft = c.scrollWidth; });
+}
+const fromHash = () => ROLES.includes(location.hash.slice(1)) ? location.hash.slice(1) : "caregiver";
+document.querySelectorAll(".roles button").forEach(b => b.addEventListener("click", () => show(b.dataset.role, true)));
+document.querySelector(".roles").addEventListener("keydown", e => {
+  const i = ROLES.findIndex(r => $("tab-" + r).getAttribute("aria-selected") === "true");
+  const to = { ArrowRight: (i + 1) % 3, ArrowLeft: (i + 2) % 3, Home: 0, End: 2 }[e.key];
+  if (to === undefined) return;
+  e.preventDefault(); show(ROLES[to], true); $("tab-" + ROLES[to]).focus();
+});
+window.addEventListener("hashchange", () => show(fromHash()));
+
+function period(target, p) {
+  target.append(el("span", "tag", T.tag), "檢視日期 ", el("b", null, p.day), "時段 ", el("b", null, `${p.from}–${p.to}`), say("period_visits", { n: p.visits }));
+}
+
+function timeline(track, ticks, from, to) {
+  const t0 = sec(from), t1 = Math.max(sec(to), t0 + 60);
+  const pct = s => ((sec(s) - t0) / (t1 - t0) * 100).toFixed(3) + "%";
+  const band = (cls, a, b) => { const v = el("div", cls); v.style.left = pct(a); v.style.width = `calc(${pct(b)} - ${pct(a)})`; track.append(v); };
+  if (ticks) {
+    const tick = t => { const e = el("span", null, new Date(t * 1000).toISOString().slice(11, 16)); e.style.left = ((t - t0) / (t1 - t0) * 100) + "%"; ticks.append(e); };
+    tick(t0);
+    for (let t = Math.ceil(t0 / 3600) * 3600; t < t1; t += 3600) if ((t - t0) / (t1 - t0) > 0.06 && (t1 - t) / (t1 - t0) > 0.06) tick(t);
+    tick(t1);
+  }
+  return { band, mark: (cls, at) => { const m = el("div", "mark " + cls); m.style.left = pct(at); track.append(m); } };
+}
+
+// 每日使用次數：用 SVG 元素逐一建立（不拼 HTML 字串）；在線不足的日子畫虛線、不畫成 0
+const SVG = "http://www.w3.org/2000/svg";
+function svg(tag, attrs, text) { const e = document.createElementNS(SVG, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; return e; }
+function chart(target, days) {
+  const W = 960, H = 240, L = 34, R = 8, Tp = 26, B = 26;
+  const max = Math.max(10, ...days.map(d => d.visits || 0));
+  const top = Math.ceil(max / 5) * 5, y = v => Tp + (H - Tp - B) * (1 - v / top);
+  const step = (W - L - R) / days.length, bw = step * 0.62;
+  const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "兩週每日使用次數" });
+  for (let v = 0; v <= top; v += 5) root.append(svg("line", { class: "grid", x1: L, x2: W - R, y1: y(v), y2: y(v) }), svg("text", { x: L - 6, y: y(v) + 4, "text-anchor": "end" }, v));
+  const mid = L + step * 7;
+  root.append(svg("line", { class: "sep", x1: mid, x2: mid, y1: Tp - 14, y2: H - B + 4 }),
+    svg("text", { x: L + step * 3.5, y: Tp - 10, "text-anchor": "middle" }, "前一週"),
+    svg("text", { x: L + step * 10.5, y: Tp - 10, "text-anchor": "middle" }, "近 7 天"));
+  days.forEach((d, i) => {
+    const x = L + step * i + (step - bw) / 2, cx = x + bw / 2;
+    if (d.visits == null) {
+      root.append(svg("rect", { class: "miss", x, y: y(top * 0.5), width: bw, height: y(0) - y(top * 0.5) }), svg("text", { x: cx, y: y(top * 0.5) - 6, "text-anchor": "middle" }, "不列入"));
+    } else {
+      root.append(svg("rect", { class: "bar", x, y: y(d.visits), width: bw, height: y(0) - y(d.visits) }));
+      if (d.dawn) root.append(svg("rect", { class: "dawn", x, y: y(d.dawn), width: bw, height: y(0) - y(d.dawn) }));
+      root.append(svg("text", { class: "val", x: cx, y: y(d.visits) - 5, "text-anchor": "middle" }, d.visits));
+    }
+    root.append(svg("text", { x: cx, y: H - B + 18, "text-anchor": "middle" }, d.day));
+  });
+  target.replaceChildren(root);
+}
+
+/* ---------- 人員處置的共用狀態：居服員與家屬畫面都讀這一份（只在記憶體，重新整理就清掉） ---------- */
+const handling = {};   // 事件 id → { status: "handling" | "done", who, takenAt, result, doneAt, note }
+const human = id => handling[id] || { status: "pending" };
+function renderAll() { renderCaregiverTop(); renderCaregiverCards(); renderFamilyCards(); }
+
+function deviceText(c) {
+  return c.cleared ? [say("device_cleared", { time: c.cleared.label, cause: c.cleared.cause }), "ok"] : [say("device_unknown"), "warn"];
+}
+
+/* ---------- 居服員 ---------- */
+const C = DATA.caregiver;
+period($("cg-period"), C.period);
+
+function renderCaregiverTop() {
+  const inc = C.incidents, by = s => inc.filter(c => human(c.id).status === s);
+  const now = $("cg-now"); now.replaceChildren();
+  const pending = by("pending");
+  now.className = "now" + (pending.length ? " alert" : "");
+  now.append(el("strong", null, pending.length ? say("head_pending", { n: pending.length }) : say("head_none")));
+  const unknown = inc.filter(c => !c.cleared);
+  if (unknown.length) now.append(el("div", null, say("no_clear", { n: unknown.length, list: unknown.map(c => `${c.label} ${c.title}`).join("、") })));
+  C.offline_sentences.forEach(s => now.append(el("div", null, s)));
+  now.append(el("div", "hint", say("local_note")));
+  const counts = $("cg-counts"); counts.replaceChildren();
+  [["urgent", "count_pending", pending.length], ["check", "count_handling", by("handling").length], ["ok", "count_done", by("done").length]]
+    .forEach(([cls, key, n]) => counts.append(el("span", "pill " + cls, say(key, { n }))));
+}
+
+function cardTop(c, place) {
+  const top = el("div", "top");
+  top.append(el("span", "t", c.label), el("strong", null, c.title));
+  if (place) top.append(el("span", "hint", place));
+  return top;
+}
+
+function renderCaregiverCards() {
+  const box = $("cg-incidents");
+  // 其他卡片填到一半的表單不能因為重畫而消失
+  const open = {};
+  box.querySelectorAll(".form").forEach(f => { open[f.dataset.for] = f; });
+  box.replaceChildren();
+  for (let i = C.incidents.length - 1; i >= 0; i--) {
+    const card = caregiverCard(C.incidents[i]);
+    if (open[C.incidents[i].id] && human(C.incidents[i].id).status !== "done") card.append(open[C.incidents[i].id]);
+    box.append(card);
+  }
+  C.events.filter(e => e.level === "device").forEach(e => {
+    const card = el("article", "incident"); card.append(cardTop(e), el("div", "prompt", say("prompt_then", { prompt: e.prompt }))); box.append(card);
+  });
+  C.orphans.forEach(o => box.append(el("p", "hint", say("orphan", { time: o.label, title: o.title }))));
+}
+
+function caregiverCard(c) {
+  const card = el("article", "incident " + c.level), dl = el("dl", "state"), h = human(c.id);
+  card.dataset.id = c.id; card.tabIndex = -1;
+  card.append(cardTop(c, C.place), el("div", "prompt", say("prompt_then", { prompt: c.prompt })));
+  const [dev, devCls] = deviceText(c);
+  dl.append(el("dt", null, "裝置警報"), el("dd", devCls, dev));
+  const humanText = h.status === "done" ? say("human_done", { result: h.result, who: h.doneBy, time: h.doneAt })
+    : h.status === "handling" ? say("human_handling", { who: h.takenBy, time: h.takenAt }) : say("human_pending");
+  dl.append(el("dt", null, "人員處置"), el("dd", { pending: "warn", handling: "doing", done: "done" }[h.status], humanText));
+  if (h.status === "done" && h.takenBy) dl.append(el("dt", null, "接手"), el("dd", null, say("human_taken", { who: h.takenBy, time: h.takenAt })));
+  if (h.status === "done" && h.note) dl.append(el("dt", null, "備註"), el("dd", null, h.note));
+  card.append(dl);
+  if (h.status !== "done") {
+    const acts = el("div", "actions");
+    if (h.status === "pending") { const b = el("button", null, "接手處理"); b.type = "button"; b.onclick = () => openForm(card, c, "take"); acts.append(b); }
+    const r = el("button", null, "記錄處置"); r.type = "button"; r.onclick = () => openForm(card, c, "done"); acts.append(r);
+    card.append(acts);
+  }
+  return card;
+}
+
+// 表單：接手要填處理人代號與時間；記錄處置另外要選結果。欄位都填好才更新狀態
+function openForm(card, c, mode) {
+  card.querySelector(".form")?.remove();
+  const h = human(c.id), f = el("form", "form"), row = el("div", "row"), id = `${c.id}-${mode}`;
+  f.noValidate = true; f.dataset.for = c.id;
+  const field = (label, input) => { const l = el("label", null, label); l.append(input); return l; };
+  const who = el("input"); who.id = id + "-who"; who.maxLength = 20; who.autocomplete = "off"; who.placeholder = "CW-01"; who.value = h.takenBy || "";
+  const time = el("input"); time.id = id + "-time"; time.type = "time";
+  row.append(field(say("label_who"), who), field(say(mode === "take" ? "label_take_time" : "label_done_time", { day: C.period.day }), time));
+  f.append(row);
+  let result, note;
+  if (mode === "done") {
+    result = el("select"); result.id = id + "-result";
+    result.append(el("option", null, "請選擇"), ...DATA.results.map(r => el("option", null, r)));
+    result.firstChild.value = "";
+    note = el("textarea"); note.id = id + "-note"; note.maxLength = 200;
+    f.append(field("處置結果", result), field(say("label_note"), note));
+  }
+  const err = el("div", "err"); err.setAttribute("aria-live", "polite");
+  const acts = el("div", "actions"), save = el("button", "primary", mode === "take" ? "確認接手" : "儲存處置"), cancel = el("button", null, "取消");
+  save.type = "submit"; cancel.type = "button"; cancel.onclick = () => f.remove();
+  acts.append(save, cancel); f.append(err, acts);
+  f.addEventListener("submit", ev => {
+    ev.preventDefault();
+    const w = who.value.trim();
+    if (!w) { err.textContent = say("need_who"); who.focus(); return; }
+    if (!/^[A-Za-z0-9-]{1,20}$/.test(w)) { err.textContent = say("need_code"); who.focus(); return; }
+    if (!time.value) { err.textContent = say("need_time"); time.focus(); return; }
+    // 時間不能早於事件發生；處置不能早於接手（同一天的 HH:MM 可以直接比字串）
+    if (time.value < c.label) { err.textContent = say("too_early_event", { time: c.label }); time.focus(); return; }
+    if (mode === "done" && h.takenAt && time.value < h.takenAt) { err.textContent = say("too_early_taken", { time: h.takenAt }); time.focus(); return; }
+    if (mode === "done" && !result.value) { err.textContent = say("need_result"); result.focus(); return; }
+    handling[c.id] = mode === "take"
+      ? { status: "handling", takenBy: w, takenAt: time.value }
+      : { ...h, status: "done", doneBy: w, doneAt: time.value, result: result.value, note: note.value.trim() };
+    f.remove();
+    renderAll();
+    const msg = el("div", "hint", say("saved")); $("cg-now").append(msg); setTimeout(() => msg.remove(), 4000);
+    const again = document.querySelector(`#cg-incidents [data-id="${c.id}"]`); if (again) again.focus();
+  });
+  card.append(f); who.focus();
+}
+
+(function caregiverStatic() {
+  const urgent = C.incidents.filter(c => c.level === "urgent").length, check = C.incidents.filter(c => c.level === "check").length;
+  const pill = (cls, text) => $("cg-pills").append(el("span", "pill " + cls, text));
+  if (urgent) pill("urgent", say("pill_urgent", { n: urgent }));
+  if (check) pill("check", say("pill_check", { n: check }));
+  if (C.offline.length) pill("device", say("pill_offline", { n: C.offline.length }));
+  C.events.forEach(e => $("cg-records").append(el("li", null, e.record)));
+  $("cg-copy").onclick = () => {
+    const text = C.events.map(e => e.record).join("\n");
+    const fallback = () => { const r = document.createRange(); r.selectNodeContents($("cg-records")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("cg-copied").textContent = say("copy_fallback"); };
+    try { navigator.clipboard.writeText(text).then(() => { $("cg-copied").textContent = say("copied", { n: C.events.length }); }, fallback); } catch (err) { fallback(); }
+  };
+  $("cg-summary").textContent = C.summary;
+
+  // 提問一次選一題：單選（radio），方向鍵、Home、End 切換
+  let asked = null;
+  const buttons = C.ask.map(q => {
+    const b = el("button", null, q.text); b.type = "button"; b.setAttribute("role", "radio");
+    b.onclick = () => { asked = q.id; render(); };
+    $("cg-menu").append(b); return b;
+  });
+  function render() {
+    const out = $("cg-answer"); out.replaceChildren();
+    buttons.forEach((b, i) => { b.setAttribute("aria-checked", String(C.ask[i].id === asked)); b.tabIndex = (C.ask[i].id === asked || (!asked && i === 0)) ? 0 : -1; });
+    const q = C.ask.find(x => x.id === asked);
+    if (!q) { out.append(el("p", "hint", say("ask_hint"))); return; }
+    q.answer.split("\n").forEach(line => out.append(el("p", null, line)));
+  }
+  $("cg-menu").addEventListener("keydown", e => {
+    const n = C.ask.length, i = Math.max(0, C.ask.findIndex(q => q.id === asked));
+    const to = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: n - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault(); const k = (to + n) % n; asked = C.ask[k].id; render(); buttons[k].focus();
+  });
+  render();
+  chart($("cg-chart"), C.trend.days);
+  C.trend.lines.forEach(line => $("cg-trend-lines").append(el("li", null, line)));
+  $("cg-trend-rule").textContent = C.trend_rule + say("counted_days", { a: C.counted_days[0], b: C.counted_days[1] });
+})();
+
+/* ---------- 家屬 ---------- */
+const F = DATA.family;
+function renderFamilyCards() {
+  const box = $("fm-incidents"); box.replaceChildren();
+  for (let i = F.incidents.length - 1; i >= 0; i--) {
+    const c = F.incidents[i], h = human(c.id), card = el("article", "incident " + c.level), dl = el("dl", "state");
+    card.append(cardTop(c));
+    const [dev, devCls] = deviceText(c);
+    dl.append(el("dt", null, "裝置警報"), el("dd", devCls, dev));
+    const text = h.status === "done" ? say("family_done", { result: DATA.family_results[h.result] || h.result, time: h.doneAt })
+      : h.status === "handling" ? say("family_handling", { time: h.takenAt }) : say("human_pending");
+    dl.append(el("dt", null, "人員處置"), el("dd", { pending: "warn", handling: "doing", done: "done" }[h.status], text));
+    card.append(dl); box.append(card);
+  }
+}
+(function familyStatic() {
+  period($("fm-period"), F.period);
+  $("fm-note").textContent = say("family_note");
+  $("fm-offline").textContent = F.offline_sentences.join("");
+  $("fm-summary").textContent = F.summary;
+  const tl = timeline($("fm-track"), $("fm-ticks"), F.from, F.to);
+  F.visits.forEach(([a, b]) => tl.band("visit", a, b));
+  F.offline.forEach(([a, b]) => tl.band("off", a, b));
+  F.incidents.forEach(c => tl.mark(c.level, c.at));
+  chart($("fm-chart"), F.days);
+})();
+
+/* ---------- 系統管理人員 ---------- */
+(function admin() {
+  const D = DATA.devices, ref = DATA.devices_ref;
+  const LABEL = { online: "resolved", recovered: "resolved", offline: "urgent", silent: "urgent" };
+  const from = D.map(d => d.from).sort()[0];
+  $("ad-period").append(el("span", "tag", T.tag), "檢視日期 ", el("b", null, `${+ref.slice(5, 7)}/${+ref.slice(8, 10)}`), "時段 ", el("b", null, `${hm(from)}–${hm(ref)}`), say("admin_base", { time: hm(ref) }));
+  const bad = D.filter(d => d.status === "offline" || d.status === "silent" || d.unreadable || d.errors || !d.registry);
+  const now = $("ad-now");
+  if (bad.length) {
+    now.classList.add("alert");
+    now.append(el("strong", null, say("admin_head", { n: bad.length })));
+    bad.forEach(d => {
+      const facts = [];
+      if (d.status === "offline") facts.push(say("admin_offline", { time: hm(d.since), min: d.minutes_without_data }));
+      if (d.status === "silent") facts.push(say("admin_silent", { time: hm(d.since), min: d.minutes_without_data }));
+      if (d.unreadable) facts.push(say("admin_unreadable", { n: d.unreadable }));
+      if (d.errors) facts.push(say("admin_errors", { n: d.errors }));
+      if (!d.registry) facts.push(say("admin_unregistered"));
+      const line = el("div", "line"), b = el("button", null, "回報問題");
+      b.type = "button"; b.onclick = () => openReport(d);
+      line.append(el("span", null, say("admin_row", { device: d.device, place: d.place, facts: facts.join("；") })), b);
+      now.append(line);
+    });
+  } else {
+    now.append(el("strong", null, say("admin_none")));
+  }
+  const n = s => D.filter(d => d.status === s).length;
+  const pill = (cls, text) => $("ad-pills").append(el("span", "pill " + cls, text));
+  pill("ok", say("admin_online", { n: n("online") + n("recovered"), m: n("recovered") }));
+  if (n("offline")) pill("urgent", say("admin_offline_n", { n: n("offline") }));
+  if (n("silent")) pill("urgent", say("admin_silent_n", { n: n("silent") }));
+
+  D.forEach(d => {
+    const tr = el("tr"), status = el("td");
+    status.append(el("span", "chip " + LABEL[d.status], say("status_" + d.status)));
+    const spans = [...d.offline.map(([a, b]) => `${hm(a)}–${hm(b)}`), ...(d.since ? [say("since", { time: hm(d.since) })] : [])];
+    tr.append(el("td", "mono", d.device), el("td", "nowrap", d.place), status,
+      el("td", "mono", d.last_seen.slice(11)), el("td", "mono", spans.join("、") || "—"),
+      el("td", "num", d.records.toLocaleString("en-US")), el("td", "num", String(d.unreadable)), el("td", "num", String(d.errors)));
+    $("ad-rows").append(tr);
+  });
+  // 裝置問題回報：系統自動帶入遠端判斷需要的裝置資訊，管理員只補描述與現場檢查
+  let reportSeq = 0;
+  function reportText(d, extra) {
+    const g = d.diag, hms = t => t.slice(11);
+    // 判斷依據照實際事實組：斷線、逾時、無法判讀、裝置錯誤，有幾項寫幾項
+    const basis = [];
+    if (d.status === "offline") basis.push(say("r_basis_offline", { time: hms(d.since) }));
+    if (d.status === "silent") basis.push(say("r_basis_silent", { time: hms(d.since), gap: DATA.gap_s }));
+    if (d.status !== "offline" && d.status !== "silent") {
+      if (d.unreadable) basis.push(say("r_basis_unreadable", { n: d.unreadable }));
+      if (d.errors) basis.push(say("r_basis_errors", { n: d.errors }));
+    }
+    // 沒有設定紀錄另起一行列為異常，不當成狀態的判斷依據
+    const reg = d.registry, last = reg && reg.history[reg.history.length - 1];
+    const lines = [say("r_head", { device: d.device, place: d.place }),
+      reg ? say("r_place", { place: reg.place, area: reg.area, use: reg.use, at: last.at, by: last.by, change: last.change }) : say("r_place_unknown"),
+      basis.length ? say("r_status", { status: say("status_" + d.status), basis: basis.join("；") }) : say("r_status_plain", { status: say("status_" + d.status) })];
+    if (!reg) lines.push(say("r_unregistered"));
+    if (d.minutes_without_data != null) lines.push(say("r_base", { ref: hms(ref), min: d.minutes_without_data }));
+    lines.push(say("r_source"), say("r_topic", { topic: g.topic }), g.firmware ? say("r_firmware", { v: g.firmware }) : say("r_firmware_none", { keys: DATA.firmware_keys }));
+    lines.push(say("r_online", { spans: d.online.map(([a, b]) => `${hm(a)}–${hm(b)}`).join("、") }));
+    if (g.last_online_msg) lines.push(say("r_last_online", { time: hms(g.last_online_msg) }));
+    lines.push(say("r_records", { n: g.device_records, u: d.unreadable, o: g.offline_records, t: g.all_records, s: DATA.heartbeat_s, e: g.expected_records }));
+    if (g.median_gap_s != null) lines.push(say("r_median", { m: g.median_gap_s }));
+    if (g.max_gap) lines.push(say("r_maxgap", { g: g.max_gap[2], a: hms(g.max_gap[0]), b: hms(g.max_gap[1]) }));
+    if (g.last_device) lines.push(say("r_last", { time: hms(g.last_device) }));
+    if (g.offline_msg && g.offline_after_s != null) lines.push(say("r_offline_msg", { time: hms(g.offline_msg), s: g.offline_after_s }));
+    if (d.unreadable) lines.push(say("r_unreadable", { n: d.unreadable, sample: g.unreadable_sample }));
+    if (d.errors) lines.push(say("r_errors", { n: d.errors, list: g.error_messages.join("；") }));
+    lines.push(say("r_peers", { list: D.filter(x => x !== d).map(x => `${x.device} ${say("status_" + x.status)}`).join("、") }));
+    if (extra) lines.push(say("r_urgency", { u: extra.urgency }), say("r_checked", { list: extra.checked }), say("r_desc", { text: extra.desc }));
+    return lines.join("\n");
+  }
+  function openReport(d) {
+    const sec = $("ad-report-section"), box = $("ad-report");
+    sec.hidden = false; $("h-ad-report").textContent = say("report_title"); box.replaceChildren();
+    box.append(el("p", "hint", say("report_intro")), el("pre", null, reportText(d)));
+    const f = el("form", "form"); f.noValidate = true;
+    const urg = el("fieldset"); urg.append(el("legend", null, "急迫程度"));
+    ["urgency_care", "urgency_later"].forEach((k, i) => { const l = el("label"), r = el("input"); r.type = "radio"; r.name = "urgency"; r.id = "urg-" + i; r.value = say(k); l.append(r, " " + say(k)); urg.append(l); });
+    const chk = el("fieldset"); chk.append(el("legend", null, "現場已檢查"));
+    ["電源", "網路"].forEach((k, i) => { const l = el("label"), c = el("input"); c.type = "checkbox"; c.id = "chk-" + i; c.value = k; l.append(c, " " + k); chk.append(l); });
+    const desc = el("textarea"); desc.id = "report-desc"; desc.maxLength = 300;
+    const dl = el("label", null, say("label_desc")); dl.append(desc);
+    const err = el("div", "err"); err.setAttribute("aria-live", "polite");
+    const acts = el("div", "actions"), send = el("button", "primary", "送出（示意）"), copy = el("button", null, "複製回報內容"), note = el("span", "hint", "");
+    send.type = "submit"; copy.type = "button"; acts.append(send, copy, note);
+    f.append(urg, chk, dl, err, acts); box.append(f);
+    const extra = () => ({ urgency: f.querySelector("input[name=urgency]:checked")?.value || "",
+      checked: [...chk.querySelectorAll("input:checked")].map(c => c.value).join("、") || say("checked_none"), desc: desc.value.trim() });
+    copy.onclick = () => {
+      const text = reportText(d, extra());
+      try { navigator.clipboard.writeText(text).then(() => { note.textContent = say("copied", { n: text.split("\n").length }); }, () => { note.textContent = say("copy_fallback"); }); } catch (e) { note.textContent = say("copy_fallback"); }
+    };
+    f.addEventListener("submit", ev => {
+      ev.preventDefault();
+      if (!f.querySelector("input[name=urgency]:checked")) { err.textContent = say("need_urgency"); f.querySelector("#urg-0").focus(); return; }
+      if (!desc.value.trim()) { err.textContent = say("need_desc"); desc.focus(); return; }
+      reportSeq += 1;
+      const id = `TS-${ref.slice(0, 10).replaceAll("-", "")}-${String(reportSeq).padStart(2, "0")}`;
+      box.querySelector("pre").textContent = reportText(d, extra());
+      const done = el("p", "notice", say("report_sent", { id }));
+      done.setAttribute("role", "status"); done.tabIndex = -1;
+      f.replaceWith(done); done.focus();
+    });
+    sec.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    desc.focus({ preventScroll: true });
+  }
+
+  D.forEach(d => {
+    const tr = el("tr"), reg = d.registry;
+    if (!reg) { tr.append(el("td", "mono", d.device), el("td", null, say("admin_unregistered"))); $("ad-registry").append(tr); return; }
+    const last = reg.history[reg.history.length - 1], hist = el("td"), list = el("ul", "lines");
+    reg.history.slice().reverse().forEach(h => list.append(el("li", null, `${h.at}　${h.by}　${h.change}`)));
+    hist.append(list);
+    tr.append(el("td", "mono", d.device), el("td", "nowrap", reg.place), el("td", "nowrap", reg.area), el("td", "nowrap", reg.use), el("td", "mono", last.at), hist);
+    $("ad-registry").append(tr);
+  });
+
+  D.forEach((d, i) => {
+    const line = el("div", "device-line"), track = el("div", "track"), name = el("div");
+    name.append(el("div", "mono", d.device), el("div", "hint", d.place));
+    const box = el("div"); box.style.display = "grid"; box.style.gap = "4px"; box.append(track);
+    const ticks = i === D.length - 1 ? el("div", "ticks") : null;
+    if (ticks) box.append(ticks);
+    line.append(name, box); $("ad-lines").append(line);
+    const tl = timeline(track, ticks, from, ref);
+    d.online.forEach(([a, b]) => tl.band("on", a, b));
+    d.offline.forEach(([a, b]) => tl.band("off", a, b));
+    if (d.since) tl.band("off", d.since, ref);
+  });
+})();
+
+renderAll();
+show(fromHash());
+</script>
+</html>
