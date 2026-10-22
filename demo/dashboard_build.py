@@ -86,7 +86,7 @@ def _heartbeats(topic: str, start: str, end: str, busy: tuple[str, str] | None =
 def load_registry(path: Path = REGISTRY) -> dict[str, dict[str, Any]]:
     """裝置設定紀錄：{裝置代號: {place, area, use, history}}。居服員、系統管理人員畫面與回報單上的地點都從這裡查。
 
-    人工維護的檔案，建置時先檢查：欄位齊全、至少一筆變更紀錄、同一台不能登記兩次。
+    人工維護的檔案，建置時先檢查：欄位齊全、至少一筆變更紀錄且照時間排、同一台不能登記兩次。
     安裝與移機的紀錄帶 place，回報單依回報當時查地點（place_at）；第一筆一定要有地點，最後一次設定的地點要等於現在的地點。
     """
     entries = json.loads(path.read_text(encoding="utf-8"))["devices"]
@@ -97,6 +97,8 @@ def load_registry(path: Path = REGISTRY) -> dict[str, dict[str, Any]]:
             raise ValueError(f"裝置設定紀錄缺欄位或是空的：{e.get('device', '?')} {missing}")
         if any(not all(h.get(k) for k in ("at", "by", "change")) for h in e["history"]):
             raise ValueError(f"裝置設定紀錄的變更紀錄缺欄位：{e['device']}")
+        if [h["at"] for h in e["history"]] != sorted(h["at"] for h in e["history"]):
+            raise ValueError(f"裝置設定紀錄的變更紀錄沒有照時間排：{e['device']}")
         set_places = [h["place"] for h in e["history"] if h.get("place")]
         if not e["history"][0].get("place") or set_places[-1] != e["place"]:
             raise ValueError(f"裝置設定紀錄的地點和變更紀錄對不上：{e['device']}")
@@ -125,6 +127,12 @@ def _hours(a: str, b: str) -> float:
     return (datetime.fromisoformat(b) - datetime.fromisoformat(a)).total_seconds() / 3600
 
 
+REPEAT_AT_LEAST = 2     # 同一台回報幾次以上列為「反覆出問題」
+FINDING_AT_LEAST = 3    # 參考清單：至少幾件才列
+FINDING_RATIO = 2       # 韌體：每台件數要超過其他版本的幾倍
+SAME_ACTION_AT_LEAST = 2  # 同一類問題至少幾件已結案、都用同一種方式處理，才列入
+
+
 def _median(values: list[float]) -> float | None:
     values = sorted(values)
     if not values:
@@ -141,7 +149,8 @@ def ops_data(fleet: list[dict[str, str]], tickets: list[dict[str, Any]]) -> dict
     """維運後台：跨場域的維修統計與給韌體、硬體更新的參考。只用場域代號與裝置代號。
 
     韌體的分母是「用過這個版本的裝置」：現在是這一版的，加上回報單上記載曾經是這一版、後來更新的。
-    參考清單是固定規則找出來的「值得檢查」，不是原因判斷；門檻寫在這裡，改了要一起改 docs/17。
+    參考清單是固定規則找出來的「值得檢查」，不是原因判斷，只放給韌體與硬體的項目；反覆回報的裝置另外列表（repeat）。
+    門檻寫在檔案前面的常數，頁面上的列入規則照常數產生；改了要一起改 docs/17。
     """
     fw_devices: dict[str, set[str]] = {}
     for f in fleet:
@@ -192,10 +201,8 @@ def ops_data(fleet: list[dict[str, str]], tickets: list[dict[str, Any]]) -> dict
     # 同一類問題都用同一種方式處理：可以考慮在韌體裡自動處理或自我檢查
     for row in by_category:
         done = [t for t in tickets if t["category"] == row["key"] and t["resolved"]]
-        if len(done) >= 2 and len(row["actions"]) == 1:
+        if len(done) >= SAME_ACTION_AT_LEAST and len(row["actions"]) == 1:
             findings.append(UI_TEXT["f_action"].format(cat=row["label"], n=len(done), action=row["actions"][0]))
-    for r in repeat:
-        findings.append(UI_TEXT["f_repeat"].format(device=r["device"], site=r["site"], n=r["n"], cats="、".join(r["categories"])))
 
     done_all = [t for t in tickets if t["resolved"]]
     period = [min(t["reported"] for t in tickets)[:10], max(t["reported"] for t in tickets)[:10]]
@@ -214,11 +221,6 @@ def ops_data(fleet: list[dict[str, str]], tickets: list[dict[str, Any]]) -> dict
         "repeat": repeat,
         "findings": findings,
     }
-
-
-REPEAT_AT_LEAST = 2     # 同一台回報幾次以上列為「反覆出問題」
-FINDING_AT_LEAST = 3    # 參考清單：至少幾件才列
-FINDING_RATIO = 2       # 韌體：每台件數要超過其他版本的幾倍
 
 
 def place_of(device: str, registry: dict[str, dict[str, Any]]) -> str:
@@ -424,6 +426,7 @@ UI_TEXT: dict[str, str] = {
     "human_done": "已完成：{result}（{who}，{time}）",
     "family_handling": "處理中（{time} 接手）",
     "family_done": "已完成：{result}（{time}）",
+    "family_head": "這段時間有 {n} 件通知：人員已處置 {done} 件、處理中 {doing} 件、尚未確認 {pending} 件。",
     "family_note": "這份資料本身沒有人員處置紀錄，所以先顯示「尚未確認」；居服員在這一頁示意接手或記錄處置後，這裡會同步顯示。",
     "orphan": "{time} {title}：找不到對應的警報",
     "need_who": "請填處理人代號。",
@@ -513,19 +516,21 @@ UI_TEXT: dict[str, str] = {
     "t_downtime": "停機約 {h} 小時",
     "t_handler": "處理人：{who}",
     "t_waiting": "等待技術支援受理（示意）",
+    "t_place": "回報當時地點：{place}",
     "own_tickets_note": "只顯示本場域（{site}）的回報單；處理結果由技術支援結案時自動回到這裡（模擬資料）。",
     "ops_note": "跨場域的維修統計，只用場域代號與裝置代號，不含地點名稱、MAC、照護事件與長者資料（模擬資料）。",
     "ops_period": "{a}–{b}，{s} 個場域、{d} 台裝置",
     "ops_total": "回報單 {n} 件",
     "ops_open": "處理中 {n} 件",
     "ops_median": "從送出到結案的時間中位數 {h} 小時",
-    "ops_downtime": "停機合計約 {h} 小時",
+    "ops_downtime": "已結案的停機合計約 {h} 小時",
     "ops_none": "目前沒有符合規則的項目。",
-    "ops_rule": "列入規則：韌體每台件數超過其他版本的 {r} 倍且至少 {n} 件；硬體批次更換同一零件至少 {n} 次且其他批次合計不到一半；同一類問題都用同一種方式處理；同一台回報 {k} 次以上。這是值得檢查的項目，不是原因判斷。",
+    "ops_rule": "列入規則：韌體每台件數超過其他版本的 {r} 倍且至少 {n} 件；硬體批次更換同一零件至少 {n} 次且其他批次合計不到一半；同一類問題至少 {a} 件已結案、都用同一種方式處理。這是值得檢查的項目，不是原因判斷。",
+    "ops_repeat_rule": "同一台回報 {k} 次以上就列在這裡，建議追蹤。",
+    "ops_repeat_none": "沒有回報 {k} 次以上的裝置。",
     "f_fw": "韌體 {fw} 的「{cat}」回報 {n} 件（每台 {r} 件），其他版本每台 {o} 件；建議列入韌體檢查。",
     "f_batch": "硬體批次 {batch} 更換{part} {n} 次（這批共 {d} 台），其他批次合計 {o} 次；建議檢查這批的{part}。",
     "f_action": "「{cat}」{n} 件都以「{action}」處理；可以考慮讓韌體自己檢查這一項。",
-    "f_repeat": "{device}（{site}）回報 {n} 次：{cats}；建議追蹤這台。",
 }
 # 記錄處置的結果選項：只描述做了什麼，不判斷長者狀況（判斷寫在備註，由人負責）
 RESULTS = ["已到場確認", "已到場協助", "以電話或語音確認", "其他（見備註）"]
@@ -540,6 +545,7 @@ def check_ui_text(registry: dict[str, dict[str, Any]] | None = None,
     for device, entry in (registry or {}).items():
         texts += [(f"{device}.{k}", str(entry[k])) for k in ("place", "area", "use")]
         texts += [(f"{device}.history", h["change"]) for h in entry["history"]]
+        texts += [(f"{device}.history.place", h["place"]) for h in entry["history"] if h.get("place")]
     # 回報單的處理結果會直接顯示在頁面上
     for t in tickets or []:
         texts += [(f"{t['id']}.{k}", str(t[k])) for k in ("outcome", "action", "part") if t[k]]
@@ -610,7 +616,7 @@ def dashboard_data() -> dict[str, Any]:
             "heartbeat_s": int(HEARTBEAT.total_seconds()), "firmware_keys": "、".join(FIRMWARE_KEYS),
             "own_site": OWN_SITE, "own_tickets": [{**t, "place": place_at(t["device"], t["reported"], registry)}
                             for t in tickets if t["site"] == OWN_SITE], "ops": ops,
-            "categories": CATEGORY, "ops_rule": {"r": FINDING_RATIO, "n": FINDING_AT_LEAST, "k": REPEAT_AT_LEAST},
+            "categories": CATEGORY, "ops_rule": {"r": FINDING_RATIO, "n": FINDING_AT_LEAST, "a": SAME_ACTION_AT_LEAST, "k": REPEAT_AT_LEAST},
             "text": UI_TEXT, "results": RESULTS, "family_results": FAMILY_RESULTS}
 
 

@@ -41,9 +41,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .sim { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--sim-bg); color: var(--sim-ink); font-size: 13px; }
 .sim .wrap { display: flex; flex-wrap: wrap; gap: 4px 16px; padding-block: 8px; align-items: baseline; }
 .sim strong { letter-spacing: .08em; }
-header.top .wrap { padding-block: 24px 4px; display: grid; gap: 4px; }
+header.top .wrap { padding-block: 14px 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; }
 .eyebrow { font-size: 12px; letter-spacing: .12em; color: var(--muted); }
-h1 { font: 600 clamp(22px, 3.6vw, 30px)/1.25 var(--f-display); margin: 0; text-wrap: balance; }
+h1 { font: 600 clamp(17px, 2.4vw, 20px)/1.3 var(--f-display); margin: 0; text-wrap: balance; }
 h2 { font: 600 18px/1.3 var(--f-display); margin: 0; text-wrap: balance; }
 .lede { color: var(--muted); margin: 0; max-width: 64ch; }
 main .wrap { display: grid; gap: 24px; padding-block: 12px 48px; }
@@ -54,15 +54,17 @@ section { display: grid; gap: 12px; min-width: 0; }
 .head-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 
 /* 讀者切換 */
-.roles { display: flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 4px; width: fit-content; max-width: 100%; }
-.roles button { font: 500 15px var(--f-body); color: var(--muted); background: transparent; border: 0; border-radius: 7px; padding: 8px 16px; cursor: pointer; }
+.roles { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; gap: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 4px; width: fit-content; max-width: 100%; }
+.roles button { flex: none; white-space: nowrap; font: 500 15px var(--f-body); color: var(--muted); background: transparent; border: 0; border-radius: 7px; padding: 8px 16px; cursor: pointer; }
 .roles button[aria-selected="true"] { background: var(--accent); color: var(--surface); }
 .roles button:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 button { font: 500 14px var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
 button:hover { border-color: var(--accent); }
 
 /* 狀態摘要：一眼看出要不要處理 */
-.status-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.status-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.status-row .group { display: contents; }
+.status-row .sep { width: 1px; align-self: stretch; background: var(--line); margin-inline: 4px; }
 .pill { display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 14px; border: 1px solid var(--line); background: var(--surface); }
 .pill b { font: 500 17px var(--f-mono); font-variant-numeric: tabular-nums; }
 .pill.urgent { background: var(--urgent-bg); border-color: var(--urgent); color: var(--urgent); }
@@ -163,6 +165,8 @@ th.num { text-align: right; }
 .actions .hint { margin-left: 4px; }
 details.about { font-size: 14px; color: var(--muted); }
 details.about summary { cursor: pointer; font-weight: 500; color: var(--ink); }
+details.notice summary { cursor: pointer; font-weight: 500; }
+details.notice[open] summary { margin-bottom: 4px; }
 details.about ul { margin: 8px 0 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 72ch; }
 .menu button[aria-checked="true"] { background: var(--accent-soft); border-color: var(--accent); }
 /* 接手與記錄處置的表單 */
@@ -209,11 +213,10 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
     <section aria-labelledby="h-cg-now">
       <h2 id="h-cg-now">待處理事項</h2>
       <div class="now" id="cg-now" aria-live="polite"></div>
-      <div class="counts" id="cg-counts"></div>
-      <div class="status-row" id="cg-pills"></div>
+      <div class="status-row"><span class="group" id="cg-counts"></span><span class="sep" aria-hidden="true"></span><span class="group" id="cg-pills"></span></div>
     </section>
     <section aria-labelledby="h-cg-inc">
-      <div class="head-row"><h2 id="h-cg-inc">事件</h2><span class="hint">每件事分開看裝置警報與人員處置；新的在上</span></div>
+      <div class="head-row"><h2 id="h-cg-inc">事件</h2><span class="hint">每件事分開看裝置警報與人員處置；立即到場的排前面，同一類新的在上</span></div>
       <div class="feed" id="cg-incidents"></div>
     </section>
     <div class="split">
@@ -246,9 +249,10 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   <!-- 家屬：發生什麼事、有人處理了嗎 → 歷史 → 趨勢 -->
   <div id="view-family" role="tabpanel" aria-labelledby="tab-family" style="display:grid;gap:24px" hidden>
     <div class="period" id="fm-period"></div>
-    <p class="notice">模擬情境：假設這間浴廁只有 DEMO-ELDER-01 一位長者使用。現有的雷達資料是多人共用的場域資料，家屬不能看。家屬版的用語還沒擬定與審核，下面的事件摘要沿用居服員版。這間浴廁的地點也是假設的，不在裝置設定紀錄裡。</p>
+    <details class="notice"><summary>模擬情境說明</summary>假設這間浴廁只有 DEMO-ELDER-01 一位長者使用。現有的雷達資料是多人共用的場域資料，家屬不能看。家屬版的用語還沒擬定與審核，下面的事件摘要沿用居服員版。這間浴廁的地點也是假設的，不在裝置設定紀錄裡。</details>
     <section aria-labelledby="h-fm-now">
       <h2 id="h-fm-now">發生什麼事、有人處理了嗎</h2>
+      <div class="now" id="fm-now" aria-live="polite"></div>
       <p class="hint" style="margin:0" id="fm-note"></p>
       <div class="feed" id="fm-incidents"></div>
       <p class="hint" style="margin:0" id="fm-offline"></p>
@@ -325,6 +329,10 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
     <section aria-labelledby="h-op-find">
       <h2 id="h-op-find">給韌體與硬體更新的參考</h2>
       <div class="panel" style="display:grid;gap:10px"><ol class="lines" id="op-findings"></ol><p class="hint" style="margin:0" id="op-rule"></p></div>
+    </section>
+    <section aria-labelledby="h-op-rep">
+      <div class="head-row"><h2 id="h-op-rep">反覆回報的裝置</h2><span class="hint" id="op-repeat-rule"></span></div>
+      <div class="panel table-wrap"><table><thead><tr><th>裝置</th><th>場域</th><th class="num">回報</th><th>類型（依時間）</th></tr></thead><tbody id="op-repeat"></tbody></table></div>
     </section>
     <section aria-labelledby="h-op-fw">
         <h2 id="h-op-fw">依韌體版本</h2>
@@ -1534,11 +1542,7 @@ const DATA = {
   "findings": [
    "韌體 1.2 的「資料逾時」回報 7 件（每台 1.17 件），其他版本每台 0.08 件；建議列入韌體檢查。",
    "硬體批次 B1 更換電源供應器 4 次（這批共 5 台），其他批次合計 0 次；建議檢查這批的電源供應器。",
-   "「無法判讀」2 件都以「重新設定時間同步」處理；可以考慮讓韌體自己檢查這一項。",
-   "DEV-B01（SITE-B）回報 3 次：資料逾時、資料逾時、斷線；建議追蹤這台。",
-   "DEV-B02（SITE-B）回報 2 次：資料逾時、斷線；建議追蹤這台。",
-   "DEV-B03（SITE-B）回報 2 次：斷線、資料逾時；建議追蹤這台。",
-   "DEV-C01（SITE-C）回報 2 次：資料逾時、斷線；建議追蹤這台。"
+   "「無法判讀」2 件都以「重新設定時間同步」處理；可以考慮讓韌體自己檢查這一項。"
   ]
  },
  "categories": {
@@ -1550,6 +1554,7 @@ const DATA = {
  "ops_rule": {
   "r": 2,
   "n": 3,
+  "a": 2,
   "k": 2
  },
  "text": {
@@ -1572,6 +1577,7 @@ const DATA = {
   "human_done": "已完成：{result}（{who}，{time}）",
   "family_handling": "處理中（{time} 接手）",
   "family_done": "已完成：{result}（{time}）",
+  "family_head": "這段時間有 {n} 件通知：人員已處置 {done} 件、處理中 {doing} 件、尚未確認 {pending} 件。",
   "family_note": "這份資料本身沒有人員處置紀錄，所以先顯示「尚未確認」；居服員在這一頁示意接手或記錄處置後，這裡會同步顯示。",
   "orphan": "{time} {title}：找不到對應的警報",
   "need_who": "請填處理人代號。",
@@ -1658,19 +1664,21 @@ const DATA = {
   "t_downtime": "停機約 {h} 小時",
   "t_handler": "處理人：{who}",
   "t_waiting": "等待技術支援受理（示意）",
+  "t_place": "回報當時地點：{place}",
   "own_tickets_note": "只顯示本場域（{site}）的回報單；處理結果由技術支援結案時自動回到這裡（模擬資料）。",
   "ops_note": "跨場域的維修統計，只用場域代號與裝置代號，不含地點名稱、MAC、照護事件與長者資料（模擬資料）。",
   "ops_period": "{a}–{b}，{s} 個場域、{d} 台裝置",
   "ops_total": "回報單 {n} 件",
   "ops_open": "處理中 {n} 件",
   "ops_median": "從送出到結案的時間中位數 {h} 小時",
-  "ops_downtime": "停機合計約 {h} 小時",
+  "ops_downtime": "已結案的停機合計約 {h} 小時",
   "ops_none": "目前沒有符合規則的項目。",
-  "ops_rule": "列入規則：韌體每台件數超過其他版本的 {r} 倍且至少 {n} 件；硬體批次更換同一零件至少 {n} 次且其他批次合計不到一半；同一類問題都用同一種方式處理；同一台回報 {k} 次以上。這是值得檢查的項目，不是原因判斷。",
+  "ops_rule": "列入規則：韌體每台件數超過其他版本的 {r} 倍且至少 {n} 件；硬體批次更換同一零件至少 {n} 次且其他批次合計不到一半；同一類問題至少 {a} 件已結案、都用同一種方式處理。這是值得檢查的項目，不是原因判斷。",
+  "ops_repeat_rule": "同一台回報 {k} 次以上就列在這裡，建議追蹤。",
+  "ops_repeat_none": "沒有回報 {k} 次以上的裝置。",
   "f_fw": "韌體 {fw} 的「{cat}」回報 {n} 件（每台 {r} 件），其他版本每台 {o} 件；建議列入韌體檢查。",
   "f_batch": "硬體批次 {batch} 更換{part} {n} 次（這批共 {d} 台），其他批次合計 {o} 次；建議檢查這批的{part}。",
-  "f_action": "「{cat}」{n} 件都以「{action}」處理；可以考慮讓韌體自己檢查這一項。",
-  "f_repeat": "{device}（{site}）回報 {n} 次：{cats}；建議追蹤這台。"
+  "f_action": "「{cat}」{n} 件都以「{action}」處理；可以考慮讓韌體自己檢查這一項。"
  },
  "results": [
   "已到場確認",
@@ -1786,6 +1794,10 @@ function renderCaregiverTop() {
     .forEach(([cls, key, n]) => counts.append(el("span", "pill " + cls, say(key, { n }))));
 }
 
+// 立即到場在前、前往查看在後；同一類新的在上（排序固定，不隨接手狀態跳動）
+const URGENCY = { urgent: 0, check: 1 };
+const byUrgency = list => list.slice().sort((a, b) => (URGENCY[a.level] ?? 2) - (URGENCY[b.level] ?? 2) || (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+
 function cardTop(c, place) {
   const top = el("div", "top");
   top.append(el("span", "t", c.label), el("strong", null, c.title));
@@ -1799,11 +1811,11 @@ function renderCaregiverCards() {
   const open = {};
   box.querySelectorAll(".form").forEach(f => { open[f.dataset.for] = f; });
   box.replaceChildren();
-  for (let i = C.incidents.length - 1; i >= 0; i--) {
-    const card = caregiverCard(C.incidents[i]);
-    if (open[C.incidents[i].id] && human(C.incidents[i].id).status !== "done") card.append(open[C.incidents[i].id]);
+  byUrgency(C.incidents).forEach(c => {
+    const card = caregiverCard(c);
+    if (open[c.id] && human(c.id).status !== "done") card.append(open[c.id]);
     box.append(card);
-  }
+  });
   C.events.filter(e => e.level === "device").forEach(e => {
     const card = el("article", "incident"); card.append(cardTop(e), el("div", "prompt", say("prompt_then", { prompt: e.prompt }))); box.append(card);
   });
@@ -1918,6 +1930,9 @@ function openForm(card, c, mode) {
 const F = DATA.family;
 function renderFamilyCards() {
   const box = $("fm-incidents"); box.replaceChildren();
+  const n = s => F.incidents.filter(c => human(c.id).status === s).length;
+  $("fm-now").className = "now" + (n("pending") ? " alert" : "");
+  $("fm-now").replaceChildren(el("strong", null, say("family_head", { n: F.incidents.length, done: n("done"), doing: n("handling"), pending: n("pending") })));
   for (let i = F.incidents.length - 1; i >= 0; i--) {
     const c = F.incidents[i], h = human(c.id), card = el("article", "incident " + c.level), dl = el("dl", "state");
     card.append(cardTop(c));
@@ -1987,7 +2002,7 @@ function renderFamilyCards() {
   const hours = m => (m / 60).toFixed(1);
   function ticketCard(t) {
     const card = el("article", "incident"), top = el("div", "top"), dl = el("dl", "state");
-    top.append(el("span", "t", t.id), el("strong", null, DATA.categories[t.category]), el("span", "hint", `${t.device}・${t.place}`));
+    top.append(el("span", "t", t.id), el("strong", null, DATA.categories[t.category]), el("span", "hint", `${t.device}・${say("t_place", { place: t.place })}`));
     card.append(top);
     if (!t.reported) {
       dl.append(el("dt", null, "狀態"), el("dd", "warn", say("t_waiting")));
@@ -2128,6 +2143,9 @@ function renderFamilyCards() {
     [null, Object.entries(r.by_category).filter(([, n]) => n).map(([k, n]) => `${cat[k]} ${n}`).join("、") || "—"]]));
   O.by_batch.forEach(r => row("op-batch", [["mono", r.batch], ["num", r.devices], ["num", r.n],
     [null, Object.entries(r.parts).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join("、") || "—"]]));
+  $("op-repeat-rule").textContent = say("ops_repeat_rule", DATA.ops_rule);
+  if (O.repeat.length) O.repeat.forEach(r => row("op-repeat", [["mono", r.device], ["mono", r.site], ["num", r.n], [null, r.categories.join("、")]]));
+  else { const tr = el("tr"), td = el("td", "hint", say("ops_repeat_none", DATA.ops_rule)); td.colSpan = 4; tr.append(td); $("op-repeat").append(tr); }
   O.by_category.forEach(r => row("op-cat", [[null, r.label], ["num", r.n], ["num", one(r.median_h)], [null, r.actions.join("、") || "—"]]));
   O.tickets.slice().reverse().forEach(t => row("op-all", [["mono", t.id], ["mono", t.site], ["mono", t.device], [null, cat[t.category]],
     ["mono", t.fw], [null, t.outcome || say("t_doing")], [null, t.action || "—"], ["num", t.downtime_min == null ? "—" : hours(t.downtime_min)]]));
