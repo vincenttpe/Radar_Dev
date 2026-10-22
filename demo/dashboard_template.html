@@ -239,9 +239,10 @@ body { font-size: 16px; }
 .incident { border-radius: 14px; box-shadow: 0 1px 3px rgba(22,35,42,.08); }
 .incident[data-status="done"] { background: transparent; box-shadow: none; border-left-color: var(--ok); }
 .incident[data-status="done"] .prompt { color: var(--muted); font-size: 15px; font-weight: 400; }
-.incident .actions button { min-height: 44px; padding-inline: 18px; }
-.incident .actions button:first-child { background: var(--accent); border-color: var(--accent); color: var(--surface); }
-.incident.urgent[data-status="pending"] .actions button:first-child { background: var(--urgent); border-color: var(--urgent); }
+/* 只套卡片本身的按鈕列（> .actions），卡片裡表單的「確認接手」「儲存處置」維持原樣 */
+.incident > .actions button { min-height: 44px; padding-inline: 18px; }
+.incident > .actions button:first-child { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.incident.urgent[data-status="pending"] > .actions button:first-child { background: var(--urgent); border-color: var(--urgent); }
 .form button { min-height: 44px; }
 @keyframes formIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 .form { animation: formIn .18s ease-out; background: var(--surface); border-style: solid; }
@@ -250,12 +251,14 @@ body { font-size: 16px; }
 #cg-now.alert, #ad-now.alert { background: var(--urgent); border-color: var(--urgent); color: var(--surface); }
 #cg-now.alert .hint, #ad-now.alert .hint { color: inherit; opacity: .9; }
 #ad-now.alert button { color: var(--ink); }
+/* 紅底上的焦點框改用底色的反色，主色框在紅底上幾乎看不到 */
+#cg-now.alert :focus-visible, #ad-now.alert :focus-visible { outline-color: var(--surface); }
 /* 手機：讀者切換移到畫面底部，大拇指點得到 */
 @media (max-width: 640px) {
   body { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
   .switches .roles { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; width: auto; max-width: none; border-radius: 0; border-width: 1px 0 0; padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px)); gap: 4px; box-shadow: 0 -6px 20px rgba(0,0,0,.08); }
   .roles button { flex: 1 1 0; white-space: normal; line-height: 1.25; font-size: 13px; padding: 8px 4px; min-height: 52px; }
-  .incident .actions button { flex: 1 1 140px; }
+  .incident > .actions button { flex: 1 1 140px; }
 }
 /* 桌機：居服員畫面事件與照護紀錄並排；家屬畫面事件與摘要並排 */
 @media (min-width: 900px) {
@@ -522,7 +525,6 @@ document.querySelector(".roles").addEventListener("keydown", e => {
   if (to === undefined) return;
   e.preventDefault(); show(ROLES[to], true); $("tab-" + ROLES[to]).focus();
 });
-// 換情境要重新載入：兩個情境的資料不同，畫面上示意的接手與處置也會清掉
 // 換情境：同一個畫面週期內換回初始內容、用新情境重畫，畫面不閃；示意的接手與處置會清掉
 window.__onHash = () => {
   if (scenarioOf(location.hash) === SCENARIO) return show(fromHash());
