@@ -145,6 +145,11 @@ def _per_device(n: int, devices: int) -> str:
     return f"{n / devices:.2f}" if devices else "—"
 
 
+def _bar(name: str, value: float, shown: str, spoken: str) -> dict[str, Any]:
+    """比較圖的一根長條：value 決定長度，shown 標在旁邊，spoken 給螢幕閱讀器。"""
+    return {"name": name, "value": value, "shown": shown, "spoken": spoken}
+
+
 def ops_data(fleet: list[dict[str, str]], tickets: list[dict[str, Any]]) -> dict[str, Any]:
     """維運後台：跨場域的維修統計與給韌體、硬體更新的參考。只用場域代號與裝置代號。
 
@@ -220,6 +225,17 @@ def ops_data(fleet: list[dict[str, str]], tickets: list[dict[str, Any]]) -> dict
         "parts": parts,
         "repeat": repeat,
         "findings": findings,
+        # 比較圖：每類問題各版本的每台件數、各零件各批次的更換次數；長度、標示的數字與朗讀的句子都在這裡算好
+        "fw_bars": [{"title": label, "rows": [_bar(r["fw"], r["by_category"][key] / r["devices"],
+                                                   _per_device(r["by_category"][key], r["devices"]),
+                                                   UI_TEXT["bar_fw"].format(cat=label, fw=r["fw"], n=r["by_category"][key], d=r["devices"],
+                                                                            r=_per_device(r["by_category"][key], r["devices"])))
+                                              for r in by_fw]}
+                    for key, label in CATEGORY.items()],
+        "batch_bars": [{"title": part, "rows": [_bar(r["batch"], r["parts"][part], str(r["parts"][part]),
+                                                     UI_TEXT["bar_batch"].format(part=part, batch=r["batch"], n=r["parts"][part],
+                                                                                 d=r["devices"]))
+                                                for r in by_batch]} for part in parts],
     }
 
 
@@ -525,6 +541,8 @@ UI_TEXT: dict[str, str] = {
     "ops_median": "從送出到結案的時間中位數 {h} 小時",
     "ops_downtime": "已結案的停機合計約 {h} 小時",
     "ops_none": "目前沒有符合規則的項目。",
+    "bar_fw": "「{cat}」韌體 {fw}：每台 {r} 件（{n} 件，用過這版的裝置 {d} 台）",
+    "bar_batch": "{part}批次 {batch}：更換 {n} 次（這批共 {d} 台）",
     "ops_rule": "列入規則：韌體每台件數超過其他版本的 {r} 倍且至少 {n} 件；硬體批次更換同一零件至少 {n} 次且其他批次合計不到一半；同一類問題至少 {a} 件已結案、都用同一種方式處理。這是值得檢查的項目，不是原因判斷。",
     "ops_repeat_rule": "同一台回報 {k} 次以上就列在這裡，建議追蹤。",
     "ops_repeat_none": "沒有回報 {k} 次以上的裝置。",

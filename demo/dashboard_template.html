@@ -7,6 +7,7 @@
 /* 版面：頂端模擬資料橫幅 → 讀者切換（居服員／家屬／系統管理人員）→ 該讀者最常做的事放最上面，細節往下。色票沿用 demo/template.html */
 :root {
   --bg: #eef2f3; --surface: #ffffff; --ink: #16232a; --muted: #56676f; --line: #d3dce0;
+  --control: #78878e;
   --accent: #1c6a72; --accent-soft: #d5e8ea;
   --urgent: #b3302a; --urgent-bg: #fbe8e6; --check: #925f00; --check-bg: #faf0d9;
   --device: #4f5d65; --device-bg: #e3e8eb; --ok: #2a7548; --ok-bg: #e2f2e8;
@@ -17,6 +18,7 @@
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #0f161a; --surface: #172227; --ink: #e2eaed; --muted: #94a5ad; --line: #2a3940;
+  --control: #667a83;
   --accent: #66b6be; --accent-soft: #1d3a3e;
   --urgent: #f28b80; --urgent-bg: #3b1f1c; --check: #e2b45c; --check-bg: #342a18;
   --device: #a9b6bd; --device-bg: #222e34; --ok: #7fd09f; --ok-bg: #1a3325;
@@ -24,6 +26,7 @@
 } }
 :root[data-theme="dark"] {
   --bg: #0f161a; --surface: #172227; --ink: #e2eaed; --muted: #94a5ad; --line: #2a3940;
+  --control: #667a83;
   --accent: #66b6be; --accent-soft: #1d3a3e;
   --urgent: #f28b80; --urgent-bg: #3b1f1c; --check: #e2b45c; --check-bg: #342a18;
   --device: #a9b6bd; --device-bg: #222e34; --ok: #7fd09f; --ok-bg: #1a3325;
@@ -54,8 +57,23 @@ section { display: grid; gap: 12px; min-width: 0; }
 .roles button { flex: none; white-space: nowrap; font: 500 15px var(--f-body); color: var(--muted); background: transparent; border: 0; border-radius: 7px; padding: 8px 16px; cursor: pointer; }
 .roles button[aria-selected="true"] { background: var(--accent); color: var(--surface); }
 .roles button:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-button { font: 500 14px var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+button { font: 500 14px var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--control); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
 button:hover { border-color: var(--accent); }
+@media (pointer: coarse) {
+  button, .roles button, summary, .form fieldset label { min-height: 44px; }
+  summary, .form fieldset label { display: flex; align-items: center; gap: 6px; }
+}
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* 比較圖：單一色相的長條，數字直接標在旁邊，和下方表格同一份資料 */
+.bar-cap { font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+.bar-title { font-size: 14px; font-weight: 500; margin: 0 0 4px; }
+.bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.bars li { display: grid; grid-template-columns: 40px minmax(0, 1fr) 40px; align-items: center; gap: 8px; font-size: 13px; }
+.bar-track { height: 10px; border-left: 1px solid var(--control); }
+.bar-fill { display: block; height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; }
+.bar-val { text-align: right; }
+.form [aria-invalid="true"] { border-color: var(--urgent); border-width: 2px; }
 
 /* 狀態摘要：一眼看出要不要處理 */
 .status-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -170,7 +188,7 @@ details.about ul { margin: 8px 0 0; padding-left: 1.2em; display: grid; gap: 4px
 .form label { display: grid; gap: 4px; font-size: 14px; }
 .form .row { display: flex; flex-wrap: wrap; gap: 10px; }
 .form .row label { flex: 1 1 160px; min-width: 0; }
-.form input, .form select, .form textarea { font: 15px var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
+.form input, .form select, .form textarea { font: 15px var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--control); border-radius: 6px; padding: 6px 8px; width: 100%; }
 .form textarea { min-height: 3.2em; resize: vertical; }
 .form input:focus-visible, .form select:focus-visible, .form textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
 .form .err { color: var(--urgent); font-size: 13px; min-height: 1.2em; }
@@ -186,9 +204,9 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .now .line { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
 </style>
 
-<div class="sim"><div class="wrap">
-  <strong>模擬資料</strong><span>非真實裝置紀錄，裝置與長者代號都是虛構的</span>
-</div></div>
+<aside class="sim" aria-labelledby="sim-title"><div class="wrap">
+  <strong id="sim-title">模擬資料</strong><span>非真實裝置紀錄，裝置與長者代號都是虛構的</span>
+</div></aside>
 
 <header class="top"><div class="wrap">
   <div class="eyebrow">介面易用性評估・試做</div>
@@ -326,6 +344,13 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
       <h2 id="h-op-find">給韌體與硬體更新的參考</h2>
       <div class="panel" style="display:grid;gap:10px"><ol class="lines" id="op-findings"></ol><p class="hint" style="margin:0" id="op-rule"></p></div>
     </section>
+    <section aria-labelledby="h-op-bars">
+      <div class="head-row"><h2 id="h-op-bars">比較圖</h2><span class="hint">長條越長件數越多；數字和下方的表格相同</span></div>
+      <div class="split">
+        <div class="panel"><p class="bar-title">依韌體版本，各類問題的每台件數（件數 ÷ 用過這一版的裝置）</p><div id="op-fw-bars"></div></div>
+        <div class="panel"><p class="bar-title">依硬體批次，各零件的更換次數</p><div id="op-batch-bars"></div></div>
+      </div>
+    </section>
     <section aria-labelledby="h-op-rep">
       <div class="head-row"><h2 id="h-op-rep">反覆回報的裝置</h2><span class="hint" id="op-repeat-rule"></span></div>
       <div class="panel table-wrap"><table><thead><tr><th>裝置</th><th>場域</th><th class="num">回報</th><th>類型（依時間）</th></tr></thead><tbody id="op-repeat"></tbody></table></div>
@@ -387,7 +412,22 @@ function show(role, setHash) {
   if (setHash) { try { history.replaceState(null, "", "#" + role); } catch (e) {} }
   // 隱藏時畫的圖設不了捲動位置；切過去時再捲到近 7 天
   document.querySelectorAll("#view-" + role + " .chart").forEach(c => { c.scrollLeft = c.scrollWidth; });
+  scrollables();
 }
+
+// 真的會橫向捲動的圖表與表格才放進 Tab 順序（鍵盤要能捲），名稱沿用所在段落的標題；換畫面或改視窗寬度時重算
+function scrollables() {
+  document.querySelectorAll(".chart, .table-wrap").forEach(box => {
+    if (box.scrollWidth > box.clientWidth) {
+      const h = box.closest("section")?.querySelector("h2");
+      box.tabIndex = 0; box.setAttribute("role", "group");
+      if (h) box.setAttribute("aria-labelledby", h.id);
+    } else {
+      box.removeAttribute("tabindex"); box.removeAttribute("role"); box.removeAttribute("aria-labelledby");
+    }
+  });
+}
+addEventListener("resize", scrollables);
 const fromHash = () => ROLES.includes(location.hash.slice(1)) ? location.hash.slice(1) : "caregiver";
 document.querySelectorAll(".roles button").forEach(b => b.addEventListener("click", () => show(b.dataset.role, true)));
 document.querySelector(".roles").addEventListener("keydown", e => {
@@ -502,7 +542,9 @@ function renderCaregiverCards() {
 function caregiverCard(c) {
   const card = el("article", "incident " + c.level), dl = el("dl", "state"), h = human(c.id);
   card.dataset.id = c.id; card.tabIndex = -1;
-  card.append(cardTop(c, C.place), el("div", "prompt", say("prompt_then", { prompt: c.prompt })));
+  // 家屬畫面用同一組事件 id：這裡加上 cg- 前綴，id 才不會重複
+  const top = cardTop(c, C.place); top.id = `cg-${c.id}-top`;
+  card.append(top, el("div", "prompt", say("prompt_then", { prompt: c.prompt })));
   const [dev, devCls] = deviceText(c);
   dl.append(el("dt", null, "裝置警報"), el("dd", devCls, dev));
   const humanText = h.status === "done" ? say("human_done", { result: h.result, who: h.doneBy, time: h.doneAt })
@@ -515,9 +557,19 @@ function caregiverCard(c) {
     const acts = el("div", "actions");
     if (h.status === "pending") { const b = el("button", null, "接手處理"); b.type = "button"; b.onclick = () => openForm(card, c, "take"); acts.append(b); }
     const r = el("button", null, "記錄處置"); r.type = "button"; r.onclick = () => openForm(card, c, "done"); acts.append(r);
+    // 每張卡都有同名按鈕：螢幕閱讀器要能聽出是哪一件事
+    acts.querySelectorAll("button").forEach(b => b.setAttribute("aria-describedby", top.id));
     card.append(acts);
   }
   return card;
+}
+
+// 表單錯誤：只標出這一欄，錯誤說明接到欄位上，焦點移過去
+function invalid(form, err, field, text) {
+  form.querySelectorAll("[aria-invalid]").forEach(x => { x.removeAttribute("aria-invalid"); x.removeAttribute("aria-describedby"); });
+  err.textContent = text;
+  field.setAttribute("aria-invalid", "true"); field.setAttribute("aria-describedby", err.id);
+  field.focus();
 }
 
 // 表單：接手要填處理人代號與時間；記錄處置另外要選結果。欄位都填好才更新狀態
@@ -538,20 +590,21 @@ function openForm(card, c, mode) {
     note = el("textarea"); note.id = id + "-note"; note.maxLength = 200;
     f.append(field("處置結果", result), field(say("label_note"), note));
   }
-  const err = el("div", "err"); err.setAttribute("aria-live", "polite");
+  const err = el("div", "err"); err.setAttribute("aria-live", "polite"); err.id = id + "-err";
+  const fail = (field, key, fields) => invalid(f, err, field, say(key, fields));
   const acts = el("div", "actions"), save = el("button", "primary", mode === "take" ? "確認接手" : "儲存處置"), cancel = el("button", null, "取消");
   save.type = "submit"; cancel.type = "button"; cancel.onclick = () => f.remove();
   acts.append(save, cancel); f.append(err, acts);
   f.addEventListener("submit", ev => {
     ev.preventDefault();
     const w = who.value.trim();
-    if (!w) { err.textContent = say("need_who"); who.focus(); return; }
-    if (!/^[A-Za-z0-9-]{1,20}$/.test(w)) { err.textContent = say("need_code"); who.focus(); return; }
-    if (!time.value) { err.textContent = say("need_time"); time.focus(); return; }
+    if (!w) return fail(who, "need_who");
+    if (!/^[A-Za-z0-9-]{1,20}$/.test(w)) return fail(who, "need_code");
+    if (!time.value) return fail(time, "need_time");
     // 時間不能早於事件發生；處置不能早於接手（同一天的 HH:MM 可以直接比字串）
-    if (time.value < c.label) { err.textContent = say("too_early_event", { time: c.label }); time.focus(); return; }
-    if (mode === "done" && h.takenAt && time.value < h.takenAt) { err.textContent = say("too_early_taken", { time: h.takenAt }); time.focus(); return; }
-    if (mode === "done" && !result.value) { err.textContent = say("need_result"); result.focus(); return; }
+    if (time.value < c.label) return fail(time, "too_early_event", { time: c.label });
+    if (mode === "done" && h.takenAt && time.value < h.takenAt) return fail(time, "too_early_taken", { time: h.takenAt });
+    if (mode === "done" && !result.value) return fail(result, "need_result");
     handling[c.id] = mode === "take"
       ? { status: "handling", takenBy: w, takenAt: time.value }
       : { ...h, status: "done", doneBy: w, doneAt: time.value, result: result.value, note: note.value.trim() };
@@ -651,9 +704,10 @@ function renderFamilyCards() {
       if (d.unreadable) facts.push(say("admin_unreadable", { n: d.unreadable }));
       if (d.errors) facts.push(say("admin_errors", { n: d.errors }));
       if (!d.registry) facts.push(say("admin_unregistered"));
-      const line = el("div", "line"), b = el("button", null, "回報問題");
+      const line = el("div", "line"), b = el("button", null, "回報問題"), text = el("span", null, say("admin_row", { device: d.device, place: d.place, facts: facts.join("；") }));
+      text.id = "abn-" + d.device; b.setAttribute("aria-describedby", text.id);
       b.type = "button"; b.onclick = () => openReport(d);
-      line.append(el("span", null, say("admin_row", { device: d.device, place: d.place, facts: facts.join("；") })), b);
+      line.append(text, b);
       now.append(line);
     });
   } else {
@@ -751,7 +805,7 @@ function renderFamilyCards() {
     ["電源", "網路"].forEach((k, i) => { const l = el("label"), c = el("input"); c.type = "checkbox"; c.id = "chk-" + i; c.value = k; l.append(c, " " + k); chk.append(l); });
     const desc = el("textarea"); desc.id = "report-desc"; desc.maxLength = 300;
     const dl = el("label", null, say("label_desc")); dl.append(desc);
-    const err = el("div", "err"); err.setAttribute("aria-live", "polite");
+    const err = el("div", "err"); err.setAttribute("aria-live", "polite"); err.id = "report-err";
     const acts = el("div", "actions"), send = el("button", "primary", "送出（示意）"), copy = el("button", null, "複製回報內容"), note = el("span", "hint", "");
     send.type = "submit"; copy.type = "button"; acts.append(send, copy, note);
     f.append(urg, chk, dl, err, acts); box.append(f);
@@ -763,8 +817,8 @@ function renderFamilyCards() {
     };
     f.addEventListener("submit", ev => {
       ev.preventDefault();
-      if (!f.querySelector("input[name=urgency]:checked")) { err.textContent = say("need_urgency"); f.querySelector("#urg-0").focus(); return; }
-      if (!desc.value.trim()) { err.textContent = say("need_desc"); desc.focus(); return; }
+      if (!f.querySelector("input[name=urgency]:checked")) return invalid(f, err, f.querySelector("#urg-0"), say("need_urgency"));
+      if (!desc.value.trim()) return invalid(f, err, desc, say("need_desc"));
       reportSeq += 1;
       const id = `TS-${ref.slice(0, 10).replaceAll("-", "")}-${String(reportSeq).padStart(2, "0")}`;
       box.querySelector("pre").textContent = reportText(d, extra());
@@ -820,6 +874,24 @@ function renderFamilyCards() {
     [null, Object.entries(r.by_category).filter(([, n]) => n).map(([k, n]) => `${cat[k]} ${n}`).join("、") || "—"]]));
   O.by_batch.forEach(r => row("op-batch", [["mono", r.batch], ["num", r.devices], ["num", r.n],
     [null, Object.entries(r.parts).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join("、") || "—"]]));
+  // 同一張圖的長條共用一個比例尺，才能互相比較；數字直接標，螢幕閱讀器讀完整的一句
+  function bars(target, groups) {
+    const max = Math.max(...groups.flatMap(g => g.rows.map(r => r.value)), 0) || 1;
+    groups.forEach(g => {
+      const ul = el("ul", "bars");
+      g.rows.forEach(r => {
+        const li = el("li"), track = el("span", "bar-track"), fill = el("span", "bar-fill");
+        fill.style.width = `${(r.value / max) * 100}%`; track.append(fill);
+        // 畫面上看到的名稱、長條、數字對螢幕閱讀器隱藏，改讀 spoken 這一整句
+        const visual = [el("span", "mono", r.name), track, el("span", "mono bar-val", r.shown)];
+        visual.forEach(x => x.setAttribute("aria-hidden", "true"));
+        li.append(el("span", "sr-only", r.spoken), ...visual); ul.append(li);
+      });
+      $(target).append(el("p", "bar-cap", g.title), ul);
+    });
+  }
+  bars("op-fw-bars", O.fw_bars);
+  bars("op-batch-bars", O.batch_bars);
   $("op-repeat-rule").textContent = say("ops_repeat_rule", DATA.ops_rule);
   if (O.repeat.length) O.repeat.forEach(r => row("op-repeat", [["mono", r.device], ["mono", r.site], ["num", r.n], [null, r.categories.join("、")]]));
   else { const tr = el("tr"), td = el("td", "hint", say("ops_repeat_none", DATA.ops_rule)); td.colSpan = 4; tr.append(td); $("op-repeat").append(tr); }
