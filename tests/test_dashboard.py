@@ -1,10 +1,11 @@
-"""三種讀者的 Dashboard 試做頁 demo/dashboard.html（docs/17_介面易用性評估.md）。
+"""四種角色的 Dashboard 試做頁 demo/dashboard.html（docs/17_介面易用性評估.md）。
 
 居服員畫面的句子必須就是 radar-caregiver、radar-ask 的輸出；家屬畫面不能出現給居服員的處置提示與照護紀錄；
 系統管理人員只看裝置狀態。用語、模擬資料或頁面範本一改，沒重新產生就會失敗。
 """
 import importlib.util
 import json
+import re
 
 import pytest
 
@@ -338,6 +339,36 @@ def test_ops_findings_follow_the_rules(build, data):
     assert len(findings) == 3
     repeat = {r["device"]: r["n"] for r in data["ops"]["repeat"]}
     assert repeat == {"DEV-B01": 3, "DEV-B02": 2, "DEV-B03": 2, "DEV-C01": 2}
+
+
+def test_ops_bars_use_the_same_numbers_as_the_tables(data):
+    """比較圖和表格同一份資料：1.2 的資料逾時每台 1.17 件、B1 換電源供應器 4 次，一眼看得出來。"""
+    fw = {g["label"]: {r["fw"]: r["r"] for r in g["rows"]} for g in data["ops"]["fw_bars"]}
+    assert fw["資料逾時"] == {"1.2": "1.17", "1.3": "0.08"}
+    assert fw["斷線"] == {"1.2": "0.50", "1.3": "0.25"}
+    batch = {g["part"]: {r["batch"]: r["n"] for r in g["rows"]} for g in data["ops"]["batch_bars"]}
+    assert batch == {"電源供應器": {"B1": 4, "B2": 0, "B3": 0}}
+
+
+def _contrast(a: str, b: str) -> float:
+    def lum(h: str) -> float:
+        c = [int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        c = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def test_colors_meet_wcag_contrast_in_light_and_dark(repo):
+    """WCAG 2.1 AA：說明文字對背景 4.5:1；輸入框與按鈕的框線對背景 3:1（1.4.11）。深色模式另外算。"""
+    css = (repo / "demo" / "dashboard_template.html").read_text(encoding="utf-8")
+    blocks = re.findall(r":root(?:\[data-theme=\"dark\"\])?\s*\{([^}]*)\}", css)
+    assert len(blocks) == 2
+    for block in blocks:
+        tokens = dict(re.findall(r"--([\w-]+):\s*(#[0-9a-fA-F]{6})", block))
+        for surface in ("bg", "surface"):
+            assert _contrast(tokens["muted"], tokens[surface]) >= 4.5
+            assert _contrast(tokens["control"], tokens[surface]) >= 3
 
 
 def test_ops_rule_text_follows_the_thresholds(build, data):

@@ -220,6 +220,12 @@ def ops_data(fleet: list[dict[str, str]], tickets: list[dict[str, Any]]) -> dict
         "parts": parts,
         "repeat": repeat,
         "findings": findings,
+        # 比較圖：每類問題各版本的每台件數、各零件各批次的更換次數；頁面照這裡畫，不在前端重算
+        "fw_bars": [{"label": label, "rows": [{"fw": r["fw"], "n": r["by_category"][key], "devices": r["devices"],
+                                               "r": _per_device(r["by_category"][key], r["devices"])} for r in by_fw]}
+                    for key, label in CATEGORY.items()],
+        "batch_bars": [{"part": part, "rows": [{"batch": r["batch"], "n": r["parts"][part], "devices": r["devices"]}
+                                               for r in by_batch]} for part in parts],
     }
 
 
@@ -525,6 +531,8 @@ UI_TEXT: dict[str, str] = {
     "ops_median": "從送出到結案的時間中位數 {h} 小時",
     "ops_downtime": "已結案的停機合計約 {h} 小時",
     "ops_none": "目前沒有符合規則的項目。",
+    "bar_fw": "「{cat}」韌體 {fw}：每台 {r} 件（{n} 件，用過這版的裝置 {d} 台）",
+    "bar_batch": "{part}批次 {batch}：更換 {n} 次（這批共 {d} 台）",
     "ops_rule": "列入規則：韌體每台件數超過其他版本的 {r} 倍且至少 {n} 件；硬體批次更換同一零件至少 {n} 次且其他批次合計不到一半；同一類問題至少 {a} 件已結案、都用同一種方式處理。這是值得檢查的項目，不是原因判斷。",
     "ops_repeat_rule": "同一台回報 {k} 次以上就列在這裡，建議追蹤。",
     "ops_repeat_none": "沒有回報 {k} 次以上的裝置。",
