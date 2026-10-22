@@ -241,7 +241,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   <!-- 家屬：發生什麼事、有人處理了嗎 → 歷史 → 趨勢 -->
   <div id="view-family" role="tabpanel" aria-labelledby="tab-family" style="display:grid;gap:24px" hidden>
     <div class="period" id="fm-period"></div>
-    <p class="notice">模擬情境：假設這間浴廁只有 DEMO-ELDER-01 一位長者使用。現有的雷達資料是多人共用的場域資料，家屬不能看。家屬版的用語還沒擬定與審核，下面的事件摘要沿用居服員版。</p>
+    <p class="notice">模擬情境：假設這間浴廁只有 DEMO-ELDER-01 一位長者使用。現有的雷達資料是多人共用的場域資料，家屬不能看。家屬版的用語還沒擬定與審核，下面的事件摘要沿用居服員版。這間浴廁的地點也是假設的，不在裝置設定紀錄裡。</p>
     <section aria-labelledby="h-fm-now">
       <h2 id="h-fm-now">發生什麼事、有人處理了嗎</h2>
       <p class="hint" style="margin:0" id="fm-note"></p>
@@ -293,7 +293,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
       </div>
     </section>
     <section aria-labelledby="h-ad-reg">
-      <div class="head-row"><h2 id="h-ad-reg">裝置設定紀錄</h2><span class="hint">地點與設定變更；畫面與回報單上的地點都從這裡查</span></div>
+      <div class="head-row"><h2 id="h-ad-reg">裝置設定紀錄</h2><span class="hint">地點與設定變更；居服員與系統管理人員畫面、回報單上的地點都從這裡查</span></div>
       <div class="panel table-wrap">
         <table>
           <thead><tr><th>裝置</th><th>地點</th><th>區域</th><th>用途</th><th>最後更新</th><th>變更紀錄</th></tr></thead>
@@ -316,7 +316,8 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
       <li>居服員畫面的處置提示、照護紀錄、事件摘要、提問答案與趨勢句子，和 radar-caregiver、radar-ask --pick 的輸出相同，並先通過輸出檢查。頁面上其他固定句型寫在 demo/dashboard_build.py 的 UI_TEXT，建置時也要通過用語檢查；頁面只填入數字與時間。句子由範本產生，尚未接上在地模型。</li>
       <li>這份資料本身沒有人員處置紀錄。接手與記錄處置是示意流程：只存在這個瀏覽器分頁，重新整理就清掉；居服員與家屬畫面共用同一份狀態。要不要由人結案、處置結果有哪些選項，由照護流程決定。</li>
       <li>家屬畫面是模擬的個人情境；家屬版用語擬定、讀者怎麼登入與長者怎麼對應（會議清單 F4）確定前，不會正式提供。</li>
-      <li>裝置問題回報是示意：回報單自動帶入遠端判斷需要的裝置資訊（狀態與判斷依據、在線時段、收到與預期的紀錄筆數、心跳間隔、無法判讀紀錄的形狀、同時段其他裝置），不含照護事件與長者資料；按「送出」不會真的寄出。回報對象（廠商、團隊或機構資訊人員）待確認。</li>
+      <li>裝置問題回報是示意：回報單自動帶入遠端判斷需要的裝置資訊（安裝地點與設定紀錄、狀態與判斷依據、在線時段、收到的紀錄筆數與估算筆數、紀錄間隔、裝置最後一筆與斷線訊息的時間、無法判讀紀錄的形狀、同時段其他裝置），不含照護事件與長者資料；按「送出」不會真的寄出。回報對象（廠商、團隊或機構資訊人員）待確認。</li>
+      <li>裝置設定紀錄（demo/device_registry.json，模擬）記地點與設定變更；居服員、系統管理人員畫面與回報單的地點都從這裡查。家屬畫面的地點是假設的。</li>
       <li>系統管理人員這個讀者類型還沒正式加進讀者權限（audience.py）。逾時的基準在這裡用「所有裝置最晚收到資料的時間」，正式版要改用伺服器目前時間。</li>
       <li>網址加 #caregiver、#family、#admin 可以直接打開該讀者的畫面。</li>
     </ul>
@@ -637,16 +638,17 @@ function renderFamilyCards() {
       if (d.unreadable) basis.push(say("r_basis_unreadable", { n: d.unreadable }));
       if (d.errors) basis.push(say("r_basis_errors", { n: d.errors }));
     }
-    if (!d.registry) basis.push(say("admin_unregistered"));
+    // 沒有設定紀錄另起一行列為異常，不當成狀態的判斷依據
     const reg = d.registry, last = reg && reg.history[reg.history.length - 1];
     const lines = [say("r_head", { device: d.device, place: d.place }),
       reg ? say("r_place", { place: reg.place, area: reg.area, use: reg.use, at: last.at, by: last.by, change: last.change }) : say("r_place_unknown"),
-      say("r_status", { status: say("status_" + d.status), basis: basis.join("；") })];
+      basis.length ? say("r_status", { status: say("status_" + d.status), basis: basis.join("；") }) : say("r_status_plain", { status: say("status_" + d.status) })];
+    if (!reg) lines.push(say("r_unregistered"));
     if (d.minutes_without_data != null) lines.push(say("r_base", { ref: hms(ref), min: d.minutes_without_data }));
-    lines.push(say("r_source"), say("r_topic", { topic: g.topic }), g.firmware ? say("r_firmware", { v: g.firmware }) : say("r_firmware_none"));
+    lines.push(say("r_source"), say("r_topic", { topic: g.topic }), g.firmware ? say("r_firmware", { v: g.firmware }) : say("r_firmware_none", { keys: DATA.firmware_keys }));
     lines.push(say("r_online", { spans: d.online.map(([a, b]) => `${hm(a)}–${hm(b)}`).join("、") }));
     if (g.last_online_msg) lines.push(say("r_last_online", { time: hms(g.last_online_msg) }));
-    lines.push(say("r_records", { n: g.device_records, e: g.expected_records }));
+    lines.push(say("r_records", { n: g.device_records, u: d.unreadable, o: g.offline_records, t: g.all_records, s: DATA.heartbeat_s, e: g.expected_records }));
     if (g.median_gap_s != null) lines.push(say("r_median", { m: g.median_gap_s }));
     if (g.max_gap) lines.push(say("r_maxgap", { g: g.max_gap[2], a: hms(g.max_gap[0]), b: hms(g.max_gap[1]) }));
     if (g.last_device) lines.push(say("r_last", { time: hms(g.last_device) }));

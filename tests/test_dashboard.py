@@ -32,7 +32,8 @@ def test_committed_page_is_exactly_what_dashboard_build_produces(repo, build, da
 
 def test_caregiver_view_uses_the_radar_caregiver_and_radar_ask_output(repo, data, capsys):
     events = str(repo / "data" / "samples_demo" / "bathroom_morning.jsonl")
-    assert caregiver_main([events, "--place", "1 號廁所"]) == 0
+    place = data["caregiver"]["place"]   # 從裝置設定紀錄查到的地點
+    assert caregiver_main([events, "--place", place]) == 0
     out = capsys.readouterr().out.splitlines()
     cg = data["caregiver"]
     assert cg["summary"] == out[1]
@@ -40,7 +41,7 @@ def test_caregiver_view_uses_the_radar_caregiver_and_radar_ask_output(repo, data
     assert [f"{e['label']} {e['prompt']}" for e in cg["events"]] == prompts
     assert [e["record"] for e in cg["events"]] == out[out.index("【照護紀錄草稿】") + 1:]
     for q in cg["ask"]:
-        assert ask_main([events, "--place", "1 號廁所", "--pick", q["id"], "--json"]) == 0
+        assert ask_main([events, "--place", place, "--pick", q["id"], "--json"]) == 0
         assert q["answer"] == json.loads(capsys.readouterr().out)["answer"], q["id"]
     assert cg["offline_sentences"] == ["11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。"]
 
@@ -243,3 +244,45 @@ def test_static_page_text_passes_the_wording_check(repo):
 def test_family_never_sees_a_pointer_to_notes_it_cannot_read(data):
     assert all(r in data["results"] for r in data["family_results"])
     assert data["family_results"]["其他（見備註）"] == "其他處置"
+
+
+@pytest.mark.parametrize(("entry", "message"), [
+    ({"device": "X", "place": "甲", "area": "乙", "use": "丙", "history": []}, "缺欄位或是空的"),
+    ({"device": "X", "place": "甲", "area": "乙", "history": [{"at": "1", "by": "2", "change": "3"}]}, "缺欄位或是空的"),
+    ({"device": "X", "place": "甲", "area": "乙", "use": "丙", "history": [{"at": "1", "change": "3"}]}, "變更紀錄缺欄位"),
+])
+def test_registry_is_checked_when_loaded(build, tmp_path, entry, message):
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps({"devices": [entry]}, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        build.load_registry(path)
+
+
+def test_registry_rejects_a_device_registered_twice(build, tmp_path):
+    entry = {"device": "X", "place": "甲", "area": "乙", "use": "丙", "history": [{"at": "1", "by": "2", "change": "3"}]}
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps({"devices": [entry, entry]}, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(ValueError, match="重複登記"):
+        build.load_registry(path)
+
+
+def test_care_device_without_registry_stops_the_build(build, monkeypatch):
+    """居服員畫面的句子會進照護紀錄，不能寫出「未登記地點雷達偵測到…」。"""
+    real = build.load_registry
+    monkeypatch.setattr(build, "load_registry", lambda: {k: v for k, v in real().items() if k != build.CARE_DEVICE})
+    with pytest.raises(ValueError, match="沒有裝置設定紀錄"):
+        build.dashboard_data()
+
+
+def test_registry_install_dates_come_before_the_two_week_trend(build, data):
+    first_day = "2026-10-01"
+    install = build.load_registry()[build.CARE_DEVICE]["history"][0]["at"]
+    assert install < first_day, "設定紀錄的安裝時間要早於兩週趨勢的第一天"
+    assert data["caregiver"]["trend"]["days"][0]["day"] == "10/1"
+
+
+def test_last_seen_is_the_device_not_the_broker_offline_message(data):
+    third = next(d for d in data["devices"] if d["device"] == "DEMO-SIM-03")
+    assert third["last_seen"] == third["diag"]["last_device"] == "2026-10-14 11:40:00"
+    assert third["diag"]["all_records"] == third["records"] == 2643
+    assert (third["diag"]["device_records"], third["unreadable"], third["diag"]["offline_records"]) == (2641, 1, 1)

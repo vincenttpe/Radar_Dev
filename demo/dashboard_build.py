@@ -22,8 +22,8 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
-from itertools import pairwise
 from datetime import datetime, timedelta
+from itertools import pairwise
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -35,13 +35,20 @@ from radar_agent.caregiver import (
     MIN_COUNTED_DAYS,
     offline_sentences,
 )
-from radar_agent.device_events import HEARTBEAT_GAP, TIMESTAMP_FORMAT, Summary, disconnected, summarize
+from radar_agent.device_events import (
+    HEARTBEAT_GAP,
+    TIMESTAMP_FORMAT,
+    Summary,
+    disconnected,
+    summarize,
+)
 from radar_agent.output_check import wording_problems
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 PLACEHOLDER = "/*DASHBOARD_DATA*/null"
 REGISTRY = HERE / "device_registry.json"   # 模擬的裝置設定紀錄：裝置代號 → 安裝地點與設定變更
+CARE_DEVICE = "DEMO-SIM-01"                  # 居服員與家屬畫面用的模擬上午來自這台（data/samples_demo/bathroom_morning.jsonl）
 FAMILY_ELDER = "DEMO-ELDER-01"
 FAMILY_PLACE = f"{FAMILY_ELDER} 房間的浴廁"
 DAY = "2026-10-14"
@@ -72,9 +79,22 @@ def _heartbeats(topic: str, start: str, end: str, busy: tuple[str, str] | None =
 
 
 def load_registry(path: Path = REGISTRY) -> dict[str, dict[str, Any]]:
-    """裝置設定紀錄：{裝置代號: {place, area, use, history}}。畫面與回報單上的地點都從這裡查，不寫死在程式裡。"""
+    """裝置設定紀錄：{裝置代號: {place, area, use, history}}。居服員、系統管理人員畫面與回報單上的地點都從這裡查。
+
+    人工維護的檔案，建置時先檢查：欄位齊全、至少一筆變更紀錄、同一台不能登記兩次。
+    """
     entries = json.loads(path.read_text(encoding="utf-8"))["devices"]
-    return {e["device"]: e for e in entries}
+    registry: dict[str, dict[str, Any]] = {}
+    for e in entries:
+        missing = [k for k in ("device", "place", "area", "use", "history") if not e.get(k)]
+        if missing:
+            raise ValueError(f"裝置設定紀錄缺欄位或是空的：{e.get('device', '?')} {missing}")
+        if any(not all(h.get(k) for k in ("at", "by", "change")) for h in e["history"]):
+            raise ValueError(f"裝置設定紀錄的變更紀錄缺欄位：{e['device']}")
+        if e["device"] in registry:
+            raise ValueError(f"裝置設定紀錄重複登記：{e['device']}")
+        registry[e["device"]] = e
+    return registry
 
 
 def place_of(device: str, registry: dict[str, dict[str, Any]]) -> str:
@@ -98,6 +118,8 @@ def simulated_devices(morning: list[dict[str, Any]]) -> list[tuple[str, list[dic
 
 
 HEARTBEAT = timedelta(seconds=5)   # 實測心跳約每 5 秒一筆（docs/05 A10）
+# online 訊息裡韌體版本的欄位名稱還沒確認（docs/05 A28），先找這幾個；找不到就照實寫「沒有找到」
+FIRMWARE_KEYS = ("fw", "firmware", "version")
 
 
 def diagnostics(records: list[dict[str, Any]], summary: Summary) -> dict[str, Any]:
@@ -137,11 +159,13 @@ def diagnostics(records: list[dict[str, Any]], summary: Summary) -> dict[str, An
     firmware = None
     if online_msgs:
         payload = online_msgs[-1][1].get("payload", {})
-        firmware = next((str(payload[k]) for k in ("fw", "firmware", "version") if k in payload), None)
+        firmware = next((str(payload[k]) for k in FIRMWARE_KEYS if k in payload), None)
     sample = (summary.unreadable + summary.unknown_events)[:1]
     return {
         "topic": next((str(r["topic"]) for r in records if r.get("topic")), ""),
         "device_records": len(device),
+        "offline_records": len(offline_msgs),
+        "all_records": len(records),
         "expected_records": expected,
         "median_gap_s": int(median.total_seconds()) if median else None,
         "max_gap": [_stamp(biggest[0]), _stamp(biggest[1]), int((biggest[1] - biggest[0]).total_seconds())] if biggest else None,
@@ -186,6 +210,7 @@ def device_rows(devices: list[tuple[str, list[dict[str, Any]]]],
     rows = []
     for name, place, records, summary in summaries:
         last = summary.online[-1].end
+        diag = diagnostics(records, summary)
         if summary.ended_offline is not None:
             status, since = "offline", summary.ended_offline
         elif ref - last > HEARTBEAT_GAP:
@@ -198,7 +223,8 @@ def device_rows(devices: list[tuple[str, list[dict[str, Any]]]],
             "device": name,
             "place": place,
             "status": status,
-            "last_seen": _stamp(last),
+            # 最後收到「裝置」的資料：不含 broker 發的斷線訊息（回報單也這樣寫，兩處一致）
+            "last_seen": diag["last_device"] or _stamp(last),
             "since": _stamp(since) if since else None,
             "minutes_without_data": int((ref - since).total_seconds() // 60) if since else None,
             "from": _stamp(summary.online[0].start),
@@ -207,7 +233,7 @@ def device_rows(devices: list[tuple[str, list[dict[str, Any]]]],
             "records": len(records),
             "unreadable": len(summary.unreadable) + len(summary.unknown_events),
             "errors": len(summary.errors),
-            "diag": diagnostics(records, summary),
+            "diag": diag,
             # 設定紀錄：沒有就是 None，畫面上算異常（不知道裝置裝在哪裡）
             "registry": registry.get(name),
         })
@@ -310,6 +336,8 @@ UI_TEXT: dict[str, str] = {
     "report_intro": "下面是系統自動整理的裝置資訊，不含照護事件與長者資料；補上描述就能送出。",
     "r_head": "【裝置問題回報（模擬）】{device}（{place}）",
     "r_status": "狀態：{status}。判斷依據：{basis}",
+    "r_status_plain": "狀態：{status}",
+    "r_unregistered": "異常：沒有裝置設定紀錄，不知道裝在哪裡",
     "r_basis_offline": "{time} 收到斷線訊息（由 broker 發出），之後沒有再收到資料",
     "r_basis_silent": "最後收到資料 {time}，之後超過斷線判斷門檻（{gap} 秒，對應 keepalive）沒有資料，也沒有收到斷線訊息",
     "r_basis_unreadable": "裝置在線，但有 {n} 筆無法判讀的紀錄",
@@ -317,14 +345,14 @@ UI_TEXT: dict[str, str] = {
     "r_base": "基準時間：{ref}；距最後收到資料 {min} 分鐘",
     "r_topic": "裝置主題：{topic}",
     "r_online": "這段時間的在線時段：{spans}",
-    "r_records": "紀錄：裝置送出 {n} 筆，以每 5 秒一筆估算在線期間約 {e} 筆",
-    "r_median": "心跳間隔中位數 {m} 秒",
-    "r_maxgap": "明顯較長的間隔：{g} 秒（{a}–{b}）",
+    "r_records": "紀錄：收到可判讀時間的裝置紀錄 {n} 筆（另有無法判讀 {u} 筆、斷線訊息 {o} 筆，共 {t} 筆）；從第一筆到裝置最後一筆，以每 {s} 秒一筆估算約 {e} 筆",
+    "r_median": "紀錄間隔中位數 {m} 秒",
+    "r_maxgap": "明顯較長的紀錄間隔：{g} 秒（{a}–{b}）",
     "r_last": "裝置最後一筆紀錄：{time}",
     "r_offline_msg": "收到斷線訊息：{time}（距裝置最後一筆 {s} 秒，可核對 keepalive）",
     "r_last_online": "最近一次上線訊息：{time}",
     "r_firmware": "韌體版本：{v}",
-    "r_firmware_none": "韌體版本：資料裡沒有",
+    "r_firmware_none": "韌體版本：上線訊息裡沒有找到（已找 {keys}；欄位名稱待 A28 確認）",
     "r_source": "資料來源：模擬資料（雲端保存的裝置事件格式）；時間是接收端收到時補上的，不是裝置時間",
     "r_unreadable": "無法判讀的紀錄 {n} 筆，第一筆的形狀（payload 只留欄位名稱）：{sample}",
     "r_errors": "裝置錯誤 {n} 次：{list}",
@@ -334,7 +362,7 @@ UI_TEXT: dict[str, str] = {
     "r_desc": "管理員描述：{text}",
     "urgency_care": "影響照護，請盡快處理",
     "urgency_later": "可排程處理",
-    "checked_none": "尚未檢查",
+    "checked_none": "未勾選",
     "label_desc": "問題描述（不寫長者或人員姓名）",
     "need_urgency": "請選擇急迫程度。",
     "need_desc": "請填問題描述。",
@@ -376,7 +404,10 @@ def dashboard_data() -> dict[str, Any]:
     morning = build._jsonl(REPO / "data" / "samples_demo" / "bathroom_morning.jsonl")
     summary = summarize(morning)
     registry = load_registry()
-    caregiver = build.demo_data(place=place_of("DEMO-SIM-01", registry))
+    # 居服員畫面的句子會進照護紀錄：裝置沒有設定紀錄就不產生（不能出現「未登記地點雷達偵測到…」）
+    if CARE_DEVICE not in registry:
+        raise ValueError(f"{CARE_DEVICE} 沒有裝置設定紀錄，居服員畫面寫不出地點")
+    caregiver = build.demo_data(place=place_of(CARE_DEVICE, registry))
     days = caregiver["trend"]["days"]
     caregiver.update({
         "period": _period(caregiver),
@@ -408,6 +439,7 @@ def dashboard_data() -> dict[str, Any]:
     check_ui_text(registry)
     return {"caregiver": caregiver, "family": family, "devices": devices, "devices_ref": ref,
             "gap_s": int(HEARTBEAT_GAP.total_seconds()),
+            "heartbeat_s": int(HEARTBEAT.total_seconds()), "firmware_keys": "、".join(FIRMWARE_KEYS),
             "text": UI_TEXT, "results": RESULTS, "family_results": FAMILY_RESULTS}
 
 
