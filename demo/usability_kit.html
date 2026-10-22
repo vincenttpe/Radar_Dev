@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>介面試測用紙</title>
+<style>
+:root { --ink: #16232a; --muted: #56676f; --line: #78878e; --soft: #d3dce0; --bg: #eef2f3; --paper: #ffffff; }
+@media (prefers-color-scheme: dark) { :root { --ink: #e2eaed; --muted: #94a5ad; --line: #667a83; --soft: #2a3940; --bg: #0f161a; --paper: #172227; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.6 "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; }
+.sheet { background: var(--paper); max-width: 210mm; margin: 16px auto; padding: 14mm 12mm; border: 1px solid var(--soft); }
+h1 { font-size: 24px; margin: 4px 0 8px; } h2 { font-size: 20px; margin: 2px 0 4px; } h3 { font-size: 15px; margin: 18px 0 6px; }
+.kicker { font-size: 12px; letter-spacing: .08em; color: var(--muted); margin: 0; }
+.url, .note { color: var(--muted); font-size: 13px; margin: 4px 0; }
+code { font-family: ui-monospace, Menlo, monospace; font-size: .92em; }
+.fields { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 10px 0; }
+.field { display: inline-flex; align-items: flex-end; gap: 6px; }
+.line { display: inline-block; border-bottom: 1px solid var(--line); height: 1.2em; }
+.box { display: inline-block; width: 13px; height: 13px; border: 1.5px solid var(--line); border-radius: 2px; vertical-align: -2px; }
+ul.checks, ul.plain { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 4px; }
+ul.plain { padding-left: 1.2em; list-style: disc; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th, td { border: 1px solid var(--line); padding: 5px 6px; text-align: left; vertical-align: top; }
+th { font-weight: 500; color: var(--muted); }
+td.id { font-family: ui-monospace, Menlo, monospace; white-space: nowrap; }
+td.done { color: var(--muted); }
+td.ui, td.check { white-space: nowrap; }
+.w-sec { width: 4.5em; } .w-note { width: 8em; }
+ol.sus { padding: 0; list-style: none; display: grid; gap: 10px; }
+ol.sus .n { display: inline-block; width: 1.8em; color: var(--muted); }
+.ends { display: flex; justify-content: flex-end; gap: 70px; font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+.pair { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); margin-right: 12px; }
+.w-help { width: 3.2em; white-space: nowrap; }
+ol.sus li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.scale { display: inline-flex; gap: 8px; }
+.circle { display: inline-grid; place-items: center; width: 26px; height: 26px; border: 1.5px solid var(--line); border-radius: 50%; font-size: 12px; }
+.score { border-top: 1px dashed var(--line); margin-top: 16px; padding-top: 8px; }
+.score p { margin: 4px 0; }
+@media (max-width: 640px) { .sheet { margin: 0; border: 0; padding: 16px; } table { display: block; overflow-x: auto; } ol.sus li { grid-template-columns: minmax(0, 1fr); } }
+@media print {
+  :root { --ink: #000; --muted: #333; --line: #555; --soft: #999; --bg: #fff; --paper: #fff; }
+  @page { size: A4; margin: 12mm; }
+  body { background: #fff; }
+  .sheet { margin: 0; padding: 0; border: 0; max-width: none; break-after: page; }
+  .sheet:last-child { break-after: auto; }
+  tr { break-inside: avoid; }
+}
+</style>
+<main>
+<section class="sheet cover">
+  <header><p class="kicker">介面易用性評估・模擬資料</p><h1>介面試測用紙</h1>
+  <p>內容產生自 <code>docs/17_介面易用性評估.md</code>；那份文件改了，執行 <code>python demo/usability_kit.py</code> 重新產生。</p></header>
+  <h3>怎麼進行</h3>
+  <ul class="plain">
+    <li>每種讀者找 1～2 人。每人用官網 Dashboard 和試做頁各做一次同一組任務；一半的人先用官網，另一半先用試做頁。</li>
+    <li>每個畫面先做「第一關」，再做任務。兩種介面都做完，各填一張使用感受問卷（SUS）。</li>
+    <li>每個任務開始前先重新整理頁面：試做頁上示意的接手與處置只存在分頁裡，會影響下一個任務。</li>
+    <li>全部用模擬資料。記錄表與問卷只寫受測者代號（例如 P1），不寫姓名。</li>
+    <li>還沒拿到官網 Dashboard 的畫面時，可以先只測試做頁，確認任務本身設計得合不合理。</li>
+  </ul>
+  <h3>用紙</h3>
+  <ul class="plain"><li>主持人記錄表：居服員（6 個任務）</li><li>主持人記錄表：家屬（3 個任務）</li><li>主持人記錄表：系統管理人員（6 個任務）</li><li>主持人記錄表：維運後台（3 個任務）</li><li>使用感受問卷（SUS）：每人每種介面一張</li></ul>
+</section><section class="sheet">
+  <header><p class="kicker">主持人記錄表・有標準答案，不要給受測者看</p><h2>居服員</h2>
+  <p class="url">試做頁：<code>demo/dashboard.html#caregiver</code>（線上預覽網址加 <code>#caregiver</code>）</p></header>
+  <div class="fields"><span class="field"><span>受測者代號</span><span class="line" style="width:5em"></span></span><span class="field"><span>日期</span><span class="line" style="width:7em"></span></span><span class="field">先用 <span class="box"></span> 官網 <span class="box"></span> 試做頁</span></div>
+  <h3>第一關：打開畫面 10 秒內說出三件事</h3>
+  <ul class="checks"><li><span class="pair">官網 <span class="box"></span> 試做頁 <span class="box"></span></span>還有什麼要處理</li><li><span class="pair">官網 <span class="box"></span> 試做頁 <span class="box"></span></span>資料是哪個時段</li><li><span class="pair">官網 <span class="box"></span> 試做頁 <span class="box"></span></span>哪些狀況尚未確認</li></ul>
+  <p class="note">兩種介面各做一次，說得出來的在那個介面打勾。說不出來，就表示第一屏還要改。</p>
+  <h3>任務</h3>
+  <p class="note">每個任務開始前先重新整理頁面。秒數從看到題目算到說出答案或完成操作。</p>
+  <table><thead><tr><th>#</th><th>任務</th><th>做對的標準</th><th>介面</th><th class="w-sec">秒數</th><th>做對？</th><th class="w-help">求助</th><th class="w-note">備註</th></tr></thead>
+  <tbody><tr><td rowspan="2" class="id">C1</td><td rowspan="2">現在還有什麼要處理？</td><td rowspan="2" class="done">說出 4 件待接手；10:45 久待警報未收到裝置解除紀錄、狀態待確認；11:10–11:25 斷線期間無法判斷是否有跌倒</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td rowspan="2" class="id">C2</td><td rowspan="2">09:16 那件事，裝置警報和人員處置各是什麼狀態？</td><td rowspan="2" class="done">說出長者回覆需要協助；09:19 偵測到起身，裝置警報已解除；人員處置尚未確認</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td rowspan="2" class="id">C3</td><td rowspan="2">把這個上午的照護紀錄草稿複製到記事本</td><td rowspan="2" class="done">記事本裡有 8 行紀錄</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td rowspan="2" class="id">C4</td><td rowspan="2">11:10–11:25 這段時間有沒有人跌倒？</td><td rowspan="2" class="done">說出「無法判斷」（裝置斷線），不能說「沒有」</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td rowspan="2" class="id">C5</td><td rowspan="2">最近凌晨上廁所的次數有沒有變化？</td><td rowspan="2" class="done">說出「增加」，平均每日從 0.9 次變成 2.0 次</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td rowspan="2" class="id">C6</td><td rowspan="2">接手 09:16 那件事，記錄「已到場協助」，再確認家屬畫面看得到</td><td rowspan="2" class="done">頂端變成 3 件待接手、已完成 1 件；家屬畫面那件顯示「已完成：已到場協助」</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr></tbody></table>
+</section><section class="sheet">
+  <header><p class="kicker">主持人記錄表・有標準答案，不要給受測者看</p><h2>家屬</h2>
+  <p class="url">試做頁：<code>demo/dashboard.html#family</code>（線上預覽網址加 <code>#family</code>）</p></header>
+  <div class="fields"><span class="field"><span>受測者代號</span><span class="line" style="width:5em"></span></span><span class="field"><span>日期</span><span class="line" style="width:7em"></span></span><span class="field">先用 <span class="box"></span> 官網 <span class="box"></span> 試做頁</span></div>
+  <h3>第一關：打開畫面 10 秒內說出三件事</h3>
+  <ul class="checks"><li><span class="pair">官網 <span class="box"></span> 試做頁 <span class="box"></span></span>還有什麼要處理</li><li><span class="pair">官網 <span class="box"></span> 試做頁 <span class="box"></span></span>資料是哪個時段</li><li><span class="pair">官網 <span class="box"></span> 試做頁 <span class="box"></span></span>哪些狀況尚未確認</li></ul>
+  <p class="note">兩種介面各做一次，說得出來的在那個介面打勾。說不出來，就表示第一屏還要改。</p>
+  <h3>任務</h3>
+  <p class="note">每個任務開始前先重新整理頁面。秒數從看到題目算到說出答案或完成操作。</p>
+  <table><thead><tr><th>#</th><th>任務</th><th>做對的標準</th><th>介面</th><th class="w-sec">秒數</th><th>做對？</th><th class="w-help">求助</th><th class="w-note">備註</th></tr></thead>
+  <tbody><tr><td rowspan="2" class="id">F1</td><td rowspan="2">這段時間發生什麼事？有人處理了嗎？</td><td rowspan="2" class="done">說出 2 次跌倒警報、1 次主動呼救、1 次久待警報；人員處置都尚未確認（這份資料沒有人員處置紀錄）；11:10–11:25 斷線期間無法判斷</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td rowspan="2" class="id">F2</td><td rowspan="2">最近兩週每天大概去幾次？</td><td rowspan="2" class="done">說出每天大約 6～10 次，並指出 10/10 那天不列入</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td rowspan="2" class="id">F3</td><td rowspan="2">這些資料是哪一天、哪個時段？</td><td rowspan="2" class="done">說出 10/14 上午 08:00–11:59，是模擬資料</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr></tbody></table>
+</section><section class="sheet">
+  <header><p class="kicker">主持人記錄表・有標準答案，不要給受測者看</p><h2>系統管理人員</h2>
+  <p class="url">試做頁：<code>demo/dashboard.html#admin</code>（線上預覽網址加 <code>#admin</code>）</p></header>
+  <div class="fields"><span class="field"><span>受測者代號</span><span class="line" style="width:5em"></span></span><span class="field"><span>日期</span><span class="line" style="width:7em"></span></span><span class="field">先用 <span class="box"></span> 官網 <span class="box"></span> 試做頁</span></div>
+  <h3>第一關：打開畫面 10 秒內說出三件事</h3>
+  <ul class="checks"><li><span class="pair">官網 <span class="box"></span> 試做頁 <span class="box"></span></span>還有什麼要處理</li><li><span class="pair">官網 <span class="box"></span> 試做頁 <span class="box"></span></span>資料是哪個時段</li><li><span class="pair">官網 <span class="box"></span> 試做頁 <span class="box"></span></span>哪些狀況尚未確認</li></ul>
+  <p class="note">兩種介面各做一次，說得出來的在那個介面打勾。說不出來，就表示第一屏還要改。</p>
+  <h3>任務</h3>
+  <p class="note">每個任務開始前先重新整理頁面。秒數從看到題目算到說出答案或完成操作。</p>
+  <table><thead><tr><th>#</th><th>任務</th><th>做對的標準</th><th>介面</th><th class="w-sec">秒數</th><th>做對？</th><th class="w-help">求助</th><th class="w-note">備註</th></tr></thead>
+  <tbody><tr><td rowspan="2" class="id">A1</td><td rowspan="2">現在哪幾台裝置有異常？</td><td rowspan="2" class="done">說出 DEMO-SIM-03（11:40 收到斷線訊息、另有 1 筆無法判讀）與 DEMO-SIM-04（10:30 之後資料逾時，也沒有收到斷線訊息）</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td rowspan="2" class="id">A2</td><td rowspan="2">1 號廁所的裝置今天斷線過嗎？多久？</td><td rowspan="2" class="done">說出 11:10–11:25，約 15 分鐘，已恢復</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td rowspan="2" class="id">A3</td><td rowspan="2">DEMO-SIM-04 最後收到資料是什麼時候？之後多久沒有資料？</td><td rowspan="2" class="done">說出 10:30，之後 89 分鐘沒收到資料（以 11:59 為基準）</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td rowspan="2" class="id">A4</td><td rowspan="2">把 DEMO-SIM-03 的問題回報給技術支援</td><td rowspan="2" class="done">只選急迫程度、補描述（與檢查項目）就送出；回報單上有安裝地點、斷線時間、無法判讀 1 筆、同時段其他裝置的狀態</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td rowspan="2" class="id">A5</td><td rowspan="2">DEMO-SIM-03 原本裝在哪裡？什麼時候移到現在的地點？</td><td rowspan="2" class="done">說出原本在 5 號廁所（B 棟 1 樓），2026-10-12 16:10 由 IT-02 移到 3 號廁所（A 棟 2 樓）</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td rowspan="2" class="id">A6</td><td rowspan="2">DEMO-SIM-04 上次出問題是怎麼處理的？</td><td rowspan="2" class="done">說出 10/12 資料逾時，重新開機後已修復，停機約 4.8 小時</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr></tbody></table>
+</section><section class="sheet">
+  <header><p class="kicker">主持人記錄表・有標準答案，不要給受測者看</p><h2>維運後台</h2>
+  <p class="url">試做頁：<code>demo/dashboard.html#ops</code>（線上預覽網址加 <code>#ops</code>）</p></header>
+  <div class="fields"><span class="field"><span>受測者代號</span><span class="line" style="width:5em"></span></span><span class="field"><span>日期</span><span class="line" style="width:7em"></span></span><span class="field">先用 <span class="box"></span> 官網 <span class="box"></span> 試做頁</span></div>
+  <h3>第一關：打開畫面 10 秒內說出三件事</h3>
+  <ul class="checks"><li><span class="pair">官網 <span class="box"></span> 試做頁 <span class="box"></span></span>還有什麼要處理</li><li><span class="pair">官網 <span class="box"></span> 試做頁 <span class="box"></span></span>資料是哪個時段</li><li><span class="pair">官網 <span class="box"></span> 試做頁 <span class="box"></span></span>哪些狀況尚未確認</li></ul>
+  <p class="note">兩種介面各做一次，說得出來的在那個介面打勾。說不出來，就表示第一屏還要改。</p>
+  <h3>任務</h3>
+  <p class="note">每個任務開始前先重新整理頁面。秒數從看到題目算到說出答案或完成操作。</p>
+  <table><thead><tr><th>#</th><th>任務</th><th>做對的標準</th><th>介面</th><th class="w-sec">秒數</th><th>做對？</th><th class="w-help">求助</th><th class="w-note">備註</th></tr></thead>
+  <tbody><tr><td rowspan="2" class="id">O1</td><td rowspan="2">哪一個韌體版本值得檢查？為什麼？</td><td rowspan="2" class="done">說出 1.2 的資料逾時每台 1.17 件，其他版本每台 0.08 件</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td rowspan="2" class="id">O2</td><td rowspan="2">哪一批硬體值得檢查？</td><td rowspan="2" class="done">說出 B1，電源供應器換了 4 次，其他批次 0 次</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td rowspan="2" class="id">O3</td><td rowspan="2">現在還有幾張回報單沒結案？</td><td rowspan="2" class="done">說出 1 張（DEV-B03，資料逾時）</td><td class="ui">官網</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr><tr><td class="ui">試做頁</td><td></td><td class="check"><span class="box"></span> 對 <span class="box"></span> 錯</td><td class="check"><span class="box"></span></td><td></td></tr></tbody></table>
+</section><section class="sheet">
+  <header><p class="kicker">受測者填寫・每種介面做完各填一張</p><h2>使用感受問卷（SUS）</h2></header>
+  <div class="fields"><span class="field"><span>受測者代號</span><span class="line" style="width:5em"></span></span><span class="field">介面 <span class="box"></span> 官網 <span class="box"></span> 試做頁</span></div>
+  <p class="note">每一題圈一個數字：1 是非常不同意，5 是非常同意。不用想太久，憑第一印象就好。</p>
+  <p class="ends"><span>1 非常不同意</span><span>5 非常同意</span></p>
+  <ol class="sus"><li><span class="q"><span class="n">1.</span>我想我會願意經常使用這個介面。</span><span class="scale"><span class="opt"><span class="circle">1</span></span><span class="opt"><span class="circle">2</span></span><span class="opt"><span class="circle">3</span></span><span class="opt"><span class="circle">4</span></span><span class="opt"><span class="circle">5</span></span></span></li><li><span class="q"><span class="n">2.</span>我覺得這個介面沒必要地複雜。</span><span class="scale"><span class="opt"><span class="circle">1</span></span><span class="opt"><span class="circle">2</span></span><span class="opt"><span class="circle">3</span></span><span class="opt"><span class="circle">4</span></span><span class="opt"><span class="circle">5</span></span></span></li><li><span class="q"><span class="n">3.</span>我覺得這個介面很容易使用。</span><span class="scale"><span class="opt"><span class="circle">1</span></span><span class="opt"><span class="circle">2</span></span><span class="opt"><span class="circle">3</span></span><span class="opt"><span class="circle">4</span></span><span class="opt"><span class="circle">5</span></span></span></li><li><span class="q"><span class="n">4.</span>我想我需要有技術人員協助，才能使用這個介面。</span><span class="scale"><span class="opt"><span class="circle">1</span></span><span class="opt"><span class="circle">2</span></span><span class="opt"><span class="circle">3</span></span><span class="opt"><span class="circle">4</span></span><span class="opt"><span class="circle">5</span></span></span></li><li><span class="q"><span class="n">5.</span>我覺得這個介面的各項功能整合得很好。</span><span class="scale"><span class="opt"><span class="circle">1</span></span><span class="opt"><span class="circle">2</span></span><span class="opt"><span class="circle">3</span></span><span class="opt"><span class="circle">4</span></span><span class="opt"><span class="circle">5</span></span></span></li><li><span class="q"><span class="n">6.</span>我覺得這個介面有太多不一致的地方。</span><span class="scale"><span class="opt"><span class="circle">1</span></span><span class="opt"><span class="circle">2</span></span><span class="opt"><span class="circle">3</span></span><span class="opt"><span class="circle">4</span></span><span class="opt"><span class="circle">5</span></span></span></li><li><span class="q"><span class="n">7.</span>我想大部分的人很快就能學會使用這個介面。</span><span class="scale"><span class="opt"><span class="circle">1</span></span><span class="opt"><span class="circle">2</span></span><span class="opt"><span class="circle">3</span></span><span class="opt"><span class="circle">4</span></span><span class="opt"><span class="circle">5</span></span></span></li><li><span class="q"><span class="n">8.</span>我覺得這個介面用起來很麻煩。</span><span class="scale"><span class="opt"><span class="circle">1</span></span><span class="opt"><span class="circle">2</span></span><span class="opt"><span class="circle">3</span></span><span class="opt"><span class="circle">4</span></span><span class="opt"><span class="circle">5</span></span></span></li><li><span class="q"><span class="n">9.</span>使用這個介面時，我很有信心。</span><span class="scale"><span class="opt"><span class="circle">1</span></span><span class="opt"><span class="circle">2</span></span><span class="opt"><span class="circle">3</span></span><span class="opt"><span class="circle">4</span></span><span class="opt"><span class="circle">5</span></span></span></li><li><span class="q"><span class="n">10.</span>我需要先學很多東西，才能開始使用這個介面。</span><span class="scale"><span class="opt"><span class="circle">1</span></span><span class="opt"><span class="circle">2</span></span><span class="opt"><span class="circle">3</span></span><span class="opt"><span class="circle">4</span></span><span class="opt"><span class="circle">5</span></span></span></li></ol>
+  <div class="score"><p class="kicker">主持人計分（受測者不用填）</p>
+  <p>單數題：選的分數 − 1；雙數題：5 − 選的分數。十題加總 × 2.5 ＝ 0～100 分。</p>
+  <p><span class="field"><span>加總</span><span class="line" style="width:4em"></span></span> × 2.5 ＝ <span class="field"><span>SUS 分數</span><span class="line" style="width:4em"></span></span></p></div>
+  <p class="note">譯文是本 repo 自己翻的，不是經過驗證的正式中文版（docs/17）。人數少，只能看兩種介面差得多不多，不能當驗收數字。</p>
+</section>
+</main>
+</html>
