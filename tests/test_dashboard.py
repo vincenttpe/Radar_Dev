@@ -254,6 +254,9 @@ def test_family_never_sees_a_pointer_to_notes_it_cannot_read(data):
       "history": [{"at": "1", "by": "2", "change": "3"}]}, "地點和變更紀錄對不上"),
     ({"device": "X", "place": "甲", "area": "乙", "use": "丙",
       "history": [{"at": "1", "by": "2", "change": "3", "place": "丁"}]}, "地點和變更紀錄對不上"),
+    ({"device": "X", "place": "甲", "area": "乙", "use": "丙",
+      "history": [{"at": "2", "by": "2", "change": "3", "place": "甲"},
+                  {"at": "1", "by": "2", "change": "4"}]}, "沒有照時間排"),
 ])
 def test_registry_is_checked_when_loaded(build, tmp_path, entry, message):
     path = tmp_path / "registry.json"
@@ -307,6 +310,14 @@ def test_ticket_place_is_where_the_device_was_when_reported(build, data):
     assert build.place_at("X-9", "2026-10-12 16:10", registry) == "未登記地點"
 
 
+def test_registry_history_place_goes_through_the_wording_check(build):
+    registry = build.load_registry()
+    entry = registry["DEMO-SIM-03"]
+    registry["DEMO-SIM-03"] = {**entry, "history": [{**entry["history"][0], "place": "診斷室"}, *entry["history"][1:]]}
+    with pytest.raises(ValueError, match=r"history\.place"):
+        build.check_ui_text(registry)
+
+
 def test_ticket_text_goes_through_the_wording_check(build):
     _, tickets = build.load_maintenance()
     tickets[0] = {**tickets[0], "action": "診斷後給藥"}
@@ -323,6 +334,19 @@ def test_ops_findings_follow_the_rules(build, data):
     assert not any("「斷線」" in f and f.startswith("韌體") for f in findings)
     by_fw = {r["fw"]: r for r in data["ops"]["by_fw"]}
     assert by_fw["1.2"]["devices"] == 6, "用過 1.2 的裝置包含後來更新到 1.3 的兩台"
+    # 參考清單只放給韌體與硬體的項目；反覆回報的裝置另外列表
+    assert len(findings) == 3
+    repeat = {r["device"]: r["n"] for r in data["ops"]["repeat"]}
+    assert repeat == {"DEV-B01": 3, "DEV-B02": 2, "DEV-B03": 2, "DEV-C01": 2}
+
+
+def test_ops_rule_text_follows_the_thresholds(build, data):
+    """頁面上的列入規則照常數產生：程式用的門檻和公布的門檻要一致。"""
+    rule = build.UI_TEXT["ops_rule"].format(**data["ops_rule"])
+    assert f"至少 {build.SAME_ACTION_AT_LEAST} 件已結案" in rule
+    assert f"{build.FINDING_RATIO} 倍且至少 {build.FINDING_AT_LEAST} 件" in rule
+    assert f"{build.REPEAT_AT_LEAST} 次以上" in build.UI_TEXT["ops_repeat_rule"].format(**data["ops_rule"])
+    assert "已結案" in build.UI_TEXT["ops_downtime"], "停機合計只算已結案的回報單"
 
 
 def test_ops_data_has_no_place_names_mac_or_care_events(data):
