@@ -223,6 +223,57 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .report fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; }
 .report legend { padding: 0; margin-bottom: 4px; color: var(--muted); }
 .now .line { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+/* ===== 2026-10-22 參考 Claude design「優化 B」移植：進度條、完成的卡片退後、主要按鈕上色、手機底部讀者列、桌機雙欄 =====
+   沒有移植：深色大頁首（會把第一張事件卡的按鈕擠出第一屏，見 docs/17「第一屏留給判讀」）、家屬總結的紅底大字（等家屬用語送審，docs/18）、
+   打包字型（10MB，維持 Google Fonts）、黏在頂端的切換列（位置寫死在模擬資料橫條的高度）。 */
+body { font-size: 16px; }
+.panel { border-radius: 14px; border-color: transparent; box-shadow: 0 1px 3px rgba(22,35,42,.08); }
+.pill { border-radius: 12px; padding: 8px 14px; }
+/* 事件卡：待接手 → 處理中 → 已完成（字從 count_* 句型取，aria-hidden：狀態另有文字） */
+.steps { display: flex; gap: 6px; list-style: none; margin: 2px 0 0; padding: 0; max-width: 420px; }
+.steps li { flex: 1; font-size: 12px; letter-spacing: .06em; color: var(--muted); padding-top: 6px; border-top: 3px solid var(--line); }
+.steps li.on { border-top-color: var(--accent); color: var(--accent); }
+.steps li.cur { font-weight: 700; color: var(--ink); }
+.incident[data-status="pending"].urgent .steps li.on { border-top-color: var(--urgent); }
+.incident[data-status="pending"].urgent .steps li.cur { color: var(--urgent); }
+.incident { border-radius: 14px; box-shadow: 0 1px 3px rgba(22,35,42,.08); }
+.incident[data-status="done"] { background: transparent; box-shadow: none; border-left-color: var(--ok); }
+.incident[data-status="done"] .prompt { color: var(--muted); font-size: 15px; font-weight: 400; }
+/* 只套卡片本身的按鈕列（> .actions），卡片裡表單的「確認接手」「儲存處置」維持原樣 */
+.incident > .actions button { min-height: 44px; padding-inline: 18px; }
+.incident > .actions button:first-child { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.incident.urgent[data-status="pending"] > .actions button:first-child { background: var(--urgent); border-color: var(--urgent); }
+.form button { min-height: 44px; }
+@keyframes formIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.form { animation: formIn .18s ease-out; background: var(--surface); border-style: solid; }
+@media (prefers-reduced-motion: reduce) { .form { animation: none; } }
+/* 居服員與系統管理人員的待處理橫幅：實心紅底。家屬的總結框不套用（#fm-now），等家屬用語送審 */
+#cg-now.alert, #ad-now.alert { background: var(--urgent); border-color: var(--urgent); color: var(--surface); }
+#cg-now.alert .hint, #ad-now.alert .hint { color: inherit; opacity: .9; }
+#ad-now.alert button { color: var(--ink); }
+/* 紅底上的焦點框改用底色的反色，主色框在紅底上幾乎看不到 */
+#cg-now.alert :focus-visible, #ad-now.alert :focus-visible { outline-color: var(--surface); }
+/* 手機：讀者切換移到畫面底部，大拇指點得到 */
+@media (max-width: 640px) {
+  body { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+  html { scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }  /* Tab 移過去的元素不被底部讀者列蓋住 */
+  .switches .roles { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; width: auto; max-width: none; border-radius: 0; border-width: 1px 0 0; padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px)); gap: 4px; box-shadow: 0 -6px 20px rgba(0,0,0,.08); }
+  .roles button { flex: 1 1 0; white-space: normal; line-height: 1.25; font-size: 13px; padding: 8px 4px; min-height: 52px; }
+  .incident > .actions button { flex: 1 1 140px; }
+}
+/* 桌機：居服員畫面事件與照護紀錄並排；家屬畫面事件與摘要並排 */
+@media (min-width: 900px) {
+  #view-caregiver { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); align-items: start; column-gap: 28px !important; }
+  #view-caregiver > :nth-child(1), #view-caregiver > :nth-child(2), #view-caregiver > :nth-child(n+5) { grid-column: 1 / -1; }
+  #view-caregiver > :nth-child(3) { grid-column: 1; }
+  #view-caregiver > :nth-child(4) { grid-column: 2; grid-row: 3; grid-template-columns: minmax(0, 1fr); }
+  #view-family { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; column-gap: 28px !important; }
+  #view-family > :nth-child(1), #view-family > :nth-child(2), #view-family > :nth-child(n+5) { grid-column: 1 / -1; }
+  #view-family > :nth-child(3) { grid-column: 1; grid-row: 3 / span 2; }
+  #view-family > :nth-child(4) { grid-column: 2; }
+  #view-family > :nth-child(5) { grid-column: 2; grid-row: 4; }
+  #view-family > :nth-child(6) { grid-column: 1 / -1; }
+}
 </style>
 
 <aside class="sim" aria-labelledby="sim-title"><div class="wrap">
@@ -420,6 +471,11 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 
 <script>
 const RAW = /*DASHBOARD_DATA*/null;
+// 初始的 main（還沒填資料）：換情境時換回這份再重畫，不用重新載入頁面
+const PRISTINE = document.querySelector("main").cloneNode(true);
+let BOOTED = false;
+function boot() {
+if (BOOTED) document.querySelector("main").replaceWith(PRISTINE.cloneNode(true));
 // 網址 #caregiver/calm 是「平靜的上午」：只換掉居服員、家屬與裝置狀態；維修紀錄與後台是歷史統計，兩個情境相同
 const scenarioOf = hash => hash.slice(1).split("/")[1] === "calm" ? "calm" : "busy";
 const SCENARIO = scenarioOf(location.hash);
@@ -459,7 +515,8 @@ function scrollables() {
     }
   });
 }
-addEventListener("resize", scrollables);
+window.__scrollables = scrollables;
+if (!BOOTED) addEventListener("resize", () => window.__scrollables());
 const fromHash = () => { const r = location.hash.slice(1).split("/")[0]; return ROLES.includes(r) ? r : "caregiver"; };
 const hashFor = (role, scenario) => "#" + role + (scenario === "calm" ? "/calm" : "");
 document.querySelectorAll(".roles button").forEach(b => b.addEventListener("click", () => show(b.dataset.role, true)));
@@ -469,11 +526,15 @@ document.querySelector(".roles").addEventListener("keydown", e => {
   if (to === undefined) return;
   e.preventDefault(); show(ROLES[to], true); $("tab-" + ROLES[to]).focus();
 });
-// 換情境要重新載入：兩個情境的資料不同，畫面上示意的接手與處置也會清掉
-window.addEventListener("hashchange", () => {
-  if (scenarioOf(location.hash) !== SCENARIO) location.reload();
-  else show(fromHash());
-});
+// 換情境：同一個畫面週期內換回初始內容、用新情境重畫，畫面不閃；示意的接手與處置會清掉
+window.__onHash = () => {
+  if (scenarioOf(location.hash) === SCENARIO) return show(fromHash());
+  const y = scrollY, refocus = document.activeElement?.closest?.(".scenario") ? scenarioOf(location.hash) : null;
+  boot();
+  scrollTo(0, y);
+  if (refocus) document.querySelector(`.scenario button[data-scenario="${refocus}"]`)?.focus({ preventScroll: true });
+};
+if (!BOOTED) window.addEventListener("hashchange", () => window.__onHash());
 document.querySelectorAll(".scenario button").forEach(b => {
   b.setAttribute("aria-pressed", String(b.dataset.scenario === SCENARIO));
   b.addEventListener("click", () => { if (b.dataset.scenario !== SCENARIO) location.hash = hashFor(fromHash(), b.dataset.scenario); });
@@ -527,7 +588,21 @@ function chart(target, days) {
 /* ---------- 人員處置的共用狀態：居服員與家屬畫面都讀這一份（只在記憶體，重新整理就清掉） ---------- */
 const handling = {};   // 事件 id → { status: "handling" | "done", who, takenAt, result, doneAt, note }
 const human = id => handling[id] || { status: "pending" };
-function renderAll() { renderCaregiverTop(); renderCaregiverCards(); renderFamilyCards(); }
+function renderAll() { renderCaregiverTop(); renderCaregiverCards(); renderFamilyCards(); markProgress(); }
+
+// 事件卡的進度條：待接手 → 處理中 → 已完成。名稱取自 count_* 句型（去掉件數），卡片標上 data-status 給樣式用
+const STEP_ORDER = ["pending", "handling", "done"];
+const STEP_NAMES = ["count_pending", "count_handling", "count_done"].map(k => T[k].replace(/\s*\{n\}.*$/, ""));
+function markProgress() {
+  ["cg-incidents", "fm-incidents"].forEach(box => $(box).querySelectorAll(".incident[data-id]").forEach(card => {
+    const status = human(card.dataset.id).status, at = STEP_ORDER.indexOf(status);
+    card.dataset.status = status;
+    card.querySelector(".steps")?.remove();
+    const ol = el("ol", "steps"); ol.setAttribute("aria-hidden", "true");
+    STEP_NAMES.forEach((n, i) => ol.append(el("li", (i <= at ? "on" : "") + (i === at ? " cur" : ""), n)));
+    card.querySelector(".top").after(ol);
+  }));
+}
 
 function deviceText(c) {
   return c.cleared ? [say("device_cleared", { time: c.cleared.label, cause: c.cleared.cause }), "ok"] : [say("device_unknown"), "warn"];
@@ -712,6 +787,7 @@ function renderFamilyCards() {
   if (!F.incidents.length) box.append(el("p", "hint", say("events_none")));
   for (let i = F.incidents.length - 1; i >= 0; i--) {
     const c = F.incidents[i], h = human(c.id), card = el("article", "incident " + c.level), dl = el("dl", "state");
+    card.dataset.id = c.id;
     card.append(cardTop(c));
     const [dev, devCls] = deviceText(c);
     dl.append(el("dt", null, "裝置警報"), el("dd", devCls, dev));
@@ -956,4 +1032,7 @@ document.querySelectorAll(".stack table").forEach(t => {
 
 renderAll();
 show(fromHash());
+BOOTED = true;
+}
+boot();
 </script>
