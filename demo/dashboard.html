@@ -192,7 +192,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 
 <header class="top"><div class="wrap">
   <div class="eyebrow">介面易用性評估・試做</div>
-  <h1>同一份雷達資料，三種讀者的看板</h1>
+  <h1>同一份雷達資料，四種角色的看板</h1>
 </div></header>
 
 <main><div class="wrap">
@@ -200,6 +200,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
     <button type="button" role="tab" id="tab-caregiver" aria-controls="view-caregiver" data-role="caregiver">居服員</button>
     <button type="button" role="tab" id="tab-family" aria-controls="view-family" data-role="family">家屬</button>
     <button type="button" role="tab" id="tab-admin" aria-controls="view-admin" data-role="admin">系統管理人員</button>
+    <button type="button" role="tab" id="tab-ops" aria-controls="view-ops" data-role="ops">維運後台</button>
   </div>
 
   <!-- 居服員：我現在要去哪裡、做什麼 → 每件事的狀態與處置 → 紀錄與歷史 -->
@@ -296,6 +297,10 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
         </table>
       </div>
     </section>
+    <section aria-labelledby="h-ad-tickets">
+      <div class="head-row"><h2 id="h-ad-tickets">維修紀錄</h2><span class="hint" id="ad-tickets-note"></span></div>
+      <div class="feed" id="ad-tickets"></div>
+    </section>
     <section aria-labelledby="h-ad-reg">
       <div class="head-row"><h2 id="h-ad-reg">裝置設定紀錄</h2><span class="hint">地點與設定變更；居服員與系統管理人員畫面、回報單上的地點都從這裡查</span></div>
       <div class="panel table-wrap">
@@ -312,6 +317,33 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
     </section>
   </div>
 
+  <!-- 維運後台（團隊／廠商）：跨場域的維修經驗 → 給韌體與硬體更新的參考 -->
+  <div id="view-ops" role="tabpanel" aria-labelledby="tab-ops" style="display:grid;gap:24px" hidden>
+    <div class="period" id="op-period"></div>
+    <p class="notice" id="op-note"></p>
+    <div class="status-row" id="op-pills"></div>
+    <section aria-labelledby="h-op-find">
+      <h2 id="h-op-find">給韌體與硬體更新的參考</h2>
+      <div class="panel" style="display:grid;gap:10px"><ol class="lines" id="op-findings"></ol><p class="hint" style="margin:0" id="op-rule"></p></div>
+    </section>
+    <section aria-labelledby="h-op-fw">
+        <h2 id="h-op-fw">依韌體版本</h2>
+        <div class="panel table-wrap"><table><thead><tr><th>韌體</th><th class="num">用過的裝置</th><th class="num">回報</th><th class="num">每台</th><th>各類型</th></tr></thead><tbody id="op-fw"></tbody></table></div>
+      </section>
+      <section aria-labelledby="h-op-batch">
+        <h2 id="h-op-batch">依硬體批次</h2>
+        <div class="panel table-wrap"><table><thead><tr><th>批次</th><th class="num">台數</th><th class="num">回報</th><th>更換零件</th></tr></thead><tbody id="op-batch"></tbody></table></div>
+      </section>
+    <section aria-labelledby="h-op-cat">
+      <h2 id="h-op-cat">依問題類型</h2>
+      <div class="panel table-wrap"><table><thead><tr><th>類型</th><th class="num">回報</th><th class="num">送出到結案（中位數，小時）</th><th>處理方式</th></tr></thead><tbody id="op-cat"></tbody></table></div>
+    </section>
+    <section aria-labelledby="h-op-all">
+      <h2 id="h-op-all">全部回報單</h2>
+      <div class="panel table-wrap"><table><thead><tr><th>編號</th><th>場域</th><th>裝置</th><th>類型</th><th>當時韌體</th><th>結果</th><th>處理方式</th><th class="num">停機（小時）</th></tr></thead><tbody id="op-all"></tbody></table></div>
+    </section>
+  </div>
+
   <details class="about">
     <summary>原型說明</summary>
     <ul>
@@ -323,7 +355,8 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
       <li>裝置問題回報是示意：回報單自動帶入遠端判斷需要的裝置資訊（安裝地點與設定紀錄、狀態與判斷依據、在線時段、收到的紀錄筆數與估算筆數、紀錄間隔、裝置最後一筆與斷線訊息的時間、無法判讀紀錄的形狀、同時段其他裝置），不含照護事件與長者資料；按「送出」不會真的寄出。回報對象（廠商、團隊或機構資訊人員）待確認。</li>
       <li>裝置設定紀錄（demo/device_registry.json，模擬）記地點與設定變更；居服員、系統管理人員畫面與回報單的地點都從這裡查。家屬畫面的地點是假設的。</li>
       <li>系統管理人員這個讀者類型還沒正式加進讀者權限（audience.py）。逾時的基準在這裡用「所有裝置最晚收到資料的時間」，正式版要改用伺服器目前時間。</li>
-      <li>網址加 #caregiver、#family、#admin 可以直接打開該讀者的畫面。</li>
+      <li>維修紀錄與維運後台是示意：系統管理人員只看本場域的回報單與處理結果；維運後台（團隊或廠商）看跨場域的統計，只用場域代號與裝置代號。參考清單是固定規則找出的「值得檢查」項目，不是原因判斷。正式版需要的後端見 GitHub issue #76。</li>
+      <li>網址加 #caregiver、#family、#admin、#ops 可以直接打開該讀者的畫面。</li>
     </ul>
   </details>
 </div></main>
@@ -1016,6 +1049,502 @@ const DATA = {
  "gap_s": 30,
  "heartbeat_s": 5,
  "firmware_keys": "fw、firmware、version",
+ "own_site": "SITE-A",
+ "own_tickets": [
+  {
+   "id": "TS-20261010-01",
+   "device": "DEMO-SIM-03",
+   "category": "offline",
+   "fw": "1.3",
+   "reported": "2026-10-10 09:20",
+   "accepted": "2026-10-10 09:45",
+   "resolved": "2026-10-10 11:00",
+   "outcome": "已修復",
+   "action": "重新設定網路",
+   "part": null,
+   "fw_after": null,
+   "downtime_min": 100,
+   "handler": "OPS-02",
+   "site": "SITE-A",
+   "batch": "B3"
+  },
+  {
+   "id": "TS-20261012-01",
+   "device": "DEMO-SIM-04",
+   "category": "silent",
+   "fw": "1.2",
+   "reported": "2026-10-12 07:40",
+   "accepted": "2026-10-12 08:10",
+   "resolved": "2026-10-12 12:30",
+   "outcome": "已修復",
+   "action": "重新開機",
+   "part": null,
+   "fw_after": null,
+   "downtime_min": 290,
+   "handler": "OPS-02",
+   "site": "SITE-A",
+   "batch": "B1"
+  }
+ ],
+ "ops": {
+  "period": [
+   "2026-09-05",
+   "2026-10-13"
+  ],
+  "sites": [
+   "SITE-A",
+   "SITE-B",
+   "SITE-C"
+  ],
+  "fleet": 16,
+  "tickets": [
+   {
+    "id": "TS-20260905-01",
+    "device": "DEV-B01",
+    "category": "silent",
+    "fw": "1.2",
+    "reported": "2026-09-05 09:10",
+    "accepted": "2026-09-05 09:40",
+    "resolved": "2026-09-05 15:20",
+    "outcome": "已修復",
+    "action": "重新開機",
+    "part": null,
+    "fw_after": null,
+    "downtime_min": 370,
+    "handler": "OPS-01",
+    "site": "SITE-B",
+    "batch": "B1"
+   },
+   {
+    "id": "TS-20260909-01",
+    "device": "DEV-B02",
+    "category": "silent",
+    "fw": "1.2",
+    "reported": "2026-09-09 08:30",
+    "accepted": "2026-09-09 09:05",
+    "resolved": "2026-09-09 13:00",
+    "outcome": "已修復",
+    "action": "重新開機",
+    "part": null,
+    "fw_after": null,
+    "downtime_min": 270,
+    "handler": "OPS-02",
+    "site": "SITE-B",
+    "batch": "B1"
+   },
+   {
+    "id": "TS-20260912-01",
+    "device": "DEV-C01",
+    "category": "silent",
+    "fw": "1.2",
+    "reported": "2026-09-12 14:00",
+    "accepted": "2026-09-12 14:30",
+    "resolved": "2026-09-13 10:10",
+    "outcome": "已修復",
+    "action": "韌體更新",
+    "part": null,
+    "fw_after": "1.3",
+    "downtime_min": 1210,
+    "handler": "OPS-01",
+    "site": "SITE-C",
+    "batch": "B1"
+   },
+   {
+    "id": "TS-20260915-01",
+    "device": "DEV-B01",
+    "category": "silent",
+    "fw": "1.2",
+    "reported": "2026-09-15 07:50",
+    "accepted": "2026-09-15 08:20",
+    "resolved": "2026-09-15 11:40",
+    "outcome": "已修復",
+    "action": "重新開機",
+    "part": null,
+    "fw_after": null,
+    "downtime_min": 230,
+    "handler": "OPS-02",
+    "site": "SITE-B",
+    "batch": "B1"
+   },
+   {
+    "id": "TS-20260918-01",
+    "device": "DEV-B03",
+    "category": "offline",
+    "fw": "1.2",
+    "reported": "2026-09-18 10:05",
+    "accepted": "2026-09-18 10:30",
+    "resolved": "2026-09-19 09:00",
+    "outcome": "需換機",
+    "action": "更換電源供應器",
+    "part": "電源供應器",
+    "fw_after": null,
+    "downtime_min": 1375,
+    "handler": "OPS-01",
+    "site": "SITE-B",
+    "batch": "B1"
+   },
+   {
+    "id": "TS-20260920-01",
+    "device": "DEV-C02",
+    "category": "silent",
+    "fw": "1.2",
+    "reported": "2026-09-20 16:40",
+    "accepted": "2026-09-20 17:10",
+    "resolved": "2026-09-21 09:30",
+    "outcome": "已修復",
+    "action": "韌體更新",
+    "part": null,
+    "fw_after": "1.3",
+    "downtime_min": 1010,
+    "handler": "OPS-02",
+    "site": "SITE-C",
+    "batch": "B2"
+   },
+   {
+    "id": "TS-20260922-01",
+    "device": "DEV-B04",
+    "category": "unreadable",
+    "fw": "1.3",
+    "reported": "2026-09-22 11:00",
+    "accepted": "2026-09-22 11:20",
+    "resolved": "2026-09-22 16:00",
+    "outcome": "已修復",
+    "action": "重新設定時間同步",
+    "part": null,
+    "fw_after": null,
+    "downtime_min": 0,
+    "handler": "OPS-01",
+    "site": "SITE-B",
+    "batch": "B2"
+   },
+   {
+    "id": "TS-20260925-01",
+    "device": "DEV-B02",
+    "category": "offline",
+    "fw": "1.2",
+    "reported": "2026-09-25 13:15",
+    "accepted": "2026-09-25 13:50",
+    "resolved": "2026-09-26 10:20",
+    "outcome": "需換機",
+    "action": "更換電源供應器",
+    "part": "電源供應器",
+    "fw_after": null,
+    "downtime_min": 1265,
+    "handler": "OPS-02",
+    "site": "SITE-B",
+    "batch": "B1"
+   },
+   {
+    "id": "TS-20260928-01",
+    "device": "DEV-C04",
+    "category": "offline",
+    "fw": "1.3",
+    "reported": "2026-09-28 09:00",
+    "accepted": "2026-09-28 09:25",
+    "resolved": "2026-09-28 10:15",
+    "outcome": "已修復",
+    "action": "重新設定網路",
+    "part": null,
+    "fw_after": null,
+    "downtime_min": 75,
+    "handler": "OPS-01",
+    "site": "SITE-C",
+    "batch": "B3"
+   },
+   {
+    "id": "TS-20261001-01",
+    "device": "DEV-B01",
+    "category": "offline",
+    "fw": "1.2",
+    "reported": "2026-10-01 08:10",
+    "accepted": "2026-10-01 08:40",
+    "resolved": "2026-10-02 09:30",
+    "outcome": "需換機",
+    "action": "更換電源供應器",
+    "part": "電源供應器",
+    "fw_after": null,
+    "downtime_min": 1520,
+    "handler": "OPS-02",
+    "site": "SITE-B",
+    "batch": "B1"
+   },
+   {
+    "id": "TS-20261003-01",
+    "device": "DEV-C05",
+    "category": "error",
+    "fw": "1.3",
+    "reported": "2026-10-03 15:30",
+    "accepted": "2026-10-03 16:00",
+    "resolved": "2026-10-03 17:20",
+    "outcome": "已修復",
+    "action": "重新開機",
+    "part": null,
+    "fw_after": null,
+    "downtime_min": 110,
+    "handler": "OPS-01",
+    "site": "SITE-C",
+    "batch": "B3"
+   },
+   {
+    "id": "TS-20261006-01",
+    "device": "DEV-B05",
+    "category": "unreadable",
+    "fw": "1.3",
+    "reported": "2026-10-06 10:45",
+    "accepted": "2026-10-06 11:10",
+    "resolved": "2026-10-06 15:00",
+    "outcome": "已修復",
+    "action": "重新設定時間同步",
+    "part": null,
+    "fw_after": null,
+    "downtime_min": 0,
+    "handler": "OPS-02",
+    "site": "SITE-B",
+    "batch": "B2"
+   },
+   {
+    "id": "TS-20261008-01",
+    "device": "DEV-C01",
+    "category": "offline",
+    "fw": "1.3",
+    "reported": "2026-10-08 12:00",
+    "accepted": "2026-10-08 12:30",
+    "resolved": "2026-10-09 09:40",
+    "outcome": "需換機",
+    "action": "更換電源供應器",
+    "part": "電源供應器",
+    "fw_after": null,
+    "downtime_min": 1300,
+    "handler": "OPS-01",
+    "site": "SITE-C",
+    "batch": "B1"
+   },
+   {
+    "id": "TS-20261010-01",
+    "device": "DEMO-SIM-03",
+    "category": "offline",
+    "fw": "1.3",
+    "reported": "2026-10-10 09:20",
+    "accepted": "2026-10-10 09:45",
+    "resolved": "2026-10-10 11:00",
+    "outcome": "已修復",
+    "action": "重新設定網路",
+    "part": null,
+    "fw_after": null,
+    "downtime_min": 100,
+    "handler": "OPS-02",
+    "site": "SITE-A",
+    "batch": "B3"
+   },
+   {
+    "id": "TS-20261011-01",
+    "device": "DEV-B06",
+    "category": "silent",
+    "fw": "1.3",
+    "reported": "2026-10-11 18:20",
+    "accepted": "2026-10-11 18:50",
+    "resolved": "2026-10-12 09:00",
+    "outcome": "無法重現",
+    "action": "遠端檢查，紀錄正常",
+    "part": null,
+    "fw_after": null,
+    "downtime_min": 0,
+    "handler": "OPS-01",
+    "site": "SITE-B",
+    "batch": "B3"
+   },
+   {
+    "id": "TS-20261012-01",
+    "device": "DEMO-SIM-04",
+    "category": "silent",
+    "fw": "1.2",
+    "reported": "2026-10-12 07:40",
+    "accepted": "2026-10-12 08:10",
+    "resolved": "2026-10-12 12:30",
+    "outcome": "已修復",
+    "action": "重新開機",
+    "part": null,
+    "fw_after": null,
+    "downtime_min": 290,
+    "handler": "OPS-02",
+    "site": "SITE-A",
+    "batch": "B1"
+   },
+   {
+    "id": "TS-20261013-01",
+    "device": "DEV-B03",
+    "category": "silent",
+    "fw": "1.2",
+    "reported": "2026-10-13 09:30",
+    "accepted": "2026-10-13 10:00",
+    "resolved": null,
+    "outcome": null,
+    "action": null,
+    "part": null,
+    "fw_after": null,
+    "downtime_min": null,
+    "handler": "OPS-01",
+    "site": "SITE-B",
+    "batch": "B1"
+   }
+  ],
+  "open": 1,
+  "median_h": 5.583333333333334,
+  "downtime_h": 152.1,
+  "by_category": [
+   {
+    "key": "offline",
+    "label": "斷線",
+    "n": 6,
+    "median_h": 21.375,
+    "actions": [
+     "更換電源供應器",
+     "重新設定網路"
+    ]
+   },
+   {
+    "key": "silent",
+    "label": "資料逾時",
+    "n": 8,
+    "median_h": 6.166666666666667,
+    "actions": [
+     "遠端檢查，紀錄正常",
+     "重新開機",
+     "韌體更新"
+    ]
+   },
+   {
+    "key": "unreadable",
+    "label": "無法判讀",
+    "n": 2,
+    "median_h": 4.625,
+    "actions": [
+     "重新設定時間同步"
+    ]
+   },
+   {
+    "key": "error",
+    "label": "裝置錯誤",
+    "n": 1,
+    "median_h": 1.8333333333333333,
+    "actions": [
+     "重新開機"
+    ]
+   }
+  ],
+  "by_fw": [
+   {
+    "fw": "1.2",
+    "devices": 6,
+    "n": 10,
+    "by_category": {
+     "offline": 3,
+     "silent": 7,
+     "unreadable": 0,
+     "error": 0
+    }
+   },
+   {
+    "fw": "1.3",
+    "devices": 12,
+    "n": 7,
+    "by_category": {
+     "offline": 3,
+     "silent": 1,
+     "unreadable": 2,
+     "error": 1
+    }
+   }
+  ],
+  "by_batch": [
+   {
+    "batch": "B1",
+    "devices": 5,
+    "n": 10,
+    "parts": {
+     "電源供應器": 4
+    }
+   },
+   {
+    "batch": "B2",
+    "devices": 6,
+    "n": 3,
+    "parts": {
+     "電源供應器": 0
+    }
+   },
+   {
+    "batch": "B3",
+    "devices": 5,
+    "n": 4,
+    "parts": {
+     "電源供應器": 0
+    }
+   }
+  ],
+  "parts": [
+   "電源供應器"
+  ],
+  "repeat": [
+   {
+    "device": "DEV-B01",
+    "site": "SITE-B",
+    "n": 3,
+    "categories": [
+     "資料逾時",
+     "資料逾時",
+     "斷線"
+    ]
+   },
+   {
+    "device": "DEV-B02",
+    "site": "SITE-B",
+    "n": 2,
+    "categories": [
+     "資料逾時",
+     "斷線"
+    ]
+   },
+   {
+    "device": "DEV-B03",
+    "site": "SITE-B",
+    "n": 2,
+    "categories": [
+     "斷線",
+     "資料逾時"
+    ]
+   },
+   {
+    "device": "DEV-C01",
+    "site": "SITE-C",
+    "n": 2,
+    "categories": [
+     "資料逾時",
+     "斷線"
+    ]
+   }
+  ],
+  "findings": [
+   "韌體 1.2 的「資料逾時」回報 7 件（每台 1.17 件），其他版本每台 0.08 件；建議列入韌體檢查。",
+   "硬體批次 B1 更換電源供應器 4 次（這批共 5 台），其他批次合計 0 次；建議檢查這批的電源供應器。",
+   "「無法判讀」2 件都以「重新設定時間同步」處理；可以考慮讓韌體自己檢查這一項。",
+   "DEV-B01（SITE-B）回報 3 次：資料逾時、資料逾時、斷線；建議追蹤這台。",
+   "DEV-B02（SITE-B）回報 2 次：資料逾時、斷線；建議追蹤這台。",
+   "DEV-B03（SITE-B）回報 2 次：斷線、資料逾時；建議追蹤這台。",
+   "DEV-C01（SITE-C）回報 2 次：資料逾時、斷線；建議追蹤這台。"
+  ]
+ },
+ "categories": {
+  "offline": "斷線",
+  "silent": "資料逾時",
+  "unreadable": "無法判讀",
+  "error": "裝置錯誤"
+ },
+ "ops_rule": {
+  "r": 2,
+  "n": 3,
+  "k": 2
+ },
  "text": {
   "tag": "模擬歷史資料",
   "head_pending": "有 {n} 件待接手",
@@ -1109,7 +1638,30 @@ const DATA = {
   "label_desc": "問題描述（不寫長者或人員姓名）",
   "need_urgency": "請選擇急迫程度。",
   "need_desc": "請填問題描述。",
-  "report_sent": "已送出（示意）：回報單 {id}，等待技術支援回覆。這一頁不會真的寄出。"
+  "report_sent": "已送出（示意）：回報單 {id}，等待技術支援回覆。這一頁不會真的寄出。",
+  "t_sent": "已送出 {time}",
+  "t_accepted": "已受理 {time}",
+  "t_doing": "處理中",
+  "t_done": "{outcome} {time}",
+  "t_result": "處理方式：{action}",
+  "t_part": "更換零件：{part}",
+  "t_fw": "韌體：{a} → {b}",
+  "t_downtime": "停機約 {h} 小時",
+  "t_handler": "處理人：{who}",
+  "t_waiting": "等待技術支援受理（示意）",
+  "own_tickets_note": "只顯示本場域（{site}）的回報單；處理結果由技術支援結案時自動回到這裡（模擬資料）。",
+  "ops_note": "跨場域的維修統計，只用場域代號與裝置代號，不含地點名稱、MAC、照護事件與長者資料（模擬資料）。",
+  "ops_period": "{a}–{b}，{s} 個場域、{d} 台裝置",
+  "ops_total": "回報單 {n} 件",
+  "ops_open": "處理中 {n} 件",
+  "ops_median": "從送出到結案的時間中位數 {h} 小時",
+  "ops_downtime": "停機合計約 {h} 小時",
+  "ops_none": "目前沒有符合規則的項目。",
+  "ops_rule": "列入規則：韌體每台件數超過其他版本的 {r} 倍且至少 {n} 件；硬體批次更換同一零件至少 {n} 次且其他批次合計不到一半；同一類問題都用同一種方式處理；同一台回報 {k} 次以上。這是值得檢查的項目，不是原因判斷。",
+  "f_fw": "韌體 {fw} 的「{cat}」回報 {n} 件（每台 {r} 件），其他版本每台 {o} 件；建議列入韌體檢查。",
+  "f_batch": "硬體批次 {batch} 更換{part} {n} 次（這批共 {d} 台），其他批次合計 {o} 次；建議檢查這批的{part}。",
+  "f_action": "「{cat}」{n} 件都以「{action}」處理；可以考慮讓韌體自己檢查這一項。",
+  "f_repeat": "{device}（{site}）回報 {n} 次：{cats}；建議追蹤這台。"
  },
  "results": [
   "已到場確認",
@@ -1131,7 +1683,7 @@ const sec = s => Date.parse(s.replace(" ", "T") + "Z") / 1000;
 const hm = s => s.slice(11, 16);
 
 // 讀者切換：網址加 #caregiver、#family、#admin 可以直接打開那一頁
-const ROLES = ["caregiver", "family", "admin"];
+const ROLES = ["caregiver", "family", "admin", "ops"];
 function show(role, setHash) {
   ROLES.forEach(r => {
     $("view-" + r).hidden = r !== role;
@@ -1146,7 +1698,7 @@ const fromHash = () => ROLES.includes(location.hash.slice(1)) ? location.hash.sl
 document.querySelectorAll(".roles button").forEach(b => b.addEventListener("click", () => show(b.dataset.role, true)));
 document.querySelector(".roles").addEventListener("keydown", e => {
   const i = ROLES.findIndex(r => $("tab-" + r).getAttribute("aria-selected") === "true");
-  const to = { ArrowRight: (i + 1) % 3, ArrowLeft: (i + 2) % 3, Home: 0, End: 2 }[e.key];
+  const n = ROLES.length, to = { ArrowRight: (i + 1) % n, ArrowLeft: (i + n - 1) % n, Home: 0, End: n - 1 }[e.key];
   if (to === undefined) return;
   e.preventDefault(); show(ROLES[to], true); $("tab-" + ROLES[to]).focus();
 });
@@ -1421,6 +1973,39 @@ function renderFamilyCards() {
       el("td", "num", d.records.toLocaleString("en-US")), el("td", "num", String(d.unreadable)), el("td", "num", String(d.errors)));
     $("ad-rows").append(tr);
   });
+  // 維修紀錄：本場域的回報單與處理結果（模擬）；這一頁送出的回報單排在最上面，狀態是等待受理
+  const sentReports = [];
+  const placeOf = dev => (D.find(x => x.device === dev) || {}).place || say("place_unknown");
+  const hours = m => (m / 60).toFixed(1);
+  function ticketCard(t) {
+    const card = el("article", "incident"), top = el("div", "top"), dl = el("dl", "state");
+    top.append(el("span", "t", t.id), el("strong", null, DATA.categories[t.category]), el("span", "hint", `${t.device}・${placeOf(t.device)}`));
+    card.append(top);
+    if (!t.reported) {
+      dl.append(el("dt", null, "狀態"), el("dd", "warn", say("t_waiting")));
+    } else {
+      const steps = [say("t_sent", { time: t.reported.slice(5) }), say("t_accepted", { time: t.accepted.slice(5) }),
+        t.resolved ? say("t_done", { outcome: t.outcome, time: t.resolved.slice(5) }) : say("t_doing")];
+      dl.append(el("dt", null, "狀態"), el("dd", t.resolved ? "done" : "doing", steps.join(" → ")));
+      if (t.resolved) {
+        const res = [say("t_result", { action: t.action })];
+        if (t.part) res.push(say("t_part", { part: t.part }));
+        if (t.fw_after) res.push(say("t_fw", { a: t.fw, b: t.fw_after }));
+        if (t.downtime_min) res.push(say("t_downtime", { h: hours(t.downtime_min) }));
+        res.push(say("t_handler", { who: t.handler }));
+        dl.append(el("dt", null, "處理結果"), el("dd", null, res.join("；")));
+      }
+    }
+    card.append(dl); return card;
+  }
+  function renderOwnTickets() {
+    const box = $("ad-tickets"); box.replaceChildren();
+    sentReports.forEach(r => box.append(ticketCard(r)));
+    DATA.own_tickets.slice().reverse().forEach(t => box.append(ticketCard(t)));
+  }
+  $("ad-tickets-note").textContent = say("own_tickets_note", { site: DATA.own_site });
+  renderOwnTickets();
+
   // 裝置問題回報：系統自動帶入遠端判斷需要的裝置資訊，管理員只補描述與現場檢查
   let reportSeq = 0;
   function reportText(d, extra) {
@@ -1482,6 +2067,8 @@ function renderFamilyCards() {
       reportSeq += 1;
       const id = `TS-${ref.slice(0, 10).replaceAll("-", "")}-${String(reportSeq).padStart(2, "0")}`;
       box.querySelector("pre").textContent = reportText(d, extra());
+      sentReports.unshift({ id, device: d.device, category: d.status === "offline" ? "offline" : d.status === "silent" ? "silent" : d.errors ? "error" : "unreadable" });
+      renderOwnTickets();
       const done = el("p", "notice", say("report_sent", { id }));
       done.setAttribute("role", "status"); done.tabIndex = -1;
       f.replaceWith(done); done.focus();
@@ -1512,6 +2099,30 @@ function renderFamilyCards() {
     d.offline.forEach(([a, b]) => tl.band("off", a, b));
     if (d.since) tl.band("off", d.since, ref);
   });
+})();
+
+/* ---------- 維運後台 ---------- */
+(function ops() {
+  const O = DATA.ops, cat = DATA.categories, one = h => (h == null ? "—" : h.toFixed(1));
+  $("op-period").append(el("span", "tag", T.tag), say("ops_period", { a: O.period[0], b: O.period[1], s: O.sites.length, d: O.fleet }));
+  $("op-note").textContent = say("ops_note");
+  const pill = (cls, text) => $("op-pills").append(el("span", "pill " + cls, text));
+  pill("device", say("ops_total", { n: O.tickets.length }));
+  if (O.open) pill("check", say("ops_open", { n: O.open }));
+  pill("ok", say("ops_median", { h: one(O.median_h) }));
+  pill("device", say("ops_downtime", { h: O.downtime_h }));
+  if (O.findings.length) O.findings.forEach(f => $("op-findings").append(el("li", null, f)));
+  else $("op-findings").append(el("li", null, say("ops_none")));
+  $("op-rule").textContent = say("ops_rule", DATA.ops_rule);
+  const row = (tb, cells) => { const tr = el("tr"); cells.forEach(([cls, v]) => tr.append(el("td", cls, String(v)))); $(tb).append(tr); };
+  O.by_fw.forEach(r => row("op-fw", [["mono", r.fw], ["num", r.devices], ["num", r.n], ["num", (r.n / r.devices).toFixed(2)],
+    [null, Object.entries(r.by_category).filter(([, n]) => n).map(([k, n]) => `${cat[k]} ${n}`).join("、") || "—"]]));
+  O.by_batch.forEach(r => row("op-batch", [["mono", r.batch], ["num", r.devices], ["num", r.n],
+    [null, Object.entries(r.parts).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join("、") || "—"]]));
+  O.by_category.forEach(r => row("op-cat", [[null, r.label], ["num", r.n], ["num", one(r.median_h)], [null, r.actions.join("、") || "—"]]));
+  O.tickets.slice().reverse().forEach(t => row("op-all", [["mono", t.id], ["mono", t.site], ["mono", t.device], [null, cat[t.category]],
+    ["mono", t.fw], [null, t.outcome || say("t_doing")], [null, t.action || "—"], ["num", t.downtime_min == null ? "—" : hours(t.downtime_min)]]));
+  function hours(m) { return (m / 60).toFixed(1); }
 })();
 
 renderAll();
