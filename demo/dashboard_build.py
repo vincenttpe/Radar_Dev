@@ -258,7 +258,9 @@ def diagnostics(records: list[dict[str, Any]], summary: Summary) -> dict[str, An
         payload = r.get("payload")
         return payload.get("event") if isinstance(payload, dict) else None
 
-    device = [t for t, r in readable if event(r) != "offline"]
+    # 規格外的 event 算在「無法判讀」裡，不重複算進裝置紀錄
+    unknown = {id(r) for r in summary.unknown_events}
+    device = [t for t, r in readable if event(r) != "offline" and id(r) not in unknown]
     offline_msgs = [t for t, r in readable if event(r) == "offline"]
     online_msgs = [(t, r) for t, r in readable if event(r) == "online"]
     pairs = list(pairwise(device))
@@ -463,9 +465,11 @@ UI_TEXT: dict[str, str] = {
     "r_basis_unreadable": "裝置在線，但有 {n} 筆無法判讀的紀錄",
     "r_basis_errors": "裝置在線，但回報錯誤 {n} 次",
     "r_base": "基準時間：{ref}；距最後收到資料 {min} 分鐘",
+    "r_base_offline": "基準時間：{ref}；距收到斷線訊息 {min} 分鐘",
     "r_topic": "裝置主題：{topic}",
     "r_online": "這段時間的在線時段：{spans}",
-    "r_records": "紀錄：收到可判讀時間的裝置紀錄 {n} 筆（另有無法判讀 {u} 筆、斷線訊息 {o} 筆，共 {t} 筆）；從第一筆到裝置最後一筆，以每 {s} 秒一筆估算約 {e} 筆",
+    "r_records": "紀錄：收到可判讀的裝置紀錄 {n} 筆（另有無法判讀 {u} 筆、斷線訊息 {o} 筆{other}，共 {t} 筆）；各在線時段從第一筆到裝置最後一筆，以每 {s} 秒一筆估算約 {e} 筆",
+    "r_other": "、重複或伺服器指令 {n} 筆",
     "r_median": "紀錄間隔中位數 {m} 秒",
     "r_maxgap": "明顯較長的紀錄間隔：{g} 秒（{a}–{b}）",
     "r_last": "裝置最後一筆紀錄：{time}",

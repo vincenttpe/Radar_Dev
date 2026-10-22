@@ -1615,9 +1615,11 @@ const DATA = {
   "r_basis_unreadable": "裝置在線，但有 {n} 筆無法判讀的紀錄",
   "r_basis_errors": "裝置在線，但回報錯誤 {n} 次",
   "r_base": "基準時間：{ref}；距最後收到資料 {min} 分鐘",
+  "r_base_offline": "基準時間：{ref}；距收到斷線訊息 {min} 分鐘",
   "r_topic": "裝置主題：{topic}",
   "r_online": "這段時間的在線時段：{spans}",
-  "r_records": "紀錄：收到可判讀時間的裝置紀錄 {n} 筆（另有無法判讀 {u} 筆、斷線訊息 {o} 筆，共 {t} 筆）；從第一筆到裝置最後一筆，以每 {s} 秒一筆估算約 {e} 筆",
+  "r_records": "紀錄：收到可判讀的裝置紀錄 {n} 筆（另有無法判讀 {u} 筆、斷線訊息 {o} 筆{other}，共 {t} 筆）；各在線時段從第一筆到裝置最後一筆，以每 {s} 秒一筆估算約 {e} 筆",
+  "r_other": "、重複或伺服器指令 {n} 筆",
   "r_median": "紀錄間隔中位數 {m} 秒",
   "r_maxgap": "明顯較長的紀錄間隔：{g} 秒（{a}–{b}）",
   "r_last": "裝置最後一筆紀錄：{time}",
@@ -2024,11 +2026,12 @@ function renderFamilyCards() {
       reg ? say("r_place", { place: reg.place, area: reg.area, use: reg.use, at: last.at, by: last.by, change: last.change }) : say("r_place_unknown"),
       basis.length ? say("r_status", { status: say("status_" + d.status), basis: basis.join("；") }) : say("r_status_plain", { status: say("status_" + d.status) })];
     if (!reg) lines.push(say("r_unregistered"));
-    if (d.minutes_without_data != null) lines.push(say("r_base", { ref: hms(ref), min: d.minutes_without_data }));
+    if (d.minutes_without_data != null) lines.push(say(d.status === "offline" ? "r_base_offline" : "r_base", { ref: hms(ref), min: d.minutes_without_data }));
     lines.push(say("r_source"), say("r_topic", { topic: g.topic }), g.firmware ? say("r_firmware", { v: g.firmware }) : say("r_firmware_none", { keys: DATA.firmware_keys }));
     lines.push(say("r_online", { spans: d.online.map(([a, b]) => `${hm(a)}–${hm(b)}`).join("、") }));
     if (g.last_online_msg) lines.push(say("r_last_online", { time: hms(g.last_online_msg) }));
-    lines.push(say("r_records", { n: g.device_records, u: d.unreadable, o: g.offline_records, t: g.all_records, s: DATA.heartbeat_s, e: g.expected_records }));
+    const other = g.all_records - g.device_records - d.unreadable - g.offline_records;
+    lines.push(say("r_records", { n: g.device_records, u: d.unreadable, o: g.offline_records, other: other > 0 ? say("r_other", { n: other }) : "", t: g.all_records, s: DATA.heartbeat_s, e: g.expected_records }));
     if (g.median_gap_s != null) lines.push(say("r_median", { m: g.median_gap_s }));
     if (g.max_gap) lines.push(say("r_maxgap", { g: g.max_gap[2], a: hms(g.max_gap[0]), b: hms(g.max_gap[1]) }));
     if (g.last_device) lines.push(say("r_last", { time: hms(g.last_device) }));

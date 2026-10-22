@@ -200,7 +200,7 @@ def test_diagnostics_survive_almost_no_data(build):
 
 
 def test_places_come_from_the_device_registry(build, data):
-    """畫面與回報單上的地點都查裝置設定紀錄；移機後顯示新地點；沒有紀錄的裝置算異常。"""
+    """居服員、系統管理人員畫面與回報單上的地點都查裝置設定紀錄；移機後顯示新地點；沒有紀錄的裝置算異常。"""
     registry = build.load_registry()
     assert {d["device"]: d["place"] for d in data["devices"]} == {k: v["place"] for k, v in registry.items()}
     assert data["caregiver"]["place"] == registry["DEMO-SIM-01"]["place"]
@@ -316,3 +316,17 @@ def test_ops_finding_with_medical_wording_stops_the_build(build, monkeypatch):
     monkeypatch.setitem(build.UI_TEXT, "f_batch", "批次 {batch} 需要診斷{part}（{n}/{d}/{o}）")
     with pytest.raises(ValueError, match="用語檢查"):
         build.dashboard_data()
+
+
+def test_record_counts_add_up_even_with_unknown_events(build):
+    """規格外的 event 算在無法判讀，不重複算進裝置紀錄；加總要等於收到的筆數。"""
+    from radar_agent.device_events import summarize
+
+    rows = build._heartbeats("radar10/X-1", "08:00:00", "08:01:00")
+    rows.append({"timestamp": "2026-10-14 08:01:05", "topic": "radar10/X-1", "resolution": None,
+                 "payload": {"event": "dance"}})
+    summary = summarize(rows)
+    diag = build.diagnostics(rows, summary)
+    unreadable = len(summary.unreadable) + len(summary.unknown_events)
+    assert unreadable == 1
+    assert diag["device_records"] + unreadable + diag["offline_records"] == diag["all_records"] == len(rows)
