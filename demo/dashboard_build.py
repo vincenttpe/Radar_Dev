@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+from itertools import pairwise
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import ModuleType
@@ -40,7 +41,7 @@ from radar_agent.output_check import wording_problems
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 PLACEHOLDER = "/*DASHBOARD_DATA*/null"
-CAREGIVER_PLACE = "1 號廁所"
+REGISTRY = HERE / "device_registry.json"   # 模擬的裝置設定紀錄：裝置代號 → 安裝地點與設定變更
 FAMILY_ELDER = "DEMO-ELDER-01"
 FAMILY_PLACE = f"{FAMILY_ELDER} 房間的浴廁"
 DAY = "2026-10-14"
@@ -70,42 +71,85 @@ def _heartbeats(topic: str, start: str, end: str, busy: tuple[str, str] | None =
     return out
 
 
-def simulated_devices(morning: list[dict[str, Any]]) -> list[tuple[str, str, list[dict[str, Any]]]]:
-    """四台模擬裝置：(裝置名稱, 地點, 紀錄)。DEMO-SIM-01 就是原型頁的那一個上午。"""
+def load_registry(path: Path = REGISTRY) -> dict[str, dict[str, Any]]:
+    """裝置設定紀錄：{裝置代號: {place, area, use, history}}。畫面與回報單上的地點都從這裡查，不寫死在程式裡。"""
+    entries = json.loads(path.read_text(encoding="utf-8"))["devices"]
+    return {e["device"]: e for e in entries}
+
+
+def place_of(device: str, registry: dict[str, dict[str, Any]]) -> str:
+    entry = registry.get(device)
+    return str(entry["place"]) if entry else UI_TEXT["place_unknown"]
+
+
+def simulated_devices(morning: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
+    """四台模擬裝置：(裝置代號, 紀錄)。DEMO-SIM-01 就是原型頁的那一個上午；地點查裝置設定紀錄。"""
     second = _heartbeats("radar10/DEMO-SIM-02", "08:00:00", "11:59:55", busy=("09:00:00", "09:04:00"))
     third = _heartbeats("radar10/DEMO-SIM-03", "08:00:00", "11:40:00")
-    third.append({"timestamp": f"{DAY} 11:40:05", "topic": "radar10/DEMO-SIM-03", "resolution": None,
+    # broker 要等 keepalive 逾時才發 offline：放在最後一筆之後 35 秒（docs/05 D3）
+    third.append({"timestamp": f"{DAY} 11:40:35", "topic": "radar10/DEMO-SIM-03", "resolution": None,
                   "payload": {"event": "offline"}})
     # 時間格式讀不懂的一筆：只計數、不參與計算（device_events._parse）
     third.insert(100, {"timestamp": f"{DAY}T09:00", "topic": "radar10/DEMO-SIM-03", "resolution": None,
                        "payload": {"event": "absence"}})
     # 10:30 之後就沒再送資料，也沒有 offline：只看自己的紀錄會以為一直在線
     fourth = _heartbeats("radar10/DEMO-SIM-04", "08:00:00", "10:30:00")
-    return [("DEMO-SIM-01", "1 號廁所", morning), ("DEMO-SIM-02", "2 號廁所", second),
-            ("DEMO-SIM-03", "3 號廁所", third), ("DEMO-SIM-04", "4 號廁所", fourth)]
+    return [("DEMO-SIM-01", morning), ("DEMO-SIM-02", second), ("DEMO-SIM-03", third), ("DEMO-SIM-04", fourth)]
 
 
 HEARTBEAT = timedelta(seconds=5)   # 實測心跳約每 5 秒一筆（docs/05 A10）
 
 
 def diagnostics(records: list[dict[str, Any]], summary: Summary) -> dict[str, Any]:
-    """遠端判斷問題要的裝置層資訊；不含 payload 的事件內容（有沒有人、跌倒等照護資訊不放進回報單）。"""
-    times = sorted(
-        datetime.strptime(r["timestamp"], TIMESTAMP_FORMAT) for r in records
-        if isinstance(r.get("timestamp"), str) and _readable(r["timestamp"]))
-    gaps = sorted((b - a for a, b in zip(times, times[1:], strict=False)), reverse=True)
-    biggest = max(zip(times, times[1:], strict=False), key=lambda ab: ab[1] - ab[0], default=None)
-    online = sum((p.end - p.start for p in summary.online), timedelta())
-    expected = int(online / HEARTBEAT) + len(summary.online)
+    """遠端判斷問題要的裝置層資訊；不含 payload 的事件內容（有沒有人、跌倒等照護資訊不放進回報單）。
+
+    裝置自己送的紀錄和 broker 發的 offline 分開算：預期筆數只算到裝置最後一筆，「最後一筆」也不含 offline，
+    兩者相差幾秒可以拿來核對 keepalive（docs/05 A29、D3）。
+    注意：實測資料的 topic 是 radar10/<MAC>。回報對象（例如雷達廠商）算不算第三方（會議清單 F10）、
+    要不要把 MAC 換成代號，正式化前要決定；一戶一台時地點名稱也可能認得出是誰。現在只用模擬資料。
+    """
+    readable = [(datetime.strptime(r["timestamp"], TIMESTAMP_FORMAT), r) for r in records
+                if isinstance(r.get("timestamp"), str) and _readable(r["timestamp"])]
+    readable.sort(key=lambda tr: tr[0])
+
+    def event(r: dict[str, Any]) -> Any:
+        payload = r.get("payload")
+        return payload.get("event") if isinstance(payload, dict) else None
+
+    device = [t for t, r in readable if event(r) != "offline"]
+    offline_msgs = [t for t, r in readable if event(r) == "offline"]
+    online_msgs = [(t, r) for t, r in readable if event(r) == "online"]
+    pairs = list(pairwise(device))
+    gaps = sorted(b - a for a, b in pairs)
     median = gaps[len(gaps) // 2] if gaps else None
+    biggest = max(pairs, key=lambda ab: ab[1] - ab[0], default=None)
+    # 和一般心跳差不多的最大間隔沒有意義，只列明顯比中位數長的
+    if biggest is None or median is None or biggest[1] - biggest[0] <= 2 * median:
+        biggest = None
+    # 預期筆數：每段在線時段從開始算到這段裡裝置最後一筆（不含 broker 的 offline），以每 5 秒一筆估算
+    expected = 0
+    for period in summary.online:
+        inside = [t for t in device if period.start <= t <= period.end]
+        if inside:
+            expected += int((inside[-1] - inside[0]) / HEARTBEAT) + 1
+    last_offline = offline_msgs[-1] if offline_msgs else None
+    before = [t for t in device if last_offline is not None and t <= last_offline]
+    firmware = None
+    if online_msgs:
+        payload = online_msgs[-1][1].get("payload", {})
+        firmware = next((str(payload[k]) for k in ("fw", "firmware", "version") if k in payload), None)
     sample = (summary.unreadable + summary.unknown_events)[:1]
     return {
         "topic": next((str(r["topic"]) for r in records if r.get("topic")), ""),
+        "device_records": len(device),
         "expected_records": expected,
-        "received_pct": round(len(times) / expected * 100) if expected else None,
         "median_gap_s": int(median.total_seconds()) if median else None,
         "max_gap": [_stamp(biggest[0]), _stamp(biggest[1]), int((biggest[1] - biggest[0]).total_seconds())] if biggest else None,
-        "last_times": [_stamp(t) for t in times[-3:]],
+        "last_device": _stamp(device[-1]) if device else None,
+        "offline_msg": _stamp(last_offline) if last_offline else None,
+        "offline_after_s": int((last_offline - before[-1]).total_seconds()) if last_offline and before else None,
+        "last_online_msg": _stamp(online_msgs[-1][0]) if online_msgs else None,
+        "firmware": firmware,
         # 讀不懂的紀錄附一筆的形狀：時間與主題原樣（格式錯在哪），payload 只留欄位名稱，不帶有沒有人等照護資訊
         "unreadable_sample": _shape(sample[0]) if sample else None,
         "error_messages": [f"{_stamp(t)} {m}" for t, m in summary.errors][:3],
@@ -127,13 +171,14 @@ def _readable(stamp: str) -> bool:
     return True
 
 
-def device_rows(devices: list[tuple[str, str, list[dict[str, Any]]]]) -> tuple[str, list[dict[str, Any]]]:
+def device_rows(devices: list[tuple[str, list[dict[str, Any]]]],
+                registry: dict[str, dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
     """系統管理人員看的裝置清單：只有裝置狀態，不含照護事件。
 
     基準時間是所有裝置裡最晚收到資料的時間（模擬用；正式版要用伺服器目前時間，否則全部裝置都停送時基準也跟著停）：最後收到資料比基準落後
     超過心跳間隔、又沒有送 offline 的裝置，判成「沒收到資料」，不能因為自己的紀錄裡沒斷線就當成在線。
     """
-    summaries = [(name, place, records, summarize(records)) for name, place, records in devices]
+    summaries = [(name, place_of(name, registry), records, summarize(records)) for name, records in devices]
     for name, _, _, summary in summaries:
         if not summary.online:
             raise ValueError(f"{name} 沒有讀得懂的紀錄")
@@ -163,6 +208,8 @@ def device_rows(devices: list[tuple[str, str, list[dict[str, Any]]]]) -> tuple[s
             "unreadable": len(summary.unreadable) + len(summary.unknown_events),
             "errors": len(summary.errors),
             "diag": diagnostics(records, summary),
+            # 設定紀錄：沒有就是 None，畫面上算異常（不知道裝置裝在哪裡）
+            "registry": registry.get(name),
         })
     return _stamp(ref), rows
 
@@ -255,18 +302,30 @@ UI_TEXT: dict[str, str] = {
     "too_early_event": "時間不能早於事件發生的 {time}。",
     "too_early_taken": "處置時間不能早於接手時間 {time}。",
     # 裝置問題回報：系統自動整理遠端判斷需要的裝置資訊，管理員只補描述（2026-10-22 使用者：Demo 用，說明 UI 能自動傳達足夠資訊）
+    "place_unknown": "未登記地點",
+    "admin_unregistered": "沒有裝置設定紀錄，不知道裝在哪裡",
+    "r_place": "安裝地點：{place}（{area}，{use}）；設定紀錄最後更新 {at}，{by}：{change}",
+    "r_place_unknown": "安裝地點：沒有裝置設定紀錄",
     "report_title": "回報給技術支援窗口（待確認）",
     "report_intro": "下面是系統自動整理的裝置資訊，不含照護事件與長者資料；補上描述就能送出。",
-    "r_head": "【裝置問題回報】{device}（{place}）",
+    "r_head": "【裝置問題回報（模擬）】{device}（{place}）",
     "r_status": "狀態：{status}。判斷依據：{basis}",
     "r_basis_offline": "{time} 收到斷線訊息（由 broker 發出），之後沒有再收到資料",
-    "r_basis_silent": "最後收到資料 {time}，之後超過心跳間隔（30 秒）沒有資料，也沒有收到斷線訊息",
-    "r_basis_unreadable": "裝置在線，但有無法判讀的紀錄",
+    "r_basis_silent": "最後收到資料 {time}，之後超過斷線判斷門檻（{gap} 秒，對應 keepalive）沒有資料，也沒有收到斷線訊息",
+    "r_basis_unreadable": "裝置在線，但有 {n} 筆無法判讀的紀錄",
+    "r_basis_errors": "裝置在線，但回報錯誤 {n} 次",
     "r_base": "基準時間：{ref}；距最後收到資料 {min} 分鐘",
     "r_topic": "裝置主題：{topic}",
     "r_online": "這段時間的在線時段：{spans}",
-    "r_records": "紀錄：收到 {n} 筆，在線期間預期約 {e} 筆（每 5 秒一筆）；心跳間隔中位數 {m} 秒；最大間隔 {g} 秒（{a}–{b}）",
-    "r_last": "最後三筆紀錄時間：{times}",
+    "r_records": "紀錄：裝置送出 {n} 筆，以每 5 秒一筆估算在線期間約 {e} 筆",
+    "r_median": "心跳間隔中位數 {m} 秒",
+    "r_maxgap": "明顯較長的間隔：{g} 秒（{a}–{b}）",
+    "r_last": "裝置最後一筆紀錄：{time}",
+    "r_offline_msg": "收到斷線訊息：{time}（距裝置最後一筆 {s} 秒，可核對 keepalive）",
+    "r_last_online": "最近一次上線訊息：{time}",
+    "r_firmware": "韌體版本：{v}",
+    "r_firmware_none": "韌體版本：資料裡沒有",
+    "r_source": "資料來源：模擬資料（雲端保存的裝置事件格式）；時間是接收端收到時補上的，不是裝置時間",
     "r_unreadable": "無法判讀的紀錄 {n} 筆，第一筆的形狀（payload 只留欄位名稱）：{sample}",
     "r_errors": "裝置錯誤 {n} 次：{list}",
     "r_peers": "同時段其他裝置：{list}",
@@ -277,6 +336,7 @@ UI_TEXT: dict[str, str] = {
     "urgency_later": "可排程處理",
     "checked_none": "尚未檢查",
     "label_desc": "問題描述（不寫長者或人員姓名）",
+    "need_urgency": "請選擇急迫程度。",
     "need_desc": "請填問題描述。",
     "report_sent": "已送出（示意）：回報單 {id}，等待技術支援回覆。這一頁不會真的寄出。",
 }
@@ -286,8 +346,12 @@ RESULTS = ["已到場確認", "已到場協助", "以電話或語音確認", "�
 FAMILY_RESULTS = {"其他（見備註）": "其他處置"}
 
 
-def check_ui_text() -> None:
-    texts = [*UI_TEXT.items(), *((f"result{i}", r) for i, r in enumerate(RESULTS)), *FAMILY_RESULTS.items()]
+def check_ui_text(registry: dict[str, dict[str, Any]] | None = None) -> None:
+    texts = [*UI_TEXT.items(), *((f"result{i}", r) for i, r in enumerate(RESULTS)), *FAMILY_RESULTS.items(),
+             *CAUSE.items(), ("trend_rule", trend_rule())]
+    for device, entry in (registry or {}).items():
+        texts += [(f"{device}.{k}", str(entry[k])) for k in ("place", "area", "use")]
+        texts += [(f"{device}.history", h["change"]) for h in entry["history"]]
     for key, text in texts:
         problems = wording_problems(text)
         if problems:
@@ -311,7 +375,8 @@ def dashboard_data() -> dict[str, Any]:
     build = _load_build()
     morning = build._jsonl(REPO / "data" / "samples_demo" / "bathroom_morning.jsonl")
     summary = summarize(morning)
-    caregiver = build.demo_data(place=CAREGIVER_PLACE)
+    registry = load_registry()
+    caregiver = build.demo_data(place=place_of("DEMO-SIM-01", registry))
     days = caregiver["trend"]["days"]
     caregiver.update({
         "period": _period(caregiver),
@@ -339,9 +404,10 @@ def dashboard_data() -> dict[str, Any]:
                        "cleared": c["cleared"]} for c in incidents(family_full["events"])[0]],
         "days": family_full["trend"]["days"],
     }
-    ref, devices = device_rows(simulated_devices(morning))
-    check_ui_text()
+    ref, devices = device_rows(simulated_devices(morning), registry)
+    check_ui_text(registry)
     return {"caregiver": caregiver, "family": family, "devices": devices, "devices_ref": ref,
+            "gap_s": int(HEARTBEAT_GAP.total_seconds()),
             "text": UI_TEXT, "results": RESULTS, "family_results": FAMILY_RESULTS}
 
 

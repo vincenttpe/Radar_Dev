@@ -292,6 +292,15 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
         </table>
       </div>
     </section>
+    <section aria-labelledby="h-ad-reg">
+      <div class="head-row"><h2 id="h-ad-reg">裝置設定紀錄</h2><span class="hint">地點與設定變更；畫面與回報單上的地點都從這裡查</span></div>
+      <div class="panel table-wrap">
+        <table>
+          <thead><tr><th>裝置</th><th>地點</th><th>區域</th><th>用途</th><th>最後更新</th><th>變更紀錄</th></tr></thead>
+          <tbody id="ad-registry"></tbody>
+        </table>
+      </div>
+    </section>
     <section aria-labelledby="h-ad-tl">
       <h2 id="h-ad-tl">在線時段</h2>
       <div class="panel devices" id="ad-lines"></div>
@@ -581,7 +590,7 @@ function renderFamilyCards() {
   const LABEL = { online: "resolved", recovered: "resolved", offline: "urgent", silent: "urgent" };
   const from = D.map(d => d.from).sort()[0];
   $("ad-period").append(el("span", "tag", T.tag), "檢視日期 ", el("b", null, `${+ref.slice(5, 7)}/${+ref.slice(8, 10)}`), "時段 ", el("b", null, `${hm(from)}–${hm(ref)}`), say("admin_base", { time: hm(ref) }));
-  const bad = D.filter(d => d.status === "offline" || d.status === "silent" || d.unreadable || d.errors);
+  const bad = D.filter(d => d.status === "offline" || d.status === "silent" || d.unreadable || d.errors || !d.registry);
   const now = $("ad-now");
   if (bad.length) {
     now.classList.add("alert");
@@ -592,6 +601,7 @@ function renderFamilyCards() {
       if (d.status === "silent") facts.push(say("admin_silent", { time: hm(d.since), min: d.minutes_without_data }));
       if (d.unreadable) facts.push(say("admin_unreadable", { n: d.unreadable }));
       if (d.errors) facts.push(say("admin_errors", { n: d.errors }));
+      if (!d.registry) facts.push(say("admin_unregistered"));
       const line = el("div", "line"), b = el("button", null, "回報問題");
       b.type = "button"; b.onclick = () => openReport(d);
       line.append(el("span", null, say("admin_row", { device: d.device, place: d.place, facts: facts.join("；") })), b);
@@ -618,13 +628,29 @@ function renderFamilyCards() {
   // 裝置問題回報：系統自動帶入遠端判斷需要的裝置資訊，管理員只補描述與現場檢查
   let reportSeq = 0;
   function reportText(d, extra) {
-    const g = d.diag, basis = d.status === "offline" ? say("r_basis_offline", { time: d.since.slice(11) })
-      : d.status === "silent" ? say("r_basis_silent", { time: d.since.slice(11) }) : say("r_basis_unreadable");
-    const lines = [say("r_head", { device: d.device, place: d.place }), say("r_status", { status: say("status_" + d.status), basis })];
-    if (d.minutes_without_data != null) lines.push(say("r_base", { ref: ref.slice(11), min: d.minutes_without_data }));
-    lines.push(say("r_topic", { topic: g.topic }), say("r_online", { spans: d.online.map(([a, b]) => `${hm(a)}–${hm(b)}`).join("、") }));
-    lines.push(say("r_records", { n: d.records, e: g.expected_records, m: g.median_gap_s, g: g.max_gap[2], a: g.max_gap[0].slice(11), b: g.max_gap[1].slice(11) }));
-    lines.push(say("r_last", { times: g.last_times.map(t => t.slice(11)).join("、") }));
+    const g = d.diag, hms = t => t.slice(11);
+    // 判斷依據照實際事實組：斷線、逾時、無法判讀、裝置錯誤，有幾項寫幾項
+    const basis = [];
+    if (d.status === "offline") basis.push(say("r_basis_offline", { time: hms(d.since) }));
+    if (d.status === "silent") basis.push(say("r_basis_silent", { time: hms(d.since), gap: DATA.gap_s }));
+    if (d.status !== "offline" && d.status !== "silent") {
+      if (d.unreadable) basis.push(say("r_basis_unreadable", { n: d.unreadable }));
+      if (d.errors) basis.push(say("r_basis_errors", { n: d.errors }));
+    }
+    if (!d.registry) basis.push(say("admin_unregistered"));
+    const reg = d.registry, last = reg && reg.history[reg.history.length - 1];
+    const lines = [say("r_head", { device: d.device, place: d.place }),
+      reg ? say("r_place", { place: reg.place, area: reg.area, use: reg.use, at: last.at, by: last.by, change: last.change }) : say("r_place_unknown"),
+      say("r_status", { status: say("status_" + d.status), basis: basis.join("；") })];
+    if (d.minutes_without_data != null) lines.push(say("r_base", { ref: hms(ref), min: d.minutes_without_data }));
+    lines.push(say("r_source"), say("r_topic", { topic: g.topic }), g.firmware ? say("r_firmware", { v: g.firmware }) : say("r_firmware_none"));
+    lines.push(say("r_online", { spans: d.online.map(([a, b]) => `${hm(a)}–${hm(b)}`).join("、") }));
+    if (g.last_online_msg) lines.push(say("r_last_online", { time: hms(g.last_online_msg) }));
+    lines.push(say("r_records", { n: g.device_records, e: g.expected_records }));
+    if (g.median_gap_s != null) lines.push(say("r_median", { m: g.median_gap_s }));
+    if (g.max_gap) lines.push(say("r_maxgap", { g: g.max_gap[2], a: hms(g.max_gap[0]), b: hms(g.max_gap[1]) }));
+    if (g.last_device) lines.push(say("r_last", { time: hms(g.last_device) }));
+    if (g.offline_msg && g.offline_after_s != null) lines.push(say("r_offline_msg", { time: hms(g.offline_msg), s: g.offline_after_s }));
     if (d.unreadable) lines.push(say("r_unreadable", { n: d.unreadable, sample: g.unreadable_sample }));
     if (d.errors) lines.push(say("r_errors", { n: d.errors, list: g.error_messages.join("；") }));
     lines.push(say("r_peers", { list: D.filter(x => x !== d).map(x => `${x.device} ${say("status_" + x.status)}`).join("、") }));
@@ -637,7 +663,7 @@ function renderFamilyCards() {
     box.append(el("p", "hint", say("report_intro")), el("pre", null, reportText(d)));
     const f = el("form", "form"); f.noValidate = true;
     const urg = el("fieldset"); urg.append(el("legend", null, "急迫程度"));
-    ["urgency_care", "urgency_later"].forEach((k, i) => { const l = el("label"), r = el("input"); r.type = "radio"; r.name = "urgency"; r.id = "urg-" + i; r.value = say(k); if (!i) r.checked = true; l.append(r, " " + say(k)); urg.append(l); });
+    ["urgency_care", "urgency_later"].forEach((k, i) => { const l = el("label"), r = el("input"); r.type = "radio"; r.name = "urgency"; r.id = "urg-" + i; r.value = say(k); l.append(r, " " + say(k)); urg.append(l); });
     const chk = el("fieldset"); chk.append(el("legend", null, "現場已檢查"));
     ["電源", "網路"].forEach((k, i) => { const l = el("label"), c = el("input"); c.type = "checkbox"; c.id = "chk-" + i; c.value = k; l.append(c, " " + k); chk.append(l); });
     const desc = el("textarea"); desc.id = "report-desc"; desc.maxLength = 300;
@@ -646,7 +672,7 @@ function renderFamilyCards() {
     const acts = el("div", "actions"), send = el("button", "primary", "送出（示意）"), copy = el("button", null, "複製回報內容"), note = el("span", "hint", "");
     send.type = "submit"; copy.type = "button"; acts.append(send, copy, note);
     f.append(urg, chk, dl, err, acts); box.append(f);
-    const extra = () => ({ urgency: f.querySelector("input[name=urgency]:checked").value,
+    const extra = () => ({ urgency: f.querySelector("input[name=urgency]:checked")?.value || "",
       checked: [...chk.querySelectorAll("input:checked")].map(c => c.value).join("、") || say("checked_none"), desc: desc.value.trim() });
     copy.onclick = () => {
       const text = reportText(d, extra());
@@ -654,15 +680,28 @@ function renderFamilyCards() {
     };
     f.addEventListener("submit", ev => {
       ev.preventDefault();
+      if (!f.querySelector("input[name=urgency]:checked")) { err.textContent = say("need_urgency"); f.querySelector("#urg-0").focus(); return; }
       if (!desc.value.trim()) { err.textContent = say("need_desc"); desc.focus(); return; }
       reportSeq += 1;
       const id = `TS-${ref.slice(0, 10).replaceAll("-", "")}-${String(reportSeq).padStart(2, "0")}`;
       box.querySelector("pre").textContent = reportText(d, extra());
-      f.replaceWith(el("p", "notice", say("report_sent", { id })));
+      const done = el("p", "notice", say("report_sent", { id }));
+      done.setAttribute("role", "status"); done.tabIndex = -1;
+      f.replaceWith(done); done.focus();
     });
     sec.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     desc.focus({ preventScroll: true });
   }
+
+  D.forEach(d => {
+    const tr = el("tr"), reg = d.registry;
+    if (!reg) { tr.append(el("td", "mono", d.device), el("td", null, say("admin_unregistered"))); $("ad-registry").append(tr); return; }
+    const last = reg.history[reg.history.length - 1], hist = el("td"), list = el("ul", "lines");
+    reg.history.slice().reverse().forEach(h => list.append(el("li", null, `${h.at}　${h.by}　${h.change}`)));
+    hist.append(list);
+    tr.append(el("td", "mono", d.device), el("td", "nowrap", reg.place), el("td", "nowrap", reg.area), el("td", "nowrap", reg.use), el("td", "mono", last.at), hist);
+    $("ad-registry").append(tr);
+  });
 
   D.forEach((d, i) => {
     const line = el("div", "device-line"), track = el("div", "track"), name = el("div");

@@ -98,7 +98,7 @@ def test_admin_view_shows_device_status_without_care_events(data):
     assert {k: d["status"] for k, d in devices.items()} == {
         "DEMO-SIM-01": "recovered", "DEMO-SIM-02": "online", "DEMO-SIM-03": "offline", "DEMO-SIM-04": "silent"}
     assert devices["DEMO-SIM-01"]["offline"] == [["2026-10-14 11:10:00", "2026-10-14 11:25:00"]]
-    assert devices["DEMO-SIM-03"]["since"] == "2026-10-14 11:40:05"
+    assert devices["DEMO-SIM-03"]["since"] == "2026-10-14 11:40:35"
     assert devices["DEMO-SIM-03"]["unreadable"] == 1
     assert (devices["DEMO-SIM-04"]["since"], devices["DEMO-SIM-04"]["minutes_without_data"]) == ("2026-10-14 10:30:00", 89)
     text = json.dumps(data["devices"], ensure_ascii=False)
@@ -109,11 +109,11 @@ def test_device_that_stops_sending_without_offline_is_not_online(build):
     """只看自己的紀錄會以為一直在線；要和其他裝置最晚收到資料的時間比。"""
     quiet = build._heartbeats("radar10/X-1", "08:00:00", "09:00:00")
     busy = build._heartbeats("radar10/X-2", "08:00:00", "11:00:00")
-    ref, rows = build.device_rows([("X-1", "甲", quiet), ("X-2", "乙", busy)])
+    ref, rows = build.device_rows([("X-1", quiet), ("X-2", busy)], {})
     assert ref == "2026-10-14 11:00:00"
     assert [r["status"] for r in rows] == ["silent", "online"]
-    _, rows = build.device_rows([("X-1", "甲", quiet[:-3]), ("X-2", "乙", quiet)])
-    assert [r["status"] for r in rows] == ["online", "online"], "落後不到心跳間隔（30 秒）不算沒收到資料"
+    _, rows = build.device_rows([("X-1", quiet[:-3]), ("X-2", quiet)], {})
+    assert [r["status"] for r in rows] == ["online", "online"], "落後不到斷線判斷門檻（30 秒）不算沒收到資料"
 
 
 def test_trend_rule_follows_the_caregiver_constants(data):
@@ -166,7 +166,9 @@ def test_script_writes_no_sentences_outside_the_checked_table(repo):
 
     page = (repo / "demo" / "dashboard_template.html").read_text(encoding="utf-8")
     script = page.split("<script>", 1)[1].split("</script>", 1)[0]
-    literals = {a or b for a, b in re.findall(r'"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`', script)}
+    script = re.sub(r"^\s*//.*$", "", script, flags=re.M)   # 註解不算（裡面的引號會讓比對錯位）
+    literals = {next(x for x in m if x) for m in re.findall(
+        r'"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`|\'((?:[^\'\\\n]|\\.)*)\'', script) if any(m)}
     chinese = {t for t in literals if re.search(r"[一-鿿]", t)}
     assert chinese <= CONTROL_LABELS, f"這些句子要搬進 UI_TEXT 或確認只是標籤：{chinese - CONTROL_LABELS}"
 
@@ -176,12 +178,66 @@ def test_device_report_carries_what_a_remote_engineer_needs_but_no_care_data(dat
     diag = {d["device"]: d["diag"] for d in data["devices"]}
     third = diag["DEMO-SIM-03"]
     assert third["topic"] == "radar10/DEMO-SIM-03" and third["median_gap_s"] == 5
-    assert third["last_times"][-1] == "2026-10-14 11:40:05"
+    # 裝置最後一筆和 broker 的斷線訊息分開：差幾秒可以核對 keepalive
+    assert (third["last_device"], third["offline_msg"], third["offline_after_s"]) == (
+        "2026-10-14 11:40:00", "2026-10-14 11:40:35", 35)
+    assert third["expected_records"] == third["device_records"], "預期筆數算到裝置最後一筆，不含等 keepalive 的時間"
     assert json.loads(third["unreadable_sample"]) == {
         "timestamp": "2026-10-14T09:00", "topic": "radar10/DEMO-SIM-03", "payload 欄位": ["event"]}
-    assert diag["DEMO-SIM-01"]["max_gap"] == ["2026-10-14 11:10:00", "2026-10-14 11:25:00", 900]
+    assert diag["DEMO-SIM-01"]["max_gap"] == ["2026-10-14 11:09:55", "2026-10-14 11:25:00", 905]
+    assert diag["DEMO-SIM-02"]["max_gap"] is None, "和一般心跳差不多的間隔不列"
     text = json.dumps(diag, ensure_ascii=False)
     assert "absence" not in text and "moving" not in text and "fall" not in text
+
+
+def test_diagnostics_survive_almost_no_data(build):
+    from radar_agent.device_events import summarize
+
+    one = build._heartbeats("radar10/X-1", "08:00:00", "08:00:00")
+    diag = build.diagnostics(one, summarize(one))
+    assert diag["median_gap_s"] is None and diag["max_gap"] is None and diag["offline_msg"] is None
+
+
+def test_places_come_from_the_device_registry(build, data):
+    """畫面與回報單上的地點都查裝置設定紀錄；移機後顯示新地點；沒有紀錄的裝置算異常。"""
+    registry = build.load_registry()
+    assert {d["device"]: d["place"] for d in data["devices"]} == {k: v["place"] for k, v in registry.items()}
+    assert data["caregiver"]["place"] == registry["DEMO-SIM-01"]["place"]
+    moved = next(d for d in data["devices"] if d["device"] == "DEMO-SIM-03")["registry"]["history"]
+    assert moved[-1]["change"].startswith("移機")
+    _, rows = build.device_rows([("X-9", build._heartbeats("radar10/X-9", "08:00:00", "08:10:00"))], registry)
+    assert rows[0]["place"] == "未登記地點" and rows[0]["registry"] is None
+
+
+def test_registry_text_goes_through_the_wording_check(build):
+    registry = build.load_registry()
+    registry["DEMO-SIM-01"] = {**registry["DEMO-SIM-01"], "use": "診斷室"}
+    with pytest.raises(ValueError, match="用語檢查"):
+        build.check_ui_text(registry)
+
+
+def test_static_page_text_passes_the_wording_check(repo):
+    """<script> 以外的靜態文字（說明、標題、aria-label）也是給讀者看的，一樣不能有醫療用語。"""
+    import re
+    from html.parser import HTMLParser
+
+    from radar_agent.output_check import wording_problems
+
+    page = (repo / "demo" / "dashboard_template.html").read_text(encoding="utf-8")
+    page = re.sub(r"<script>.*?</script>|<style>.*?</style>", "", page, flags=re.S)
+    texts: list[str] = []
+
+    class Grab(HTMLParser):
+        def handle_data(self, d):
+            if d.strip():
+                texts.append(d.strip())
+
+        def handle_starttag(self, tag, attrs):
+            texts.extend(v for k, v in attrs if k in ("aria-label", "placeholder", "title") and v)
+
+    Grab().feed(page)
+    assert texts and all(not wording_problems(t) for t in texts), [t for t in texts if wording_problems(t)]
+    assert all(not wording_problems(t) for t in CONTROL_LABELS)
 
 
 def test_family_never_sees_a_pointer_to_notes_it_cannot_read(data):
