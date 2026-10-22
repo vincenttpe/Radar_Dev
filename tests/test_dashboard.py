@@ -343,11 +343,14 @@ def test_ops_findings_follow_the_rules(build, data):
 
 def test_ops_bars_use_the_same_numbers_as_the_tables(data):
     """比較圖和表格同一份資料：1.2 的資料逾時每台 1.17 件、B1 換電源供應器 4 次，一眼看得出來。"""
-    fw = {g["label"]: {r["fw"]: r["r"] for r in g["rows"]} for g in data["ops"]["fw_bars"]}
+    fw = {g["title"]: {r["name"]: r["shown"] for r in g["rows"]} for g in data["ops"]["fw_bars"]}
     assert fw["資料逾時"] == {"1.2": "1.17", "1.3": "0.08"}
     assert fw["斷線"] == {"1.2": "0.50", "1.3": "0.25"}
-    batch = {g["part"]: {r["batch"]: r["n"] for r in g["rows"]} for g in data["ops"]["batch_bars"]}
+    batch = {g["title"]: {r["name"]: r["value"] for r in g["rows"]} for g in data["ops"]["batch_bars"]}
     assert batch == {"電源供應器": {"B1": 4, "B2": 0, "B3": 0}}
+    timeout = next(g for g in data["ops"]["fw_bars"] if g["title"] == "資料逾時")["rows"][0]
+    assert timeout["value"] == 7 / 6
+    assert timeout["spoken"] == "「資料逾時」韌體 1.2：每台 1.17 件（7 件，用過這版的裝置 6 台）"
 
 
 def _contrast(a: str, b: str) -> float:
@@ -362,8 +365,9 @@ def _contrast(a: str, b: str) -> float:
 def test_colors_meet_wcag_contrast_in_light_and_dark(repo):
     """WCAG 2.1 AA：說明文字對背景 4.5:1；輸入框與按鈕的框線對背景 3:1（1.4.11）。深色模式另外算。"""
     css = (repo / "demo" / "dashboard_template.html").read_text(encoding="utf-8")
-    blocks = re.findall(r":root(?:\[data-theme=\"dark\"\])?\s*\{([^}]*)\}", css)
-    assert len(blocks) == 2
+    blocks = re.findall(r":root(?::not\(\[data-theme=\"light\"\]\)|\[data-theme=\"dark\"\])?\s*\{([^}]*)\}", css)
+    assert len(blocks) == 3, "淺色、系統深色、手動深色三份色票"
+    assert blocks[1].split() == blocks[2].split(), "兩份深色色票要一樣"
     for block in blocks:
         tokens = dict(re.findall(r"--([\w-]+):\s*(#[0-9a-fA-F]{6})", block))
         for surface in ("bg", "surface"):

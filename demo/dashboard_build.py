@@ -145,6 +145,11 @@ def _per_device(n: int, devices: int) -> str:
     return f"{n / devices:.2f}" if devices else "—"
 
 
+def _bar(name: str, value: float, shown: str, spoken: str) -> dict[str, Any]:
+    """比較圖的一根長條：value 決定長度，shown 標在旁邊，spoken 給螢幕閱讀器。"""
+    return {"name": name, "value": value, "shown": shown, "spoken": spoken}
+
+
 def ops_data(fleet: list[dict[str, str]], tickets: list[dict[str, Any]]) -> dict[str, Any]:
     """維運後台：跨場域的維修統計與給韌體、硬體更新的參考。只用場域代號與裝置代號。
 
@@ -220,12 +225,17 @@ def ops_data(fleet: list[dict[str, str]], tickets: list[dict[str, Any]]) -> dict
         "parts": parts,
         "repeat": repeat,
         "findings": findings,
-        # 比較圖：每類問題各版本的每台件數、各零件各批次的更換次數；頁面照這裡畫，不在前端重算
-        "fw_bars": [{"label": label, "rows": [{"fw": r["fw"], "n": r["by_category"][key], "devices": r["devices"],
-                                               "r": _per_device(r["by_category"][key], r["devices"])} for r in by_fw]}
+        # 比較圖：每類問題各版本的每台件數、各零件各批次的更換次數；長度、標示的數字與朗讀的句子都在這裡算好
+        "fw_bars": [{"title": label, "rows": [_bar(r["fw"], r["by_category"][key] / r["devices"],
+                                                   _per_device(r["by_category"][key], r["devices"]),
+                                                   UI_TEXT["bar_fw"].format(cat=label, fw=r["fw"], n=r["by_category"][key], d=r["devices"],
+                                                                            r=_per_device(r["by_category"][key], r["devices"])))
+                                              for r in by_fw]}
                     for key, label in CATEGORY.items()],
-        "batch_bars": [{"part": part, "rows": [{"batch": r["batch"], "n": r["parts"][part], "devices": r["devices"]}
-                                               for r in by_batch]} for part in parts],
+        "batch_bars": [{"title": part, "rows": [_bar(r["batch"], r["parts"][part], str(r["parts"][part]),
+                                                     UI_TEXT["bar_batch"].format(part=part, batch=r["batch"], n=r["parts"][part],
+                                                                                 d=r["devices"]))
+                                                for r in by_batch]} for part in parts],
     }
 
 

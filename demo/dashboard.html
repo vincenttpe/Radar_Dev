@@ -1571,92 +1571,95 @@ const DATA = {
   ],
   "fw_bars": [
    {
-    "label": "斷線",
+    "title": "斷線",
     "rows": [
      {
-      "fw": "1.2",
-      "n": 3,
-      "devices": 6,
-      "r": "0.50"
+      "name": "1.2",
+      "value": 0.5,
+      "shown": "0.50",
+      "spoken": "「斷線」韌體 1.2：每台 0.50 件（3 件，用過這版的裝置 6 台）"
      },
      {
-      "fw": "1.3",
-      "n": 3,
-      "devices": 12,
-      "r": "0.25"
+      "name": "1.3",
+      "value": 0.25,
+      "shown": "0.25",
+      "spoken": "「斷線」韌體 1.3：每台 0.25 件（3 件，用過這版的裝置 12 台）"
      }
     ]
    },
    {
-    "label": "資料逾時",
+    "title": "資料逾時",
     "rows": [
      {
-      "fw": "1.2",
-      "n": 7,
-      "devices": 6,
-      "r": "1.17"
+      "name": "1.2",
+      "value": 1.1666666666666667,
+      "shown": "1.17",
+      "spoken": "「資料逾時」韌體 1.2：每台 1.17 件（7 件，用過這版的裝置 6 台）"
      },
      {
-      "fw": "1.3",
-      "n": 1,
-      "devices": 12,
-      "r": "0.08"
+      "name": "1.3",
+      "value": 0.08333333333333333,
+      "shown": "0.08",
+      "spoken": "「資料逾時」韌體 1.3：每台 0.08 件（1 件，用過這版的裝置 12 台）"
      }
     ]
    },
    {
-    "label": "無法判讀",
+    "title": "無法判讀",
     "rows": [
      {
-      "fw": "1.2",
-      "n": 0,
-      "devices": 6,
-      "r": "0.00"
+      "name": "1.2",
+      "value": 0.0,
+      "shown": "0.00",
+      "spoken": "「無法判讀」韌體 1.2：每台 0.00 件（0 件，用過這版的裝置 6 台）"
      },
      {
-      "fw": "1.3",
-      "n": 2,
-      "devices": 12,
-      "r": "0.17"
+      "name": "1.3",
+      "value": 0.16666666666666666,
+      "shown": "0.17",
+      "spoken": "「無法判讀」韌體 1.3：每台 0.17 件（2 件，用過這版的裝置 12 台）"
      }
     ]
    },
    {
-    "label": "裝置錯誤",
+    "title": "裝置錯誤",
     "rows": [
      {
-      "fw": "1.2",
-      "n": 0,
-      "devices": 6,
-      "r": "0.00"
+      "name": "1.2",
+      "value": 0.0,
+      "shown": "0.00",
+      "spoken": "「裝置錯誤」韌體 1.2：每台 0.00 件（0 件，用過這版的裝置 6 台）"
      },
      {
-      "fw": "1.3",
-      "n": 1,
-      "devices": 12,
-      "r": "0.08"
+      "name": "1.3",
+      "value": 0.08333333333333333,
+      "shown": "0.08",
+      "spoken": "「裝置錯誤」韌體 1.3：每台 0.08 件（1 件，用過這版的裝置 12 台）"
      }
     ]
    }
   ],
   "batch_bars": [
    {
-    "part": "電源供應器",
+    "title": "電源供應器",
     "rows": [
      {
-      "batch": "B1",
-      "n": 4,
-      "devices": 5
+      "name": "B1",
+      "value": 4,
+      "shown": "4",
+      "spoken": "電源供應器批次 B1：更換 4 次（這批共 5 台）"
      },
      {
-      "batch": "B2",
-      "n": 0,
-      "devices": 6
+      "name": "B2",
+      "value": 0,
+      "shown": "0",
+      "spoken": "電源供應器批次 B2：更換 0 次（這批共 6 台）"
      },
      {
-      "batch": "B3",
-      "n": 0,
-      "devices": 5
+      "name": "B3",
+      "value": 0,
+      "shown": "0",
+      "spoken": "電源供應器批次 B3：更換 0 次（這批共 5 台）"
      }
     ]
    }
@@ -1829,7 +1832,22 @@ function show(role, setHash) {
   if (setHash) { try { history.replaceState(null, "", "#" + role); } catch (e) {} }
   // 隱藏時畫的圖設不了捲動位置；切過去時再捲到近 7 天
   document.querySelectorAll("#view-" + role + " .chart").forEach(c => { c.scrollLeft = c.scrollWidth; });
+  scrollables();
 }
+
+// 真的會橫向捲動的圖表與表格才放進 Tab 順序（鍵盤要能捲），名稱沿用所在段落的標題；換畫面或改視窗寬度時重算
+function scrollables() {
+  document.querySelectorAll(".chart, .table-wrap").forEach(box => {
+    if (box.scrollWidth > box.clientWidth) {
+      const h = box.closest("section")?.querySelector("h2");
+      box.tabIndex = 0; box.setAttribute("role", "group");
+      if (h) box.setAttribute("aria-labelledby", h.id);
+    } else {
+      box.removeAttribute("tabindex"); box.removeAttribute("role"); box.removeAttribute("aria-labelledby");
+    }
+  });
+}
+addEventListener("resize", scrollables);
 const fromHash = () => ROLES.includes(location.hash.slice(1)) ? location.hash.slice(1) : "caregiver";
 document.querySelectorAll(".roles button").forEach(b => b.addEventListener("click", () => show(b.dataset.role, true)));
 document.querySelector(".roles").addEventListener("keydown", e => {
@@ -1919,7 +1937,6 @@ const byUrgency = list => list.slice().sort((a, b) => (URGENCY[a.level] ?? 2) - 
 
 function cardTop(c, place) {
   const top = el("div", "top");
-  if (c.id) top.id = c.id + "-top";
   top.append(el("span", "t", c.label), el("strong", null, c.title));
   if (place) top.append(el("span", "hint", place));
   return top;
@@ -1945,7 +1962,9 @@ function renderCaregiverCards() {
 function caregiverCard(c) {
   const card = el("article", "incident " + c.level), dl = el("dl", "state"), h = human(c.id);
   card.dataset.id = c.id; card.tabIndex = -1;
-  card.append(cardTop(c, C.place), el("div", "prompt", say("prompt_then", { prompt: c.prompt })));
+  // 家屬畫面用同一組事件 id：這裡加上 cg- 前綴，id 才不會重複
+  const top = cardTop(c, C.place); top.id = `cg-${c.id}-top`;
+  card.append(top, el("div", "prompt", say("prompt_then", { prompt: c.prompt })));
   const [dev, devCls] = deviceText(c);
   dl.append(el("dt", null, "裝置警報"), el("dd", devCls, dev));
   const humanText = h.status === "done" ? say("human_done", { result: h.result, who: h.doneBy, time: h.doneAt })
@@ -1959,7 +1978,7 @@ function caregiverCard(c) {
     if (h.status === "pending") { const b = el("button", null, "接手處理"); b.type = "button"; b.onclick = () => openForm(card, c, "take"); acts.append(b); }
     const r = el("button", null, "記錄處置"); r.type = "button"; r.onclick = () => openForm(card, c, "done"); acts.append(r);
     // 每張卡都有同名按鈕：螢幕閱讀器要能聽出是哪一件事
-    acts.querySelectorAll("button").forEach(b => b.setAttribute("aria-describedby", c.id + "-top"));
+    acts.querySelectorAll("button").forEach(b => b.setAttribute("aria-describedby", top.id));
     card.append(acts);
   }
   return card;
@@ -2276,24 +2295,23 @@ function renderFamilyCards() {
   O.by_batch.forEach(r => row("op-batch", [["mono", r.batch], ["num", r.devices], ["num", r.n],
     [null, Object.entries(r.parts).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join("、") || "—"]]));
   // 同一張圖的長條共用一個比例尺，才能互相比較；數字直接標，螢幕閱讀器讀完整的一句
-  function bars(target, groups, value, name, read) {
-    const max = Math.max(...groups.flatMap(g => g.rows.map(value)), 0) || 1;
+  function bars(target, groups) {
+    const max = Math.max(...groups.flatMap(g => g.rows.map(r => r.value)), 0) || 1;
     groups.forEach(g => {
       const ul = el("ul", "bars");
       g.rows.forEach(r => {
         const li = el("li"), track = el("span", "bar-track"), fill = el("span", "bar-fill");
-        fill.style.width = `${(value(r) / max) * 100}%`; track.append(fill);
-        const shown = [el("span", "mono", name(r)), track, el("span", "mono bar-val", String(r.r ?? r.n))];
-        shown.forEach(x => x.setAttribute("aria-hidden", "true"));
-        li.append(el("span", "sr-only", read(g, r)), ...shown); ul.append(li);
+        fill.style.width = `${(r.value / max) * 100}%`; track.append(fill);
+        // 畫面上看到的名稱、長條、數字對螢幕閱讀器隱藏，改讀 spoken 這一整句
+        const visual = [el("span", "mono", r.name), track, el("span", "mono bar-val", r.shown)];
+        visual.forEach(x => x.setAttribute("aria-hidden", "true"));
+        li.append(el("span", "sr-only", r.spoken), ...visual); ul.append(li);
       });
-      $(target).append(el("p", "bar-cap", g.label || g.part), ul);
+      $(target).append(el("p", "bar-cap", g.title), ul);
     });
   }
-  bars("op-fw-bars", O.fw_bars, r => r.n / r.devices, r => r.fw,
-    (g, r) => say("bar_fw", { cat: g.label, fw: r.fw, r: r.r, n: r.n, d: r.devices }));
-  bars("op-batch-bars", O.batch_bars, r => r.n, r => r.batch,
-    (g, r) => say("bar_batch", { part: g.part, batch: r.batch, n: r.n, d: r.devices }));
+  bars("op-fw-bars", O.fw_bars);
+  bars("op-batch-bars", O.batch_bars);
   $("op-repeat-rule").textContent = say("ops_repeat_rule", DATA.ops_rule);
   if (O.repeat.length) O.repeat.forEach(r => row("op-repeat", [["mono", r.device], ["mono", r.site], ["num", r.n], [null, r.categories.join("、")]]));
   else { const tr = el("tr"), td = el("td", "hint", say("ops_repeat_none", DATA.ops_rule)); td.colSpan = 4; tr.append(td); $("op-repeat").append(tr); }
@@ -2302,12 +2320,6 @@ function renderFamilyCards() {
     ["mono", t.fw], [null, t.outcome || say("t_doing")], [null, t.action || "—"], ["num", t.downtime_min == null ? "—" : hours(t.downtime_min)]]));
   function hours(m) { return (m / 60).toFixed(1); }
 })();
-
-document.querySelectorAll(".chart, .table-wrap").forEach(box => {
-  const h = box.closest("section")?.querySelector("h2");
-  box.tabIndex = 0; box.setAttribute("role", "group");
-  if (h) box.setAttribute("aria-labelledby", h.id);
-});
 
 renderAll();
 show(fromHash());
