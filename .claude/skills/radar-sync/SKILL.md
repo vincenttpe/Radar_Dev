@@ -19,6 +19,7 @@ git status --porcelain=v1 --branch
 git rev-parse HEAD
 git rev-list --count origin/main..HEAD   # 分支上 main 以外的 commit 數
 git rev-list --count HEAD..origin/main   # main 上這個分支還沒有的 commit 數（只在沒有可用的追蹤分支時用）
+git rev-list --count origin/main..main   # 本機 main 領先數：本機 main 上沒推上去的 commit（沒有本機 main 時會報錯，當成 0）
 git log origin/main --merges --format='%H %P %s' | grep -m1 "from [^ ]*/$(git branch --show-current)\$"
 git log -5 --format='%h %s（%cr）' origin/main
 ```
@@ -44,8 +45,8 @@ git log -5 --format='%h %s（%cr）' origin/main
 
 | 狀況 | 下一步 |
 |---|---|
-| **detached HEAD**：`status` 第一行是 `## HEAD (no branch)` | 目前的 commit 不在任何分支上，切換分支後就不容易找回來。先 `git checkout -b <名稱>` 開分支保住它（未 commit 的檔案會跟著過去），再重跑 /radar-sync；這時不要看下面幾列（`grep -m1` 那行沒有分支名可比對，推送指令也沒有分支名可填） |
-| **已合併**：`grep -m1` 那行找到合併這個分支的 merge commit，它的第二個 parent（第 3 欄）等於 `git rev-parse HEAD` | 回 main（`git checkout main`）再 `git merge --ff-only origin/main`；要繼續改就從最新的 main 開新分支。有未 commit 的檔案時不要 commit 在這個已合併的分支上：先 `git stash -u`，回 main 照上面更新、開新分支，`git stash pop` 後 commit，再 `git push -u origin <新分支>`、到 GitHub 開 PR。`--ff-only` 失敗代表本機 main 有沒推上去的 commit，先停在 main 重跑 /radar-sync，照「在 main 上」處理 |
+| **detached HEAD**：`status` 第一行是 `## HEAD (no branch)` | 目前的 commit 不在任何分支上，切換分支後就不容易找回來。先 `git checkout -b <名稱>` 開分支保住它（未 commit 的檔案會跟著過去），再重跑 /radar-sync；下面幾列這時用不上（`grep -m1` 那行沒有分支名可比對，推送指令也沒有分支名可填）。使用者正在 rebase 或 bisect 時也會是這個狀態，請使用者先完成或中止（`git rebase --abort`／`git bisect reset`），不要開分支 |
+| **已合併**：`grep -m1` 那行找到合併這個分支的 merge commit，它的第二個 parent（第 3 欄）等於 `git rev-parse HEAD` | 不要在這個已合併的分支上 commit。有未 commit 的檔案就先 `git stash -u`，再回 main（`git checkout main`）。接著看本機 main 領先數：<br>・為 0：`git merge --ff-only origin/main` 更新 main；要繼續改就開新分支，有 stash 就 `git stash pop` 後 commit，再 `git push -u origin <新分支>`、到 GitHub 開 PR。<br>・大於 0：本機 main 有沒推上去的 commit，不要更新 main。有 stash 就先 `git stash pop`，再重跑 /radar-sync，照「在 main 上」把那些 commit 和檔案一起帶到新分支 |
 | **狀態不明**：不在 `main`、遠端分支已刪除（`[gone]`）、新 commit 數大於 0，而且 `grep -m1` 那行沒有輸出 | git 判斷不出 PR 是否已合併（可能是用 squash 或 rebase 合併）。請使用者先到 GitHub 確認：已合併就照「已合併」處理；沒有合併就照下面幾列 commit、合併 main、推送 |
 | **在 main 上**：有未 commit 的檔案或新 commit 數大於 0 | 先開分支（`git checkout -b <名稱>`，未 commit 的檔案會跟著過去）再 commit；也落後時接著 `git merge origin/main`；最後 `git push -u origin <名稱>`，到 GitHub 開 PR。不要直接推 main。新 commit 數大於 0 時，推送成功後讓本機 main 回到遠端：`git branch -f main origin/main`（這時已在新分支上，那些 commit 都在新分支裡，不會遺失）；不做的話，下次在 main 上跑還會再叫你開一次分支 |
 | **未 commit**：有未 commit 的檔案 | `git add`、`git commit` |
@@ -59,5 +60,5 @@ git log -5 --format='%h %s（%cr）' origin/main
 
 ## 必須遵守
 
-- 不執行 `pull`、`commit`、`push`、`checkout`、`reset`、`stash`，也不改任何檔案；使用者要你代做時，先確認再做。
+- 不執行 `pull`、`merge`、`commit`、`push`、`checkout`、`branch -f`、`reset`、`stash`，也不改任何檔案；使用者要你代做時，先確認再做。
 - 雲端工作階段（分支名像 `claude/...`）也照實回報：雲端的改動同樣要 push 上去才會留下。分支已合併時，雲端工作階段要沿用指定的分支名，下一步改成「從最新的 main 重開同名分支」。
