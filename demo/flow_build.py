@@ -121,11 +121,11 @@ def board(s: dict[str, Any]) -> str:
     沒有事件但摘要寫「無法判斷」時，Alerts 放摘要，不寫「沒有待處理的事件」。
     """
     r = s["report"]
-    alerts = [f'<li class="{e["level"] if e["level"] in LEVELS else "device"}"><b>{_e(e["label"])}</b> '
+    alerts = [f'<li class="lv-{e["level"] if e["level"] in LEVELS else "device"}"><b>{_e(e["label"])}</b> '
               f'{_e(r["place"])}：{_e(e["prompt"])}</li>' for e in r["events"]]
     if not alerts:
-        alerts = ([f'<li class="device">{_e(r["summary"])}</li>'] if "無法判斷" in r["summary"]
-                  else ['<li class="none">沒有待處理的事件。</li>'])
+        alerts = ([f'<li class="lv-device">{_e(r["summary"])}</li>'] if "無法判斷" in r["summary"]
+                  else ['<li class="lv-none">沒有待處理的事件。</li>'])
     until = f'資料到 {r["to"][5:10].replace("-", "/")} {r["to"][11:16]}' if r["to"] else "沒有收到資料"
     detail = "".join(f'<li><b>{_e(e["label"])}</b> {_e(e["prompt"])}<br><span class="hint">照護紀錄草稿：{_e(e["record"])}</span></li>'
                      for e in r["events"])
@@ -177,8 +177,8 @@ pre:focus-visible,nav a:focus-visible{outline:3px solid var(--teal);outline-offs
 .board h4{margin:0 0 8px;font-size:15px}
 .alerts{list-style:none;margin:0;padding:0}
 .alerts li{border-left:4px solid var(--line);background:var(--card);border-radius:6px;padding:6px 10px;margin-bottom:6px;font-size:14px}
-.alerts .urgent{border-left-color:var(--urgent)} .alerts .check{border-left-color:var(--warn)}
-.alerts .device{border-left-color:var(--mute)} .alerts .none{color:var(--mute)}
+.alerts .lv-urgent{border-left-color:var(--urgent)} .alerts .lv-check{border-left-color:var(--warn)}
+.alerts .lv-resolved{border-left-color:var(--teal)} .alerts .lv-device{border-left-color:var(--mute)} .alerts .lv-none{color:var(--mute)}
 .device{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
 .device p{margin:0 0 6px} .code{font-weight:700;color:var(--teal);font-size:13px} .name{font-weight:700;font-size:17px}
 .summary{border-left:4px solid var(--teal);padding-left:8px}
