@@ -27,28 +27,32 @@ git log -5 --format='%h %s（%cr）' origin/main
 
 ## 回報格式
 
+先判斷分支有沒有**可用的追蹤分支**：`status` 第一行（`## <分支>...<追蹤分支>`）寫的追蹤分支正是 `origin/<目前分支>`，而且沒有 `[gone]`。沒有追蹤分支、追蹤的是別的分支（例如從 `origin/main` 開出來的），或遠端分支已刪除（`[gone]`，PR 合併後 GitHub 常會自動刪），都算沒有。
+
 繁體中文。先一行結論（已同步／需要處理），再列：
 
 | 項目 | 值 |
 |---|---|
-| 分支 | 目前分支（追蹤的遠端分支，沒有就寫「還沒推上 GitHub」） |
-| 落後 | `[behind N]` 的 N；分支沒有追蹤的遠端分支時，改填 `HEAD..origin/main` 的數目並註明「相對 origin/main」 |
-| 未 push | `[ahead N]` 的 N；分支沒有追蹤的遠端分支時寫「—（見分支列）」 |
+| 分支 | 目前分支（可用的追蹤分支；沒有就寫「沒有可用的追蹤分支」並附原因：未設定、追蹤 `<名稱>` 或遠端已刪除） |
+| 落後 | 有可用的追蹤分支時填 `[behind N]` 的 N（相對自己的遠端分支）；沒有時填 `HEAD..origin/main` 的數目並註明「相對 origin/main」 |
+| 未 push | 有可用的追蹤分支時填 `[ahead N]` 的 N；沒有時寫「—」 |
 | 未 commit | `status` 第二行起的檔案數 |
 
-接著只列適用的下一步：
+下面兩個數目在表格裡這樣稱呼：**新 commit 數** ＝ `origin/main..HEAD`，**main 新進數** ＝ `HEAD..origin/main`。
 
-| 狀況 | 下一步 |
-|---|---|
-| 落後 | 先 `git pull`（分支沒有追蹤的遠端分支時改為 `git merge origin/main`；有未 commit 的檔案就先 commit 再 merge） |
-| 在 `main` 上有未 commit 檔案或未 push 的 commit | 先開分支（`git checkout -b <名稱>`）再 commit，透過 PR 合併；不要直接推 main |
-| 分支還沒推上 GitHub，且 `rev-list` 不為 0 | `git push -u origin <分支>`，到 GitHub 開 PR（範本見 `.github/pull_request_template.md`） |
-| 有未 commit 的檔案 | `git add`、`git commit` |
-| 有未 push 的 commit（分支有追蹤的遠端分支） | `git push`，到 GitHub 開 PR（範本見 `.github/pull_request_template.md`） |
-| 分支已合併進 main：上面最後一個指令找到合併這個分支的 merge commit，它的第二個 parent（第 3 欄）等於 `git rev-parse HEAD`，而且沒有未 commit 的檔案 | 回 main 再 `git pull`；要繼續改就從最新的 main 開新分支 |
-| 不在 `main`、`rev-list` 為 0，但不符合上一列（例如剛從 main 開出來） | 分支上還沒有新的 commit，照常開始改 |
+接著由上往下比對，只列適用的下一步。**第 1 列成立時只列第 1 列**（有未 commit 的檔案就連同第 5 列）；第 3、4、6 列都是叫使用者推送，最多列一個，取最上面成立的那列：
 
-「已合併」那一列只認得 merge commit 合併（目前 main 的慣例）。PR 若改用 squash 或 rebase 合併，這一列不會成立，表格會繼續提示 push 或開 PR；使用者說 PR 已經合併時就是這個原因，請使用者到 GitHub 確認。
+| # | 狀況 | 下一步 |
+|---|---|---|
+| 1 | 分支已合併進 main：最後一個 `git log ... \| grep` 找到合併這個分支的 merge commit，它的第二個 parent（第 3 欄）等於 `git rev-parse HEAD` | 回 main 再 `git pull`；要繼續改就從最新的 main 開新分支 |
+| 2 | 落後（數目見回報表） | 先 `git pull`；沒有可用的追蹤分支時改為 `git merge origin/main`。有未 commit 的檔案就先 commit 再合併 |
+| 3 | 在 `main` 上，有未 commit 的檔案、`[ahead N]` 大於 0，或新 commit 數大於 0 | 先開分支（`git checkout -b <名稱>`）再 commit，透過 PR 合併；不要直接推 main |
+| 4 | 不在 `main`、沒有可用的追蹤分支、新 commit 數大於 0 | `git push -u origin <分支>`，到 GitHub 開 PR（範本見 `.github/pull_request_template.md`） |
+| 5 | 有未 commit 的檔案 | `git add`、`git commit` |
+| 6 | 有可用的追蹤分支、`[ahead N]` 大於 0 | `git push`，到 GitHub 開 PR（範本見 `.github/pull_request_template.md`） |
+| 7 | 不在 `main`、新 commit 數為 0（例如剛從 main 開出來） | 分支上還沒有新的 commit，照常開始改 |
+
+第 1 列只認得 merge commit 合併（目前 main 的慣例）。PR 用 squash 或 rebase 合併時第 1 列不會成立：有可用的追蹤分支時表格可能什麼都不提示，遠端分支已刪除時會提示第 4 列。分支上有新 commit、表格卻沒有下一步，或使用者說 PR 已經合併，就附註「若 PR 是用 squash 或 rebase 合併，git 判斷不出來，請到 GitHub 確認」。
 
 最後列 `origin/main` 最近 5 個 commit。
 

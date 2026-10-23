@@ -37,7 +37,7 @@ python -m pytest tests/test_kg*.py tests/test_thresholds.py -q   # 含 test_kg_d
 | `已核准的版本內容被改過：…` | 動到已核准（`approved`）版本的檔案 | **不要更新清單、不要改 approval**。核准綁的是核准時的內容：還原那些檔案，或建立新版本（例如 `kg/v1.1/`）重新送審。由使用者決定走哪一條。 |
 | `tests/test_thresholds.py` 失敗 | 門檻的缺口或重疊有變化 | 已知問題（心肺耐力 100~111、步行速度 0.5／0.8／1.0 等）是測試刻意固定的，等審核人決定（會議清單 E5）。回報是哪一個缺口或重疊被新增或修掉，不要為了讓測試通過去改測試或門檻。 |
 | `test_committed_page_is_exactly_what_kg_build_produces` 失敗（`tests/test_kg_demo.py`） | 知識圖譜內容變了，`demo/kg_demo.html` 內嵌的資料還是舊的 | 確認知識圖譜的變動是本意後，執行 `python demo/kg_build.py` 重新產生 Demo 頁，一起 commit。 |
-| `radar-kg-level 來回行走 5.4` 失敗（包括它印出的 `錯誤：…`，例如雜湊不符），或沒有輸出等級 | 規則引擎讀不到或解析不了 `kg/v1/` 的 `thresholds.json`、`metrics.json`，或來回行走的門檻被改到 5.4 秒落在缺口 | 先跑完前兩項 `--check`，衍生檔不一致就照上面兩列處理；一致卻仍失敗，把錯誤原文與 `git diff kg/ src/radar_agent/kg_rules.py` 給使用者，不要為了通過而改門檻。 |
+| `radar-kg-level 來回行走 5.4` 失敗（包括它印出的 `錯誤：…`，例如雜湊不符），或沒有輸出等級 | 規則引擎讀不到、解析不了或驗不過 `kg/v1/` 的 `thresholds.json`、`metrics.json`，或沒有來回行走的規則。這一步只確認規則引擎能跑；門檻值改了通常只會判成別的等級，不會讓它失敗，門檻的變化由 `test_thresholds.py` 檢查 | 先跑完前兩項 `--check`，衍生檔不一致就照上面兩列處理；一致卻仍失敗，把錯誤原文與 `git diff kg/ src/radar_agent/kg_rules.py` 給使用者，不要為了通過而改門檻。 |
 | `radar-kg-build --check` 印出 `錯誤：…`（結束碼 2） | `graph.cypher` 解析失敗或等級結構有誤 | 把錯誤原文與相關段落給使用者，修 `graph.cypher`。 |
 
 ## 必須遵守
