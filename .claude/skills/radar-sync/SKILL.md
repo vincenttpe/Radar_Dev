@@ -48,7 +48,7 @@ git log -5 --format='%h %s（%cr）' origin/main
 | **狀態不明**：不在 `main`、遠端分支已刪除（`[gone]`）、新 commit 數大於 0，而且 `grep -m1` 那行沒有輸出 | git 判斷不出 PR 是否已合併（可能是用 squash 或 rebase 合併）。請使用者先到 GitHub 確認：已合併就照「已合併」處理；沒有合併就照下面幾列 commit、合併 main、推送 |
 | **在 main 上**：有未 commit 的檔案或新 commit 數大於 0 | 先開分支（`git checkout -b <名稱>`，未 commit 的檔案會跟著過去）再 commit；也落後時接著 `git merge origin/main`；最後 `git push -u origin <名稱>`，到 GitHub 開 PR。不要直接推 main |
 | **未 commit**：有未 commit 的檔案 | `git add`、`git commit` |
-| **落後**（數目見回報表） | `git pull`；沒有可用的追蹤分支時改為 `git merge origin/main` |
+| **落後**（數目見回報表） | 有可用的追蹤分支時 `git merge origin/<分支>`，沒有時 `git merge origin/main`（步驟已 fetch 過；不用 `git pull`，分支和遠端分叉時它在 git 預設設定下會拒絕執行） |
 | **推送**：不在 `main`，而且「未 commit」有列出、`[ahead N]` 大於 0，或沒有可用的追蹤分支且新 commit 數大於 0 | 做完上面幾列之後推送：有可用的追蹤分支用 `git push`，沒有就用 `git push -u origin <分支>`；還沒開 PR 就到 GitHub 開（範本見 `.github/pull_request_template.md`）。`grep -m1` 那行有輸出（這個分支名以前合併過）時加註：這些是合併之後的新 commit，要開新的 PR |
 | **還沒開始**：不在 `main`、新 commit 數為 0、沒有未 commit 的檔案 | 分支上還沒有新的 commit，照常開始改 |
 
