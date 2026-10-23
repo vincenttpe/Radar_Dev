@@ -50,6 +50,17 @@ def test_display_quotes_the_summary_and_every_prompt(flow, scenarios):
         assert all(html.escape(e["prompt"]) in part for e in s["report"]["events"])
 
 
+def test_board_puts_prompts_in_alerts_and_never_says_nothing_to_do_when_it_cannot_judge(flow, scenarios):
+    """④ 仿 Devices 頁：處置提示進 Alerts；摘要寫「無法判斷」時 Alerts 放摘要，不寫「沒有待處理」；不放數字卡。"""
+    by_name = {s["name"]: s for s in scenarios}
+    morning = flow.board(by_name["一段上午"])
+    alerts = morning.split('<ul class="alerts">', 1)[1].split("</ul>", 1)[0]
+    assert all(html.escape(e["prompt"]) in alerts for e in by_name["一段上午"]["report"]["events"])
+    empty = flow.board(by_name["範圍內沒有資料"])
+    assert "沒有收到資料，無法判斷。" in empty.split('<ul class="alerts">', 1)[1] and "沒有待處理的事件" not in empty
+    assert all('class="card"' not in flow.board(s) for s in scenarios)
+
+
 def test_uncertain_spots_are_listed_as_pending(scenarios):
     by_name = {s["name"]: s for s in scenarios}
     assert by_name["一段上午"]["pending"] == []
