@@ -22,7 +22,7 @@ description: 檢查知識圖譜（kg/）的衍生檔、雜湊與核准狀態是�
 ```bash
 radar-kg-build --check       # metrics.json、thresholds.json 是否與 graph.cypher 一致
 radar-kg-manifest --check    # kg/releases.json 的雜湊、已核准版本有沒有被改
-radar-kg-level 來回行走 5.4   # 規則引擎能讀 v1 並判出等級（kg/README.md 沒列這步，為了與 CI tests.yml 一致而加）
+radar-kg-level 來回行走 5.4   # 規則引擎能讀 v1 並判出等級（同 CI tests.yml）
 python -m pytest tests/test_kg*.py tests/test_thresholds.py -q   # 含 test_kg_demo：Demo 頁內嵌知識圖譜資料
 ```
 

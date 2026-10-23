@@ -19,6 +19,8 @@ git status --porcelain=v1 --branch
 git rev-parse HEAD
 git rev-list --count origin/main..HEAD   # 分支上 main 以外的 commit 數
 git rev-list --count HEAD..origin/main   # main 上這個分支還沒有的 commit 數（只在沒有可用的追蹤分支時用）
+ls -d "$(git rev-parse --git-dir)"/rebase-merge "$(git rev-parse --git-dir)"/rebase-apply "$(git rev-parse --git-dir)"/BISECT_LOG 2>/dev/null   # 有輸出代表正在 rebase 或 bisect
+git rev-list --count origin/main..main   # 本機 main 領先數：本機 main 上沒推上去的 commit（沒有本機 main 時會報錯，當成 0）
 git log origin/main --merges --format='%H %P %s' | grep -m1 "from [^ ]*/$(git branch --show-current)\$"
 git log -5 --format='%h %s（%cr）' origin/main
 ```
@@ -40,13 +42,14 @@ git log -5 --format='%h %s（%cr）' origin/main
 
 表格裡的**新 commit 數** ＝ `origin/main..HEAD` 的數目。
 
-接著由上往下比對，只列適用的下一步，照列序做。**「已合併」「狀態不明」「在 main 上」三列成立時只列那一列**（未 commit 的檔案與推送都在列內處理）。推送一律是最後一步，放在「推送」那列，因為 commit 與合併 main 都會產生要推上去的 commit：
+接著由上往下比對，只列適用的下一步，照列序做。**「detached HEAD」「已合併」「狀態不明」「在 main 上」四列成立時只列那一列**（未 commit 的檔案與推送都在列內處理）。推送一律是最後一步，放在「推送」那列，因為 commit 與合併 main 都會產生要推上去的 commit：
 
 | 狀況 | 下一步 |
 |---|---|
-| **已合併**：`grep -m1` 那行找到合併這個分支的 merge commit，它的第二個 parent（第 3 欄）等於 `git rev-parse HEAD` | 回 main 再 `git pull`；要繼續改就從最新的 main 開新分支。有未 commit 的檔案時不要 commit 在這個已合併的分支上：先 `git stash -u`，回 main `git pull`、開新分支，`git stash pop` 後 commit，再 `git push -u origin <新分支>`、到 GitHub 開 PR |
+| **detached HEAD**：`status` 第一行是 `## HEAD (no branch)` | 目前的 commit 不在任何分支上，切換分支後就不容易找回來。先 `git checkout -b <名稱>` 開分支保住它（未 commit 的檔案會跟著過去），再重跑 /radar-sync；下面幾列這時用不上（`grep -m1` 那行沒有分支名可比對，推送指令也沒有分支名可填）。上面 `ls -d` 那行有輸出時，是使用者正在 rebase 或 bisect，不要開分支：請使用者先完成（`git rebase --continue`）或中止（`git rebase --abort` 會放棄這次 rebase 已解好的衝突；`git bisect reset`） |
+| **已合併**：`grep -m1` 那行找到合併這個分支的 merge commit，它的第二個 parent（第 3 欄）等於 `git rev-parse HEAD` | 不要在這個已合併的分支上 commit。有未 commit 的檔案就先 `git stash -u`，再回 main（`git checkout main`）。接著看本機 main 領先數：<br>・為 0：`git merge --ff-only origin/main` 更新 main。有 stash 或要繼續改，就開新分支；有 stash 就 `git stash pop` 後 commit，再 `git push -u origin <新分支>`、到 GitHub 開 PR。<br>・大於 0：本機 main 有沒推上去的 commit，不要更新 main。有 stash 就先 `git stash pop`，再重跑 /radar-sync，照「在 main 上」把那些 commit 和檔案一起帶到新分支。<br>不論哪一條，`git stash pop` 有衝突時 stash 會保留：先解完衝突、`git add`，再 `git stash drop`，之後才 commit 或重跑 |
 | **狀態不明**：不在 `main`、遠端分支已刪除（`[gone]`）、新 commit 數大於 0，而且 `grep -m1` 那行沒有輸出 | git 判斷不出 PR 是否已合併（可能是用 squash 或 rebase 合併）。請使用者先到 GitHub 確認：已合併就照「已合併」處理；沒有合併就照下面幾列 commit、合併 main、推送 |
-| **在 main 上**：有未 commit 的檔案或新 commit 數大於 0 | 先開分支（`git checkout -b <名稱>`，未 commit 的檔案會跟著過去）再 commit；也落後時接著 `git merge origin/main`；最後 `git push -u origin <名稱>`，到 GitHub 開 PR。不要直接推 main |
+| **在 main 上**：有未 commit 的檔案或新 commit 數大於 0 | 先開分支（`git checkout -b <名稱>`，未 commit 的檔案會跟著過去）再 commit；也落後時接著 `git merge origin/main`；最後 `git push -u origin <名稱>`，到 GitHub 開 PR。不要直接推 main。新 commit 數大於 0 時，推送成功後讓本機 main 回到遠端：`git branch -f main origin/main`（這時已在新分支上，那些 commit 都在新分支裡，不會遺失）；不做的話，下次在 main 上跑還會再叫你開一次分支 |
 | **未 commit**：有未 commit 的檔案 | `git add`、`git commit` |
 | **落後**（數目見回報表） | 有可用的追蹤分支時 `git merge origin/<分支>`，沒有時 `git merge origin/main`（步驟已 fetch 過；不用 `git pull`，分支和遠端分叉時它在 git 預設設定下會拒絕執行） |
 | **推送**：不在 `main`，而且「未 commit」有列出、`[ahead N]` 大於 0，或沒有可用的追蹤分支且新 commit 數大於 0 | 做完上面幾列之後推送：有可用的追蹤分支用 `git push`，沒有就用 `git push -u origin <分支>`；還沒開 PR 就到 GitHub 開（範本見 `.github/pull_request_template.md`）。`grep -m1` 那行有輸出（這個分支名以前合併過）時加註：這些是合併之後的新 commit，要開新的 PR |
@@ -58,5 +61,5 @@ git log -5 --format='%h %s（%cr）' origin/main
 
 ## 必須遵守
 
-- 不執行 `pull`、`commit`、`push`、`checkout`、`reset`、`stash`，也不改任何檔案；使用者要你代做時，先確認再做。
+- 不執行 `pull`、`merge`、`commit`、`push`、`checkout`、`branch -f`、`reset`、`stash`，也不改任何檔案；使用者要你代做時，先確認再做。
 - 雲端工作階段（分支名像 `claude/...`）也照實回報：雲端的改動同樣要 push 上去才會留下。分支已合併時，雲端工作階段要沿用指定的分支名，下一步改成「從最新的 main 重開同名分支」。
