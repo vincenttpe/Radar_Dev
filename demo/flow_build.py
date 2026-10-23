@@ -45,7 +45,8 @@ SCENARIOS = [
     ("範圍內沒有資料", "2026-10-14 13:00", "2026-10-14 15:00"),
 ]
 
-COUNT_CARDS = [("visits", "使用次數"), ("fall_alerts", "跌倒警報"), ("distress_calls", "主動呼救"), ("longstay", "久待警報")]
+# ④ 的 Alerts 欄依 level 上色（docs/16：urgent 立即到場、check 前往查看、resolved 警報解除、device 裝置問題）
+LEVELS = ("urgent", "check", "resolved", "device")
 
 
 def run_caregiver(events: Path, place: str, start: str, end: str) -> str:
@@ -97,7 +98,7 @@ def scenario(records: list[dict[str, Any]], events: Path, device: str, place: st
     side = data_side(records, start, end)
     iso = lambda t: parse_bound(t).strftime("%Y-%m-%dT%H:%M:%S")  # noqa: E731
     return {
-        "name": name, "start": start, "end": end, "place": place,
+        "name": name, "start": start, "end": end, "place": place, "device": device,
         "request": f"GET /api/v1/devices/{device}/records?from={iso(start)}&to={iso(end)}",
         "command": f'radar-caregiver {events.relative_to(REPO) if events.is_relative_to(REPO) else events.name} '
                    f'--place "{place}" --json --from "{start}" --to "{end}"',
@@ -113,29 +114,49 @@ def _step(n: str, title: str, body: str) -> str:
     return f'<section class="step"><h3><span class="n">{n}</span>{title}</h3>{body}</section>'
 
 
+def board(s: dict[str, Any]) -> str:
+    """④ 仿官網 Dashboard 的 Devices 頁：左邊 Alerts 放處置提示，右邊裝置卡片放事件摘要，點開看照護紀錄草稿。
+
+    句子全部照 ③ 的原文，不另寫；數字卡不放（摘要寫「無法判斷」時數字仍是 0，見 docs/16「流程確認頁」）。
+    沒有事件但摘要寫「無法判斷」時，Alerts 放摘要，不寫「沒有待處理的事件」。
+    """
+    r = s["report"]
+    alerts = [f'<li class="{e["level"] if e["level"] in LEVELS else "device"}"><b>{_e(e["label"])}</b> '
+              f'{_e(r["place"])}：{_e(e["prompt"])}</li>' for e in r["events"]]
+    if not alerts:
+        alerts = ([f'<li class="device">{_e(r["summary"])}</li>'] if "無法判斷" in r["summary"]
+                  else ['<li class="none">沒有待處理的事件。</li>'])
+    until = f'資料到 {r["to"][5:10].replace("-", "/")} {r["to"][11:16]}' if r["to"] else "沒有收到資料"
+    detail = "".join(f'<li><b>{_e(e["label"])}</b> {_e(e["prompt"])}<br><span class="hint">照護紀錄草稿：{_e(e["record"])}</span></li>'
+                     for e in r["events"])
+    card = (f'<div class="device"><p class="code">{_e(s["device"])}</p><p class="name">{_e(r["place"])}</p>'
+            f'<p class="summary">{_e(r["summary"])}</p><p class="hint">{_e(until)}</p>'
+            + (f'<details><summary>處置提示與照護紀錄草稿</summary><ul>{detail}</ul></details>' if detail else "")
+            + "</div>")
+    return (f'<div class="board"><section aria-label="Alerts"><h4>Alerts</h4><ul class="alerts">{"".join(alerts)}</ul></section>'
+            f'<section aria-label="Devices"><h4>Devices</h4>{card}</section></div>')
+
+
 def render(s: dict[str, Any], i: int) -> str:
-    side, r = s["side"], s["report"]
+    side = s["side"]
     req = (f'<p>要 {_e(s["start"])} 到 {_e(s["end"])}（含開始、不含結束）的資料。</p>'
            f'<pre tabindex="0" aria-label="請求">{_e(s["request"])}</pre>'
            f'<p class="hint">本 repo 目前用這個指令處理同一段時間：</p><pre tabindex="0" aria-label="指令">{_e(s["command"])}</pre>')
     got = (f'<p>範圍內有 <b>{side["count"]}</b> 筆紀錄。</p>'
            + (f'<p>第一筆 {_e(side["first"])}<br>最後一筆 {_e(side["last"])}</p>' if side["first"] else "<p>範圍內沒有紀錄。</p>"))
     out = f'<pre tabindex="0" aria-label="回傳的 JSON" class="json">{_e(s["raw"].rstrip())}</pre>'
-    period = f'{r["from"][5:10].replace("-", "/")} {r["from"][11:16]}–{r["to"][11:16]}' if r["from"] else "沒有資料"
-    cards = "".join(f'<div class="card"><span>{label}</span><b>{r["counts"][key]}</b></div>' for key, label in COUNT_CARDS)
-    events = "".join(f'<li><b>{_e(e["label"])}</b> {_e(e["prompt"])}</li>' for e in r["events"])
-    shown = (f'<p class="title">{_e(r["place"])}<span>{_e(period)}</span></p><p class="summary">{_e(r["summary"])}</p>'
-             f'<div class="cards">{cards}</div>' + (f'<ul class="events">{events}</ul>' if events else ""))
+    shown = board(s)
     notes = "".join(f"<li>{_e(n)}</li>" for n in s["pending"])
     todo = f'<div class="pending"><h3>待決</h3><ul>{notes}</ul></div>' if notes else ""
     return (f'<article id="s{i}"><h2>情境 {i}：{_e(s["name"])}<small>{_e(s["start"])} – {_e(s["end"][11:])}</small></h2>'
             f'<div class="flow">{_step("①", "Dashboard 送出請求（草案）", req)}{_step("②", "Dashboard 有的資料", got)}'
-            f'{_step("③", "本 repo 回傳（radar-caregiver --json）", out)}{_step("④", "Dashboard 照原文顯示", shown)}</div>{todo}</article>')
+            f'{_step("③", "本 repo 回傳（radar-caregiver --json）", out)}</div>'
+            f'{_step("④", "Dashboard 照原文顯示（仿 Devices 頁版面，示意）", shown)}{todo}</article>')
 
 
 STYLE = """
-:root{--bg:#f4f6f6;--card:#fff;--ink:#16232a;--mute:#56676f;--line:#c9d2d5;--teal:#1c6a72;--warn:#8a5a00;--warnbg:#fdf3dc;--ban:#2b2233}
-@media (prefers-color-scheme:dark){:root{--bg:#121819;--card:#1b2325;--ink:#e6eef0;--mute:#9fb0b6;--line:#34444a;--teal:#7cc4cc;--warn:#f0c46a;--warnbg:#2d2614;--ban:#3a2f45}}
+:root{--bg:#f4f6f6;--card:#fff;--ink:#16232a;--mute:#56676f;--line:#c9d2d5;--teal:#1c6a72;--warn:#8a5a00;--warnbg:#fdf3dc;--ban:#2b2233;--urgent:#b42318}
+@media (prefers-color-scheme:dark){:root{--bg:#121819;--card:#1b2325;--ink:#e6eef0;--mute:#9fb0b6;--line:#34444a;--teal:#7cc4cc;--warn:#f0c46a;--warnbg:#2d2614;--ban:#3a2f45;--urgent:#f97066}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "Noto Sans TC","Microsoft JhengHei",sans-serif}
 .banner{background:var(--ban);color:#fff;padding:10px 16px;font-weight:700}
@@ -144,7 +165,7 @@ h1{font-size:22px;margin:0 0 6px} .lead{color:var(--mute);margin:0 0 12px}
 nav a{display:inline-block;margin:0 8px 8px 0;padding:6px 12px;border:1px solid var(--line);border-radius:999px;color:var(--teal);text-decoration:none;background:var(--card)}
 article{margin-top:28px}
 h2{font-size:18px;margin:0 0 10px} h2 small{font-weight:400;color:var(--mute);margin-left:10px;font-size:14px}
-.flow{display:grid;grid-template-columns:1fr 0.8fr 1.3fr 1.2fr;gap:10px}
+.flow{display:grid;grid-template-columns:1fr 0.8fr 1.6fr;gap:10px;margin-bottom:10px}
 .step{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}
 .step h3{font-size:14px;margin:0 0 8px;color:var(--teal)} .n{margin-right:6px}
 .step p{margin:0 0 8px}
@@ -152,16 +173,22 @@ pre{margin:0 0 8px;padding:8px;background:var(--bg);border-radius:6px;font:12px/
 pre.json{max-height:420px;overflow:auto;white-space:pre}
 pre:focus-visible,nav a:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
 .hint{color:var(--mute);font-size:13px}
-.title{font-weight:700} .title span{font-weight:400;color:var(--mute);margin-left:8px}
+.board{display:grid;grid-template-columns:1fr 1.2fr;gap:16px;background:var(--bg);border-radius:8px;padding:12px}
+.board h4{margin:0 0 8px;font-size:15px}
+.alerts{list-style:none;margin:0;padding:0}
+.alerts li{border-left:4px solid var(--line);background:var(--card);border-radius:6px;padding:6px 10px;margin-bottom:6px;font-size:14px}
+.alerts .urgent{border-left-color:var(--urgent)} .alerts .check{border-left-color:var(--warn)}
+.alerts .device{border-left-color:var(--mute)} .alerts .none{color:var(--mute)}
+.device{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.device p{margin:0 0 6px} .code{font-weight:700;color:var(--teal);font-size:13px} .name{font-weight:700;font-size:17px}
 .summary{border-left:4px solid var(--teal);padding-left:8px}
-.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:8px}
-.card{border:1px solid var(--line);border-radius:8px;padding:6px 8px;display:flex;justify-content:space-between}
-.card span{color:var(--mute);font-size:13px}
-.events{margin:0;padding-left:18px;font-size:14px}
+.device ul{margin:6px 0 0;padding-left:18px;font-size:14px}
+details summary{cursor:pointer;color:var(--teal)}
+details summary:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
 .pending{margin-top:10px;background:var(--warnbg);border:1px solid var(--warn);border-radius:10px;padding:10px 14px}
 .pending h3{margin:0 0 4px;font-size:14px;color:var(--warn)} .pending ul{margin:0;padding-left:18px}
 @media (max-width:960px){.flow{grid-template-columns:1fr 1fr}}
-@media (max-width:560px){.flow{grid-template-columns:1fr}}
+@media (max-width:560px){.flow,.board{grid-template-columns:1fr}}
 """
 
 
