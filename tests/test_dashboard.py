@@ -98,6 +98,22 @@ def test_family_view_only_reads_the_simulated_morning(build, monkeypatch):
     assert seen and all(e is None and topics == {"radar10/DEMO-SIM-01"} for e, topics in seen)
 
 
+def test_follow_up_steps_cover_every_alert_level_and_stay_actions_only(build, data):
+    """後續處理步驟（範例，待機構提供）：每一種要處理的事件都有；只寫行動，不寫醫療或照護判斷（ADR 0008）。"""
+    from radar_agent.output_check import wording_problems
+
+    levels = {c["level"] for c in data["caregiver"]["incidents"]}
+    assert levels <= set(data["follow_up"]), "每一種事件卡都要有後續處理步驟"
+    for steps in data["follow_up"].values():
+        autos = [auto for _, auto in steps]
+        assert autos[0] == "take" and autos[-1] == "done", "第一步接手、最後一步記錄處置，才能照人員處置狀態自動打勾"
+        assert set(autos) <= {"take", "done", None}
+        for text, _ in steps:
+            assert not wording_problems(text)
+            assert not any(w in text for w in ("評估", "傷勢", "送醫", "診斷", "應該")), text
+    assert "範例" in build.UI_TEXT["follow_title"], "正式步驟要由機構提供，頁面要標明是範例"
+
+
 def test_calm_morning_has_no_alerts_and_every_device_online(data):
     """「平靜的上午」：同一個模擬上午，有人進出照舊，但沒有任何通知、裝置一直在線。句子仍然來自 radar-caregiver。"""
     calm = data["calm"]

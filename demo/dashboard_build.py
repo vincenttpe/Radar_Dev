@@ -3,6 +3,7 @@
 用途：評估「除了官網 Dashboard，要不要做更符合使用者便利的介面」，不是取代官網。
 同一份模擬資料，依讀者切換三種畫面，每種畫面只放那位讀者最常做的事：
 - 居服員：先看還有沒有要處理的警報，再看處置提示、可以複製的照護紀錄草稿、提問、兩週使用趨勢。
+  跌倒、呼救、久待的事件卡附「後續處理步驟」（FOLLOW_UP，範例，待機構提供），接手與記錄處置自動打勾。
   句子全部來自 demo/build.py（也就是 radar-caregiver、radar-ask 的同一套函式），不另寫。
 - 家屬：模擬「單人房、有長者代號 DEMO-ELDER-01」的情境，只放事件摘要、今天發生過什麼（時間與種類）
   與每日使用次數。家屬版的用語還沒擬定與審核，所以不放處置提示與照護紀錄，也不放寫著「場域統計」的趨勢句子。
@@ -10,6 +11,7 @@
 - 系統管理人員：四台模擬裝置的狀態（在線、斷線、資料逾時、最後收到資料、紀錄筆數、無法判讀的紀錄），不看照護事件內容；
   異常裝置可以「回報問題」，回報單自動帶入遠端判斷需要的裝置資訊（diagnostics()）。
   本場域的維修紀錄（回報單狀態與處理結果）也在這裡。
+  處理機制紀錄只看流程有沒有走完（事件代號、地點、各階段時間），不放長者資料、事件種類與處置內容。
 - 維運後台（團隊或廠商）：跨場域的維修統計與給韌體、硬體更新的參考（ops_data()），只用場域代號與裝置代號。
 
 每件事分成「裝置警報」與「人員處置」兩種狀態：這份資料沒有人員處置紀錄，人員處置從「尚未確認」開始，頁面上可以示意接手與記錄處置
@@ -454,6 +456,12 @@ def incidents(events: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[
 UI_TEXT: dict[str, str] = {
     "tag": "模擬歷史資料",
     "head_pending": "有 {n} 件待接手",
+    "follow_title": "後續處理步驟（範例，待機構提供）",
+    "follow_note": "接手與記錄處置會自動打勾；中間的步驟由居服員在現場判斷，系統不記錄。",
+    "follow_done": "（已完成）",
+    "flow_head": "處理機制啟動 {n} 件：已完成 {done} 件、處理中 {doing} 件、待接手 {pending} 件。",
+    "flow_none": "這段時間沒有啟動處理機制。",
+    "flow_note": "只看處理流程有沒有走完：事件代號、地點與各階段時間，不含長者資料、事件種類與處置內容（示意，只存在這個分頁）。",
     "head_none": "沒有待接手的事件",
     "records_none": "這段時間沒有要寫進照護紀錄的事件。",
     "events_none": "這段時間沒有跌倒、呼救或久待的通知。",
@@ -584,6 +592,13 @@ UI_TEXT: dict[str, str] = {
 }
 # 記錄處置的結果選項：只描述做了什麼，不判斷長者狀況（判斷寫在備註，由人負責）
 RESULTS = ["已到場確認", "已到場協助", "以電話或語音確認", "其他（見備註）"]
+# 跌倒、呼救與久待後的處理步驟（範例，待機構提供；docs/17）。第二欄是自動打勾的依據：take＝已接手、done＝已記錄處置；
+# None 是居服員在現場做的事，系統不記錄，所以不打勾。只寫行動、不寫判斷（非醫療器材，ADR 0008）
+FOLLOW_UP: dict[str, list[tuple[str, str | None]]] = {
+    "urgent": [("接手處理（按「接手處理」）", "take"), ("到場確認長者狀況", None),
+               ("需要時依機構流程聯絡相關人員", None), ("記錄處置（按「記錄處置」）", "done")],
+    "check": [("接手處理（按「接手處理」）", "take"), ("前往查看長者狀況", None), ("記錄處置（按「記錄處置」）", "done")],
+}
 # 家屬看不到備註：「其他（見備註）」在家屬畫面改寫成「其他處置」（#74 審查 N2）
 FAMILY_RESULTS = {"其他（見備註）": "其他處置"}
 
@@ -591,6 +606,7 @@ FAMILY_RESULTS = {"其他（見備註）": "其他處置"}
 def check_ui_text(registry: dict[str, dict[str, Any]] | None = None,
                   tickets: list[dict[str, Any]] | None = None) -> None:
     texts = [*UI_TEXT.items(), *((f"result{i}", r) for i, r in enumerate(RESULTS)), *FAMILY_RESULTS.items(),
+             *((f"follow_up.{level}{i}", step) for level, steps in FOLLOW_UP.items() for i, (step, _) in enumerate(steps)),
              *CAUSE.items(), *CATEGORY.items(), ("trend_rule", trend_rule())]
     for device, entry in (registry or {}).items():
         texts += [(f"{device}.{k}", str(entry[k])) for k in ("place", "area", "use")]
@@ -677,7 +693,7 @@ def dashboard_data() -> dict[str, Any]:
             "own_site": OWN_SITE, "own_tickets": [{**t, "place": place_at(t["device"], t["reported"], registry)}
                             for t in tickets if t["site"] == OWN_SITE], "ops": ops,
             "categories": CATEGORY, "ops_rule": {"r": FINDING_RATIO, "n": FINDING_AT_LEAST, "a": SAME_ACTION_AT_LEAST, "k": REPEAT_AT_LEAST},
-            "text": UI_TEXT, "results": RESULTS, "family_results": FAMILY_RESULTS}
+            "text": UI_TEXT, "results": RESULTS, "family_results": FAMILY_RESULTS, "follow_up": FOLLOW_UP}
 
 
 def fragment(data: dict[str, Any]) -> str:
