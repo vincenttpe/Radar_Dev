@@ -14,11 +14,11 @@ description: 檢查本機（或這個工作階段）Radar_Agent checkout 的 git
 ```bash
 git rev-parse --show-toplevel
 git remote get-url origin
-git fetch --quiet origin            # 失敗就註明「落後數可能不是最新」，繼續
+git fetch --quiet --prune origin    # 失敗就註明「落後數可能不是最新」，繼續；--prune 讓已刪除的遠端分支顯示成 [gone]
 git status --porcelain=v1 --branch
 git rev-parse HEAD
 git rev-list --count origin/main..HEAD   # 分支上 main 以外的 commit 數
-git rev-list --count HEAD..origin/main   # main 上這個分支還沒有的 commit 數（只在沒有追蹤的遠端分支時用）
+git rev-list --count HEAD..origin/main   # main 上這個分支還沒有的 commit 數（只在沒有可用的追蹤分支時用）
 git log origin/main --merges --format='%H %P %s' | grep -m1 "from [^ ]*/$(git branch --show-current)\$"
 git log -5 --format='%h %s（%cr）' origin/main
 ```
@@ -40,19 +40,19 @@ git log -5 --format='%h %s（%cr）' origin/main
 
 下面兩個數目在表格裡這樣稱呼：**新 commit 數** ＝ `origin/main..HEAD`，**main 新進數** ＝ `HEAD..origin/main`。
 
-接著由上往下比對，只列適用的下一步。**第 1 列成立時只列第 1 列**（有未 commit 的檔案就連同第 5 列）；第 3、4、6 列都是叫使用者推送，最多列一個，取最上面成立的那列：
+接著由上往下比對，只列適用的下一步。**第 1、2 列成立時只列那一列**（未 commit 的檔案在列內處理）；其他列可以同時列出，但第 5、6 列都是推送，最多列一個：
 
 | # | 狀況 | 下一步 |
 |---|---|---|
-| 1 | 分支已合併進 main：最後一個 `git log ... \| grep` 找到合併這個分支的 merge commit，它的第二個 parent（第 3 欄）等於 `git rev-parse HEAD` | 回 main 再 `git pull`；要繼續改就從最新的 main 開新分支 |
-| 2 | 落後（數目見回報表） | 先 `git pull`；沒有可用的追蹤分支時改為 `git merge origin/main`。有未 commit 的檔案就先 commit 再合併 |
-| 3 | 在 `main` 上，有未 commit 的檔案、`[ahead N]` 大於 0，或新 commit 數大於 0 | 先開分支（`git checkout -b <名稱>`）再 commit，透過 PR 合併；不要直接推 main |
-| 4 | 不在 `main`、沒有可用的追蹤分支、新 commit 數大於 0 | `git push -u origin <分支>`，到 GitHub 開 PR（範本見 `.github/pull_request_template.md`） |
-| 5 | 有未 commit 的檔案 | `git add`、`git commit` |
+| 1 | 分支已合併進 main：`grep -m1` 那行找到合併這個分支的 merge commit，它的第二個 parent（第 3 欄）等於 `git rev-parse HEAD` | 回 main 再 `git pull`；要繼續改就從最新的 main 開新分支。有未 commit 的檔案時不要 commit 在這個已合併的分支上：先 `git stash`，回 main `git pull`、開新分支，再 `git stash pop` 後 commit |
+| 2 | 在 `main` 上，有未 commit 的檔案或新 commit 數大於 0 | 先開分支（`git checkout -b <名稱>`，未 commit 的檔案會跟著過去）再 commit，透過 PR 合併；不要直接推 main。也落後時，開好分支、commit 之後再 `git merge origin/main` |
+| 3 | 落後（數目見回報表） | 先 `git pull`；沒有可用的追蹤分支時改為 `git merge origin/main`。有未 commit 的檔案就先 commit 再合併 |
+| 4 | 有未 commit 的檔案 | `git add`、`git commit` |
+| 5 | 不在 `main`、沒有可用的追蹤分支、新 commit 數大於 0 | `git push -u origin <分支>`，到 GitHub 開 PR（範本見 `.github/pull_request_template.md`） |
 | 6 | 有可用的追蹤分支、`[ahead N]` 大於 0 | `git push`，到 GitHub 開 PR（範本見 `.github/pull_request_template.md`） |
 | 7 | 不在 `main`、新 commit 數為 0（例如剛從 main 開出來） | 分支上還沒有新的 commit，照常開始改 |
 
-第 1 列只認得 merge commit 合併（目前 main 的慣例）。PR 用 squash 或 rebase 合併時第 1 列不會成立：有可用的追蹤分支時表格可能什麼都不提示，遠端分支已刪除時會提示第 4 列。分支上有新 commit、表格卻沒有下一步，或使用者說 PR 已經合併，就附註「若 PR 是用 squash 或 rebase 合併，git 判斷不出來，請到 GitHub 確認」。
+第 1 列只認得 merge commit 合併（目前 main 的慣例）。PR 用 squash 或 rebase 合併時第 1 列不會成立：有可用的追蹤分支時表格可能什麼都不提示，遠端分支已刪除（`[gone]`）時會提示第 5 列，把已合併的分支再推一次。所以分支上有新 commit、而且遠端分支是 `[gone]` 時，不列第 5 列，改附註「遠端分支已刪除，PR 可能已用 squash 或 rebase 合併，git 判斷不出來，請到 GitHub 確認」；表格沒有任何下一步、或使用者說 PR 已經合併時，也附同一句。
 
 最後列 `origin/main` 最近 5 個 commit。
 
