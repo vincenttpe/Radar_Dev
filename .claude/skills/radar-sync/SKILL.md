@@ -16,6 +16,7 @@ git rev-parse --show-toplevel
 git remote get-url origin
 git fetch --quiet origin            # 失敗就註明「落後數可能不是最新」，繼續
 git status --porcelain=v1 --branch
+git rev-parse HEAD
 git rev-list --count origin/main..HEAD   # 分支上 main 以外的 commit 數
 git rev-list --count HEAD..origin/main   # main 上這個分支還沒有的 commit 數（只在沒有追蹤的遠端分支時用）
 git log origin/main --merges --format='%H %P %s' | grep -m1 "from [^ ]*/$(git branch --show-current)\$"
@@ -39,14 +40,15 @@ git log -5 --format='%h %s（%cr）' origin/main
 
 | 狀況 | 下一步 |
 |---|---|
-| 落後 | 先 `git pull`（分支沒有追蹤的遠端分支時改為 `git merge origin/main`） |
+| 落後 | 先 `git pull`（分支沒有追蹤的遠端分支時改為 `git merge origin/main`；有未 commit 的檔案就先 commit 再 merge） |
 | 在 `main` 上有未 commit 檔案或未 push 的 commit | 先開分支（`git checkout -b <名稱>`）再 commit，透過 PR 合併；不要直接推 main |
-| 分支還沒推上 GitHub | `git push -u origin <分支>` |
+| 分支還沒推上 GitHub，且 `rev-list` 不為 0 | `git push -u origin <分支>`，到 GitHub 開 PR（範本見 `.github/pull_request_template.md`） |
 | 有未 commit 的檔案 | `git add`、`git commit` |
 | 有未 push 的 commit（分支有追蹤的遠端分支） | `git push`，到 GitHub 開 PR（範本見 `.github/pull_request_template.md`） |
 | 分支已合併進 main：上面最後一個指令找到合併這個分支的 merge commit，它的第二個 parent（第 3 欄）等於 `git rev-parse HEAD`，而且沒有未 commit 的檔案 | 回 main 再 `git pull`；要繼續改就從最新的 main 開新分支 |
 | 不在 `main`、`rev-list` 為 0，但不符合上一列（例如剛從 main 開出來） | 分支上還沒有新的 commit，照常開始改 |
-| 不在 `main`、`rev-list` 不為 0、分支已推上去且沒有未 push 的 commit | 加註：「已合併」只認得 merge commit 合併（目前 main 的慣例）；這個分支的 PR 若是用 squash 或 rebase 合併，git 判斷不出來，請到 GitHub 確認 |
+
+「已合併」那一列只認得 merge commit 合併（目前 main 的慣例）。PR 若改用 squash 或 rebase 合併，這一列不會成立，表格會繼續提示 push 或開 PR；使用者說 PR 已經合併時就是這個原因，請使用者到 GitHub 確認。
 
 最後列 `origin/main` 最近 5 個 commit。
 

@@ -7,7 +7,7 @@ description: 檢查知識圖譜（kg/）的衍生檔、雜湊與核准狀態是�
 
 規則的正本是 `kg/README.md`「更新規則」一節；這個 skill 是照它執行的檢查流程。
 
-依賴：雲端工作階段通常已由 SessionStart hook 裝好，但工作階段不是從 repo 根目錄開始時 hook 不會跑。下面的指令出現 `command not found` 或 `No module named pytest`，先在 repo 根目錄執行 `pip install -r requirements-dev.txt`（等同 `pip install -e ".[dev]"`）再重跑；裝好後仍找不到 `radar-kg-*`，表示 pip 的 scripts 目錄不在 PATH，逐條換成下面的寫法，**參數照抄、`--check` 不能省**：
+依賴：雲端工作階段通常已由 SessionStart hook 裝好，但工作階段不是從 repo 根目錄開始時 hook 不會跑。下面的指令出現 `command not found`、`No module named pytest` 或 `No module named radar_agent`，先在 repo 根目錄執行 `python -m pip install -r requirements-dev.txt`（等同 `pip install -e ".[dev]"`）再重跑；裝好後仍找不到 `radar-kg-*`，表示 pip 的 scripts 目錄不在 PATH，逐條換成下面的寫法，**參數照抄、`--check` 不能省**：
 
 | 指令 | 替代寫法 |
 |---|---|
