@@ -93,6 +93,13 @@ button:hover { border-color: var(--accent); }
 .bar-track { height: 10px; border-left: 1px solid var(--control); }
 .bar-fill { display: block; height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; }
 .bar-val { text-align: right; }
+/* 後續處理步驟：自動打勾的是接手與記錄處置；現場步驟只提醒 */
+.follow { display: grid; gap: 4px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.follow-title { margin: 0; font-size: 13px; font-weight: 700; color: var(--muted); }
+.follow ol { margin: 0; padding-left: 1.6em; display: grid; gap: 2px; font-size: 14px; }
+.follow li.on { color: var(--ok); }
+.follow li.on::marker { content: "✓ "; }
+.follow .hint { margin: 0; }
 .form [aria-invalid="true"] { border-color: var(--urgent); border-width: 2px; }
 
 /* 狀態摘要：一眼看出要不要處理 */
@@ -394,6 +401,11 @@ body { font-size: 16px; }
         </table>
       </div>
     </section>
+    <section aria-labelledby="h-ad-flow">
+      <div class="head-row"><h2 id="h-ad-flow">處理機制紀錄</h2><span class="hint" id="ad-flow-note"></span></div>
+      <p class="hint" style="margin:0" id="ad-flow-head" aria-live="polite"></p>
+      <div class="panel table-wrap"><table><thead><tr><th>事件代號</th><th>地點</th><th>事件時間（提醒出現）</th><th>接手</th><th>完成</th><th>目前階段</th></tr></thead><tbody id="ad-flow"></tbody></table></div>
+    </section>
     <section aria-labelledby="h-ad-tickets">
       <div class="head-row"><h2 id="h-ad-tickets">維修紀錄</h2><span class="hint" id="ad-tickets-note"></span></div>
       <div class="feed" id="ad-tickets"></div>
@@ -588,7 +600,7 @@ function chart(target, days) {
 /* ---------- 人員處置的共用狀態：居服員與家屬畫面都讀這一份（只在記憶體，重新整理就清掉） ---------- */
 const handling = {};   // 事件 id → { status: "handling" | "done", who, takenAt, result, doneAt, note }
 const human = id => handling[id] || { status: "pending" };
-function renderAll() { renderCaregiverTop(); renderCaregiverCards(); renderFamilyCards(); markProgress(); }
+function renderAll() { renderCaregiverTop(); renderCaregiverCards(); renderFamilyCards(); markProgress(); renderAdminFlow(); }
 
 // 事件卡的進度條：待接手 → 處理中 → 已完成。名稱取自 count_* 句型（去掉件數），卡片標上 data-status 給樣式用
 const STEP_ORDER = ["pending", "handling", "done"];
@@ -656,6 +668,35 @@ function renderCaregiverCards() {
   if (!box.children.length) box.append(el("p", "hint", say("events_none")));
 }
 
+// 後續處理步驟（範例，待機構提供）：接手與記錄處置照人員處置狀態自動打勾，現場步驟不打勾
+function followUp(c, h) {
+  const steps = DATA.follow_up[c.level];
+  if (!steps) return null;
+  const box = el("div", "follow"), ol = el("ol");
+  steps.forEach(([text, auto]) => {
+    const on = (auto === "take" && h.takenAt) || (auto === "done" && h.status === "done");
+    const li = el("li", on ? "on" : null, text);
+    if (on) li.append(el("span", "sr-only", say("follow_done")));
+    ol.append(li);
+  });
+  box.append(el("p", "follow-title", say("follow_title")), ol, el("p", "hint", say("follow_note")));
+  return box;
+}
+
+// 系統管理人員：處理機制紀錄。只看流程有沒有走完，不放長者資料、事件種類與處置內容
+function renderAdminFlow() {
+  const tb = $("ad-flow"), inc = C.incidents, n = s => inc.filter(c => human(c.id).status === s).length;
+  tb.replaceChildren();
+  $("ad-flow-head").textContent = inc.length
+    ? say("flow_head", { n: inc.length, done: n("done"), doing: n("handling"), pending: n("pending") }) : say("flow_none");
+  inc.slice().sort((a, b) => (a.at < b.at ? -1 : 1)).forEach(c => {
+    const h = human(c.id), tr = el("tr");
+    [["mono", c.id], [null, C.place], ["mono", c.label], ["mono", h.takenAt || "—"], ["mono", h.doneAt || "—"],
+      [null, STEP_NAMES[STEP_ORDER.indexOf(h.status)]]].forEach(([cls, v]) => tr.append(el("td", cls, v)));
+    tb.append(tr);
+  });
+}
+
 function caregiverCard(c) {
   const card = el("article", "incident " + c.level), dl = el("dl", "state"), h = human(c.id);
   card.dataset.id = c.id; card.tabIndex = -1;
@@ -678,6 +719,9 @@ function caregiverCard(c) {
     acts.querySelectorAll("button").forEach(b => b.setAttribute("aria-describedby", top.id));
     card.append(acts);
   }
+  // 步驟清單放在按鈕下面：第一張卡的「接手處理」要留在第一屏
+  const follow = followUp(c, h);
+  if (follow) card.append(follow);
   return card;
 }
 
@@ -881,6 +925,7 @@ function renderFamilyCards() {
     DATA.own_tickets.slice().reverse().forEach(t => box.append(ticketCard(t)));
   }
   $("ad-tickets-note").textContent = say("own_tickets_note", { site: DATA.own_site });
+  $("ad-flow-note").textContent = say("flow_note");
   renderOwnTickets();
 
   // 裝置問題回報：系統自動帶入遠端判斷需要的裝置資訊，管理員只補描述與現場檢查
