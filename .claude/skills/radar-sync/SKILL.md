@@ -17,12 +17,12 @@ git remote get-url origin
 git fetch --quiet origin            # 失敗就註明「落後數可能不是最新」，繼續
 git status --porcelain=v1 --branch
 git rev-list --count origin/main..HEAD   # 分支上 main 以外的 commit 數
-git rev-list --count HEAD..origin/main   # main 上這個分支還沒有的 commit 數
+git rev-list --count HEAD..origin/main   # main 上這個分支還沒有的 commit 數（只在沒有追蹤的遠端分支時用）
 git log origin/main --merges --format='%H %P %s' | grep -m1 "from [^ ]*/$(git branch --show-current)\$"
 git log -5 --format='%h %s（%cr）' origin/main
 ```
 
-不是 git repo，或 origin 網址不含 `radar_agent` 也不含 `radar_dev`（不分大小寫；`Deepfens-AI/Radar_Agent` 與它的鏡像 `Radar_Dev` 都算），就回報「這個資料夾不是 Radar_Agent」並結束。
+不是 git repo，或 origin 網址不含 `radar_agent` 也不含 `radar_dev`（不分大小寫；`Deepfens-AI/Radar_Agent` 與 `vincenttpe/Radar_Dev` 都算），就回報「這個資料夾不是 Radar_Agent」並結束。
 
 ## 回報格式
 
@@ -32,7 +32,7 @@ git log -5 --format='%h %s（%cr）' origin/main
 |---|---|
 | 分支 | 目前分支（追蹤的遠端分支，沒有就寫「還沒推上 GitHub」） |
 | 落後 | `[behind N]` 的 N；分支沒有追蹤的遠端分支時，改填 `HEAD..origin/main` 的數目並註明「相對 origin/main」 |
-| 未 push | `[ahead N]` 的 N；分支沒有追蹤的遠端分支時，改填 `origin/main..HEAD` 的數目（這些 commit 都還沒推上去） |
+| 未 push | `[ahead N]` 的 N；分支沒有追蹤的遠端分支時寫「—（見分支列）」 |
 | 未 commit | `status` 第二行起的檔案數 |
 
 接著只列適用的下一步：
@@ -43,13 +43,12 @@ git log -5 --format='%h %s（%cr）' origin/main
 | 在 `main` 上有未 commit 檔案或未 push 的 commit | 先開分支（`git checkout -b <名稱>`）再 commit，透過 PR 合併；不要直接推 main |
 | 分支還沒推上 GitHub | `git push -u origin <分支>` |
 | 有未 commit 的檔案 | `git add`、`git commit` |
-| 有未 push 的 commit | `git push`，到 GitHub 開 PR（範本見 `.github/pull_request_template.md`） |
+| 有未 push 的 commit（分支有追蹤的遠端分支） | `git push`，到 GitHub 開 PR（範本見 `.github/pull_request_template.md`） |
 | 分支已合併進 main：上面最後一個指令找到合併這個分支的 merge commit，它的第二個 parent（第 3 欄）等於 `git rev-parse HEAD`，而且沒有未 commit 的檔案 | 回 main 再 `git pull`；要繼續改就從最新的 main 開新分支 |
 | 不在 `main`、`rev-list` 為 0，但不符合上一列（例如剛從 main 開出來） | 分支上還沒有新的 commit，照常開始改 |
+| 不在 `main`、`rev-list` 不為 0、分支已推上去且沒有未 push 的 commit | 加註：「已合併」只認得 merge commit 合併（目前 main 的慣例）；這個分支的 PR 若是用 squash 或 rebase 合併，git 判斷不出來，請到 GitHub 確認 |
 
 最後列 `origin/main` 最近 5 個 commit。
-
-「分支已合併」的判斷假設 PR 用 merge commit 合併（目前 main 的慣例）。若改用 squash 或 rebase 合併，main 上不會有第二個 parent 等於 HEAD 的 merge commit，這一列永遠不成立；遇到 `rev-list` 不為 0、但 GitHub 上這個分支的 PR 已合併的情況，照實回報「無法從 git 判斷是否已合併，請到 GitHub 確認」。
 
 ## 必須遵守
 
