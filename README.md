@@ -22,7 +22,7 @@
 | `legacy/prototype/` | 舊雛形程式，僅供參考與比對，不再開發 |
 | `src/radar_agent/` | 新系統的程式。目前有事件驗證（`event_validation.py`）、知識圖譜發布清單工具（`kg_manifest.py`）、門檻解析與等級判定（`kg_source.py`、`kg_rules.py`）與 PR 單向門檢查（`pr_gate.py`） |
 | `REVIEW.md` | 審查規範：單向門清單、規範與需求兩軸的檢查重點；PR 範本在 `.github/pull_request_template.md`，CI（`pr-gate.yml`）依變更的檔案檢查單向門勾選 |
-| `.claude/skills/` | Claude 用的專案 skill：`kg-check`（知識圖譜一致性檢查） |
+| `.claude/skills/` | Claude 用的專案 skill：`kg-check`（知識圖譜一致性檢查）、`radar-sync`（git 同步狀態檢查，提醒 pull／push） |
 | `tests/` | 資料檔的一致性測試與上述程式的測試，不載入模型、不連資料庫 |
 
 ## 從哪裡開始讀
