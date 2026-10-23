@@ -34,6 +34,29 @@
 
 實測資料可以產生本機版：`python demo/flow_build.py --events 遮罩後的檔案 --place 地點 --range 開始 結束`，寫到 `outputs/flow_field.html`，不 commit、不發布。
 
+### 資料交換 API 草案（2026-10-23，還沒和 Dashboard 約定）
+
+Dashboard 的 Logs 頁已經能依時間篩選、匯出 NDJSON（2026-10-23 截圖），後台本來就能依時間查詢。API 約定之前，先用手動方式走一遍：Logs 頁設定時間範圍 → 打開 heartbeat、topic → Export NDJSON → `radar-caregiver --from --to --json`。
+
+**① Jetson 向 Dashboard 要資料**：`GET /api/v1/devices/{裝置代號}/records?from=…&to=…`（網址只是示意）。
+
+| 回應欄位 | 用來確定什麼 |
+|---|---|
+| `from`、`to`（日期＋時間＋時區） | 範圍含開始、不含結束；畫面上的 Logs 頁只看得到時間，API 要能指定日期與時區（A49） |
+| `received_until`、`complete` | Dashboard 收到哪個時間點為止；分得出「沒有事件」和「資料還沒到」 |
+| `model`、`firmware` | 決定用哪種格式解析（radar10 或 Radar60FL） |
+| `settings`：這段時間有效的偵測設定與變更時間 | 跌倒、久待警報有沒有開，久待門檻多少（A52）；警報沒開時，報告不能寫「0 次」 |
+| `records[]`：每筆附 `id`、`received_at` | 去重；斷線後補傳的資料和即時資料分開（A13、A14） |
+| `count`、`next_cursor` | 確認全部拿到，沒有被截斷 |
+
+範圍超過上限、`from` 晚於 `to`、查無裝置時回錯誤碼，不回空陣列：空陣列只代表這段時間真的沒有紀錄。
+
+**② Jetson 把文字傳回 Dashboard**：內容是 `caregiver-report-v0`，Dashboard 照原文顯示。
+
+待決（會改到給讀者的輸出，屬於單向門，要人決定）：
+- 回傳要附 `range`、資料到哪裡為止，以及 `counts` 要能表示「無法判斷」（見上面「流程確認頁」）。
+- 警報沒開時，報告怎麼寫（例如「跌倒警報未開啟，無法判斷」）。要先拿到 ① 的 `settings`。
+
 ### Dashboard 給的資料：和原本假設的格式不同（2026-10-23 實測）
 
 使用者從 Dashboard 下載了某台現場雷達 5 天的資料（10/19 07:24–10/23 14:02，2,787 筆；真實資料，不進 repo，MAC 一律換成代號）。結果：
@@ -43,7 +66,7 @@
 | topic | `radar10/<裝置 ID>` | `Radar60FL/<裝置 ID>/sys/property/post` |
 | 內容 | `{"event": "fall"、"presence"…}` | `{"method":"post","params":{...},"version":...}` |
 | 欄位 | 事件種類 | `someoneExists`、`motionStatus`、`residentStatus`、`online`（值是字串，例如 "0"） |
-| 心跳 | 約每 5 秒一筆 | 沒有：狀態改變才送；白天最長約 1 小時沒有資料，晚上 19:00 到隔天 07:00 大多沒有 |
+| 心跳 | 約每 5 秒一筆 | 匯出的資料裡沒有（可能是匯出時沒開 Logs 頁的「Show heartbeat」，A47）：狀態改變才有紀錄；白天最長約 1 小時沒有資料，晚上 19:00 到隔天 07:00 大多沒有 |
 | 跌倒、久待、呼救 | 有 | 5 天內沒有出現，不知道這個型號會不會送 |
 
 - **目前的程式讀不懂**：多層的 topic 被當成伺服器下給裝置的指令而略過，`radar-caregiver` 只會寫「沒有收到資料，無法判斷」。這是安全的失敗（不會寫成「跌倒 0 次」），但也什麼都產生不了。
@@ -117,8 +140,8 @@
 
 | 題目 | 對應週一清單 |
 |---|---|
-| 輸出怎麼交給 Dashboard（API、寫檔、資料庫、MQTT），誰呼叫誰。**2026-10-23**：由 Jetson 向 Dashboard 要資料、產生文字後傳回（見「第一階段的流程」）；網址、認證、參數、更新頻率還沒定 | 4-1 |
-| Dashboard 給的 JSON 格式（Radar60FL）與欄位意思 | —（見 `docs/05` A45–A50） |
+| 輸出怎麼交給 Dashboard（API、寫檔、資料庫、MQTT），誰呼叫誰。**2026-10-23**：由 Jetson 向 Dashboard 要資料、產生文字後傳回（見「第一階段的流程」）；網址、認證、參數、更新頻率還沒定；草案見「資料交換 API 草案」 | 4-1 |
+| Dashboard 給的 JSON 格式（Radar60FL）與欄位意思；Device Data 三種資料；當時有效的偵測設定 | —（見 `docs/05` A45–A52） |
 | 上面三種 JSON 的欄位夠不夠、要不要改名 | 4-2 |
 | 提問輸入框放在哪一頁；`radar-ask` 由 Dashboard 呼叫還是 Jetson 推送 | 4-1 |
 | 照護紀錄草稿複製後寫回哪裡 | 4-4 |
