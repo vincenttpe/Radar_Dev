@@ -36,7 +36,7 @@
 
 ### 資料交換 API 草案（2026-10-23，還沒和 Dashboard 約定）
 
-Dashboard 的 Logs 頁已經能依時間篩選、匯出 NDJSON（2026-10-23 截圖），後台本來就能依時間查詢。API 約定之前，先用手動方式走一遍：Logs 頁設定時間範圍 → 打開 heartbeat、topic → Export NDJSON → `radar-caregiver --from --to --json`。
+Dashboard 的 Logs 頁已經能依時間篩選、匯出 NDJSON（2026-10-23 截圖），看起來後台本來就能依時間查詢（待確認）。API 約定之前，先用手動方式走一遍：Logs 頁設定時間範圍 → 打開 heartbeat、topic → Export NDJSON → `radar-caregiver --from --to --json`。
 
 **① Jetson 向 Dashboard 要資料**：`GET /api/v1/devices/{裝置代號}/records?from=…&to=…`（網址只是示意）。
 

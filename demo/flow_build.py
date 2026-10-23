@@ -68,7 +68,7 @@ def data_side(records: list[dict[str, Any]], start: str, end: str) -> dict[str, 
 def _readable(record: dict[str, Any]) -> bool:
     try:
         datetime.strptime(str(record["timestamp"]), TIMESTAMP_FORMAT)
-    except (KeyError, ValueError):
+    except (KeyError, TypeError, ValueError):
         return False
     return True
 
