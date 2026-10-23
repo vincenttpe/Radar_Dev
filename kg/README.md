@@ -63,7 +63,8 @@ radar-kg-level --list                # 列出指標、單位與門檻
 1. 改 `v1/graph.cypher`（唯一該手改的檔案；`patch_wording.cypher` 若涉及同一段文字要一起改）。
 2. `radar-kg-build`：重新產生 `metrics.json`、`thresholds.json`。
 3. `radar-kg-manifest`：更新 `releases.json` 的雜湊。
-4. `pytest`：檢查三者一致、門檻的缺口與重疊有沒有變化。
+4. `radar-kg-level 來回行走 5.4`：確認規則引擎能讀 v1 並判出等級（同 CI `tests.yml`）。這一步只確認規則引擎能跑，門檻有沒有變由下一步的 `tests/test_thresholds.py` 檢查。
+5. `pytest`：檢查三者一致、門檻的缺口與重疊有沒有變化。
 
 測試會檢查兩個 JSON 與 `graph.cypher` 逐字一致、雜湊與實際檔案相符，也檢查 `kg/v1/` 的每個檔案都登記了，所以「同樣標 v1，內容卻不同」或手改了衍生檔，都不會被默默帶過。核准後把該版的 `approval` 改為 `approved` 並填審核人與日期。**核准綁的是核准時的內容**：已核准版本的檔案一有變動（改內容、新增或刪除檔案），`radar-kg-manifest` 會拒絕更新清單、`--check` 會失敗，必須建立新版本（例如 `kg/v1.1/`）重新送審。
 
