@@ -14,6 +14,8 @@
 
 試跑可以用模擬資料：`data/samples_demo/bathroom_morning.jsonl`（一個上午）。
 
+**限定時間範圍**（2026-10-23）：加上 `--from "2026-10-14 08:00" --to "2026-10-14 10:00"`，只整理這段時間的紀錄。含開始、不含結束，相鄰兩段不會重複算；時間和紀錄一樣不帶時區（A49）；時間看不懂或開始不早於結束時，結束碼是 2。時間讀不懂的紀錄分不出在不在範圍內，照樣列為無法判讀。
+
 ## 第一階段的流程（2026-10-23 使用者說明）
 
 - Demo 由 Dashboard 提供 JSON，暫時不從 Jetson 直接收雷達資料（MQTT）。初期先用三天內的資料，UI 之後再討論。
@@ -21,6 +23,16 @@
 - 流程：本 repo（Jetson）向 Dashboard 提出需求 → Dashboard 把 JSON 傳給 Jetson → Jetson 產生文字（先通過輸出檢查）→ 傳回 Dashboard → Dashboard UI 顯示給居服員。
 - 三天的資料做不出「使用趨勢」：趨勢要比兩週、每週至少 5 天可比較（`caregiver.MIN_COUNTED_DAYS`），會顯示資料不足。居服員畫面要放什麼，等 UI 討論再定。
 - 還沒定的：Jetson 怎麼向 Dashboard 要資料（網址、認證、參數）、文字傳回哪裡、多久更新一次、提問是即時呼叫還是同一條路。
+
+### 流程確認頁（內部用，2026-10-23）
+
+正式畫面由官網 Dashboard 做；內部先用測試看板暫代 Dashboard，確認流程走得通：`demo/flow_check.html`（`python demo/flow_build.py` 產生，模擬資料）。每個情境依序列出：① Dashboard 送出的請求（API 草案，還沒約定）→ ② Dashboard 有的資料 → ③ 本 repo 回傳的 JSON（`radar-caregiver --json --from --to` 的原始輸出）→ ④ 照原文顯示。
+
+頁面目前列出兩件待決（都會改到給讀者的輸出格式，屬於單向門，要人決定）：
+- **數字要能表示「無法判斷」**：摘要寫「無法判斷」時，`counts.fall_alerts` 等欄位仍是 `0`；Dashboard 做成數字卡會顯示「跌倒警報 0」。在那之前，Dashboard 有斷線或沒有資料時不要只顯示數字卡，摘要一定要一起顯示。
+- **回傳要附資料到哪裡為止**：要的範圍比資料長時（例如要到 14:00、資料只到 11:59），文字沒有寫出之後沒有資料，Dashboard 也分不出「沒有事件」和「資料還沒到」。
+
+實測資料可以產生本機版：`python demo/flow_build.py --events 遮罩後的檔案 --place 地點 --range 開始 結束`，寫到 `outputs/flow_field.html`，不 commit、不發布。
 
 ### Dashboard 給的資料：和原本假設的格式不同（2026-10-23 實測）
 

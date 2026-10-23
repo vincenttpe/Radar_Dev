@@ -19,6 +19,7 @@ from typing import Any
 from radar_agent.device_events import FallAlert, Summary, disconnected, read_records, summarize, summarize_days
 from radar_agent.kg_rules import Assessment
 from radar_agent.output_check import check_output, numbers, wording_problems
+from radar_agent.time_range import in_range, parse_bound
 
 
 def duration_text(span: timedelta) -> str:
@@ -406,6 +407,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--place", required=True, help="地點名稱，例如「1 號廁所」；不放長者姓名等個人資料")
     ap.add_argument("--trend", action="store_true", help="改輸出使用趨勢：最後 7 天與前 7 天比較（需要約兩週的紀錄）")
     ap.add_argument("--json", action="store_true", help="改輸出 JSON 給 Dashboard（欄位見 docs/16_Dashboard對接說明.md）")
+    ap.add_argument("--from", dest="start", help="只整理這個時間（含）之後的紀錄：YYYY-MM-DD HH:MM[:SS]，和紀錄一樣不帶時區")
+    ap.add_argument("--to", dest="end", help="只整理這個時間（不含）之前的紀錄，寫法同 --from")
     args = ap.parse_args(sys.argv[1:] if argv is None else argv)
 
     if not args.place.strip():
@@ -413,7 +416,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     problems: list[str] = []
     try:
-        records = read_records(args.events)
+        start = parse_bound(args.start) if args.start is not None else None
+        end = parse_bound(args.end) if args.end is not None else None
+        records = in_range(read_records(args.events), start, end)
         if args.json:
             try:
                 data = (trend_data(usage_trend(records), place=args.place) if args.trend

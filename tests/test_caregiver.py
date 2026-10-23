@@ -478,3 +478,46 @@ def test_json_carries_the_end_offline_time():
     summary = summarize([*timeline("09:00:00", "09:00:35"), rec("09:00:40", "offline")])
     assert report_data(summary, place="1 號廁所")["counts"]["ended_offline"] == "2026-10-14 09:00:40"
     assert report_data(summarize(timeline("09:00:00", "09:00:35")), place="1 號廁所")["counts"]["ended_offline"] is None
+
+
+# ── 時間範圍（--from、--to：Dashboard 依時間範圍要資料，docs/16）──────────
+
+def test_cli_range_keeps_the_start_and_drops_the_end(tmp_path, capsys):
+    """含開始、不含結束：相鄰兩段不重複算同一次造訪。"""
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps(timeline("09:00:00", "09:30:00", VISITS)), encoding="utf-8")
+    code, out, _ = _run(capsys, path, "--place", "1 號廁所", "--json", "--from", "2026-10-14 09:00", "--to", "2026-10-14 09:15")
+    data = json.loads(out)
+    assert code == 0
+    assert (data["from"], data["to"], data["counts"]["visits"]) == ("2026-10-14 09:00:00", "2026-10-14 09:14:55", 1)
+    code, out, _ = _run(capsys, path, "--place", "1 號廁所", "--json", "--from", "2026-10-14 09:15:00")
+    data = json.loads(out)
+    assert (data["from"], data["to"], data["counts"]["visits"]) == ("2026-10-14 09:15:00", "2026-10-14 09:30:00", 1)
+
+
+def test_cli_range_without_records_says_cannot_judge(tmp_path, capsys):
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps(timeline("09:00:00", "09:30:00", VISITS)), encoding="utf-8")
+    code, out, _ = _run(capsys, path, "--place", "1 號廁所", "--from", "2026-10-14 13:00", "--to", "2026-10-14 15:00")
+    assert (code, out) == (0, "【事件摘要】\n1 號廁所：沒有收到資料，無法判斷。\n")
+
+
+def test_cli_range_keeps_records_whose_time_cannot_be_read(tmp_path, capsys):
+    """分不出在不在範圍內的紀錄不悄悄丟掉，照樣列為無法判讀（REVIEW.md 3.1）。"""
+    path = tmp_path / "events.jsonl"
+    records = [*timeline("09:00:00", "09:10:00"), {"timestamp": "昨天", "topic": TOPIC, "payload": {}}]
+    path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in records), encoding="utf-8")
+    code, out, _ = _run(capsys, path, "--place", "1 號廁所", "--from", "2026-10-14 09:05")
+    assert code == 0
+    assert out.endswith("另有 1 筆紀錄無法判讀，請通知資訊人員。\n")
+
+
+def test_cli_range_rejects_unreadable_or_reversed_times(tmp_path, capsys):
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps(timeline("09:00:00", "09:10:00")), encoding="utf-8")
+    code, out, err = _run(capsys, path, "--place", "1 號廁所", "--from", "10/14 09:00")
+    assert (code, out) == (2, "")
+    assert "看不懂" in err
+    code, out, err = _run(capsys, path, "--place", "1 號廁所", "--from", "2026-10-14 10:00", "--to", "2026-10-14 09:00")
+    assert (code, out) == (2, "")
+    assert "要早於結束時間" in err
