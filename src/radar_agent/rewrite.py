@@ -8,24 +8,21 @@ docs/02「在地模型負載與分流」：範本是主要路徑；模型只改�
 """
 from __future__ import annotations
 
-import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from decimal import Decimal
 from typing import Literal, Protocol
 
 from radar_agent.audience import Profile, check_audience
 from radar_agent.caregiver import caregiver_text
 from radar_agent.device_events import Summary
 from radar_agent.kg_rules import Assessment
-from radar_agent.output_check import check_output
+from radar_agent.output_check import check_output, numbers
 
 PROMPT_VERSION = "caregiver-v0"
 # 範本裡的這些提醒，改寫後一定要留著：拿掉就變成「沒有資料」被讀成「沒事」（REVIEW.md 3.1）
 REQUIRED_PHRASES = ("無法判斷", "無法評估", "僅供測試", "請通知資訊人員")
 # 暫定：改寫最多是範本的幾倍長；限制輸出長度見 docs/02
 MAX_LENGTH_RATIO = 2
-
-_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 
 
 class Model(Protocol):
@@ -64,15 +61,10 @@ def build_prompt(template: str) -> str:
     )
 
 
-def _numbers(text: str) -> set[Decimal]:
-    """以數值比較：模型把 09:10 寫成 9:10 不算漏掉。"""
-    return {Decimal(n) for n in _NUMBER.findall(text)}
-
-
 def _kept_facts(template: str, text: str, source: Summary | Assessment) -> list[str]:
     """check_output 擋「多出來的」；這裡擋「被拿掉或被改寫的」。"""
     problems = []
-    missing = sorted(_numbers(template) - _numbers(text))
+    missing = sorted(numbers(template) - numbers(text))  # 以數值比較：09:10 寫成 9:10 不算漏掉
     for number in missing:
         problems.append(f"漏掉範本裡的數字 {number}")
     for phrase in REQUIRED_PHRASES:
@@ -107,17 +99,39 @@ def rewrite(
         raise ValueError("範本沒通過輸出檢查：" + "；".join(problems))
     if model is None:
         return Rewritten(template, "template", profile)
+    return checked_rewrite(
+        template, source, place=place, profile=profile, model=model,
+        prompt=build_prompt(template), prompt_version=PROMPT_VERSION,
+        kept=lambda text: _kept_facts(template, text, source),
+    )
 
+
+def checked_rewrite(
+    original: str,
+    source: Summary | Assessment,
+    *,
+    place: str,
+    profile: Profile,
+    model: Model,
+    prompt: str,
+    prompt_version: str,
+    kept: Callable[[str], list[str]],
+) -> Rewritten:
+    """讓模型改寫 original；採用前一定經過輸出檢查。給讀者的模型文字只從這裡出去。
+
+    模型出錯、沒有輸出、輸出沒通過 check_output（擋多出來的事實與用詞）或 kept（擋被拿掉的，由呼叫端依文字種類決定），
+    都退回 original，並記下原因與模型版本。
+    """
     def fallback(*reasons: str) -> Rewritten:
-        return Rewritten(template, "template", profile, model.name, PROMPT_VERSION, reasons)
+        return Rewritten(original, "template", profile, model.name, prompt_version, reasons)
 
     try:
-        text = model(build_prompt(template)).strip()
-    except Exception as e:  # 模型逾時、當掉都退回範本，不讓報告停住
+        text = model(prompt).strip()
+    except Exception as e:  # 模型逾時、當掉都退回原文，不讓報告停住
         return fallback(f"模型錯誤：{type(e).__name__}")
     if not text:
         return fallback("模型沒有輸出")
-    problems = check_output(text, source, place=place) + _kept_facts(template, text, source)
+    problems = check_output(text, source, place=place) + kept(text)
     if problems:
         return fallback(*problems)
-    return Rewritten(text, "model", profile, model.name, PROMPT_VERSION)
+    return Rewritten(text, "model", profile, model.name, prompt_version)

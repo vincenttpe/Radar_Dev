@@ -55,8 +55,10 @@ def test_page_always_says_it_is_simulated_and_not_llm(repo):
 
 
 def test_unknown_prompt_wording_stops_the_build(build, monkeypatch):
-    monkeypatch.delitem(build.KINDS, "請立即到場確認。")
-    with pytest.raises(ValueError, match="KINDS"):
+    from radar_agent import caregiver
+
+    monkeypatch.delitem(caregiver.NOTE_KINDS, "請立即到場確認。")
+    with pytest.raises(ValueError, match="NOTE_KINDS"):
         build.demo_data()
 
 

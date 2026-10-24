@@ -17,18 +17,8 @@ from pathlib import Path
 from typing import Any
 
 from radar_agent.ask import Match, Question, match_question
-from radar_agent.caregiver import (
-    count_sentence,
-    device_problem_sentences,
-    ended_offline_sentences,
-    event_notes,
-    falls_and_calls,
-    no_need_help_sentences,
-    note_kind,
-    offline_sentences,
-    usage_sentences,
-)
-from radar_agent.device_events import Summary, disconnected, read_records, summarize
+from radar_agent.caregiver import SUMMARY_TOPICS, period_head, topic_sentences
+from radar_agent.device_events import Summary, read_records, summarize
 from radar_agent.local_model import add_model_args, model_from_args
 from radar_agent.output_check import check_output
 from radar_agent.rewrite import Model
@@ -46,77 +36,15 @@ EVENT_QUESTIONS: list[Question] = [
 _BY_ID = {q.id: q for q in EVENT_QUESTIONS}
 
 
-def _falls(summary: Summary) -> list[str]:
-    return [count_sentence(summary, "跌倒警報", [a.time for a in falls_and_calls(summary)[0]]),
-            *no_need_help_sentences(summary)]
-
-
-def _calls_also(summary: Summary) -> list[str]:
-    """問跌倒時，最後補一句主動呼救：不算跌倒，但不能漏掉（2026-10-19 決定）。"""
-    calls = falls_and_calls(summary)[1]
-    return [count_sentence(summary, "另有主動呼救", [a.time for a in calls])] if calls else []
-
-
-def _calls(summary: Summary) -> list[str]:
-    return [count_sentence(summary, "主動呼救", [a.time for a in falls_and_calls(summary)[1]])]
-
-
-def _longstay(summary: Summary) -> list[str]:
-    return [count_sentence(summary, "久待警報", summary.longstay_alerts)]
-
-
-def _offline(summary: Summary) -> list[str]:
-    return offline_sentences(summary) or ["這段時間裝置都在線。"]
-
-
-def _alerts(summary: Summary, place: str) -> list[str]:
-    """和 radar-caregiver 的【處置提示】同一份，前面補上事件種類。中間斷線已在處置提示裡。"""
-    lines = []
-    for n in event_notes(summary, place):
-        title = note_kind(n.prompt)[1]
-        said = n.prompt if title in n.prompt else f"{title}：{n.prompt}"
-        lines.append(f"{n.span or f'{n.time:%H:%M}'} {said}")
-    if not lines:
-        return ["在線期間沒有警報。" if disconnected(summary) else "這段時間沒有警報。"]
-    return ["警報與處置提示：", *lines]
-
-
-# 題目 → （答案主體, 斷線時「無法判斷」的對象；None 表示主體自己處理斷線）
-_ANSWERS: dict[str, tuple[Callable[[Summary, str], list[str]], str | None]] = {
-    "falls": (lambda s, _: _falls(s), "是否有跌倒"),
-    "calls": (lambda s, _: _calls(s), "是否有人呼救"),
-    "longstay": (lambda s, _: _longstay(s), "是否有人待太久"),
-    "visits": (lambda s, _: usage_sentences(s), "使用情形"),
-    "offline": (lambda s, _: _offline(s), None),
-    "alerts": (_alerts, None),
-}
-
-
-def _head(summary: Summary, place: str) -> str:
-    """「1 號廁所 10/14 08:00–11:59：」：題目不解析「今天早上」這類時段，答案自己寫出涵蓋哪一段（2026-10-19 決定）。"""
-    first, last = summary.online[0].start, summary.online[-1].end
-    start = f"{place} {first.month}/{first.day} {first:%H:%M}"
-    if last.date() != first.date():
-        return f"{start}–{last.month}/{last.day} {last:%H:%M}："
-    # 頭尾在同一分鐘（例如只有一筆資料）只寫一個時間，不寫「09:00–09:00」（#66）
-    return f"{start}：" if f"{last:%H:%M}" == f"{first:%H:%M}" else f"{start}–{last:%H:%M}："
-
-
 def answer(question_id: str, summary: Summary, *, place: str) -> str:
-    """固定句型的答案，只用 summary 裡的事實；句子和【事件摘要】共用 caregiver 的寫法。
+    """固定句型的答案，只用 summary 裡的事實：題號就是 caregiver 的事件摘要主題，句子全由 caregiver 決定。
     斷線與無法判讀的紀錄每一題都會寫出來。question_id 不在 EVENT_QUESTIONS 時丟 KeyError。"""
-    body, what = _ANSWERS[question_id]
+    if question_id not in SUMMARY_TOPICS:
+        raise KeyError(question_id)
     if not summary.online:
         return f"{place}：沒有收到資料，無法判斷。"
-    lines = body(summary, place)
-    if question_id == "alerts":  # 中間斷線在【處置提示】裡已經有了，只補資料結束前斷線那一句
-        lines += ended_offline_sentences(summary)
-    elif what is not None:
-        lines += offline_sentences(summary, what)
-    if question_id == "falls":
-        lines += _calls_also(summary)
-    lines += device_problem_sentences(summary)
-    return "\n".join([_head(summary, place) + lines[0], *lines[1:]])
+    lines = topic_sentences(question_id, summary, place)
+    return "\n".join([period_head(summary, place, clock=True) + lines[0], *lines[1:]])
 
 
 def confirm_text(question: Question) -> str:

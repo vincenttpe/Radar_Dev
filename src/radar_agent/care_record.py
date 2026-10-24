@@ -8,19 +8,17 @@ docs/adr/0002「AI 的分工」的「撰寫」：照護紀錄是查核點 B4 與
 from __future__ import annotations
 
 import re
-from decimal import Decimal
 
 from radar_agent.caregiver import event_notes
 from radar_agent.device_events import Summary
-from radar_agent.output_check import check_output
-from radar_agent.rewrite import Model, Rewritten
+from radar_agent.output_check import numbers
+from radar_agent.rewrite import Model, Rewritten, checked_rewrite
 
 PROMPT_VERSION = "record-v0"
 # 草稿裡有這些字，改寫後一定要留著：斷線期間沒有資料、沒有回應，不能被寫成沒事（REVIEW.md 3.1）
 REQUIRED_PHRASES = ("狀況不明", "未獲回應")
 # 暫定：改寫最多是草稿的幾倍長
 MAX_LENGTH_RATIO = 2
-_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 
 
 def build_prompt(draft: str, style: str | None) -> str:
@@ -40,17 +38,13 @@ def build_prompt(draft: str, style: str | None) -> str:
     )
 
 
-def _numbers(text: str) -> set[Decimal]:
-    return {Decimal(n) for n in _NUMBER.findall(text)}
-
-
 def _sentences(text: str) -> int:
     return len([s for s in re.split(r"[。！？\n]", text) if s.strip()])
 
 
 def _kept(draft: str, text: str) -> list[str]:
     """check_output 擋「多出來的」；這裡擋「被拿掉的」與「多加的句子」。"""
-    problems = [f"漏掉草稿裡的數字 {n}" for n in sorted(_numbers(draft) - _numbers(text))]
+    problems = [f"漏掉草稿裡的數字 {n}" for n in sorted(numbers(draft) - numbers(text))]
     problems += [f"漏掉「{p}」" for p in REQUIRED_PHRASES if p in draft and p not in text]
     if _sentences(text) > _sentences(draft):
         problems.append(f"句數 {_sentences(text)} 多於草稿的 {_sentences(draft)} 句")
@@ -66,17 +60,8 @@ def care_record(
     draft = "\n".join(n.record for n in event_notes(summary, place))
     if model is None or not draft:
         return Rewritten(draft, "template", "居服員")
-
-    def fallback(*reasons: str) -> Rewritten:
-        return Rewritten(draft, "template", "居服員", model.name, PROMPT_VERSION, reasons)
-
-    try:
-        text = model(build_prompt(draft, style)).strip()
-    except Exception as e:  # 模型逾時、當掉都退回草稿，不讓紀錄停住
-        return fallback(f"模型錯誤：{type(e).__name__}")
-    if not text:
-        return fallback("模型沒有輸出")
-    problems = check_output(text, summary, place=place) + _kept(draft, text)
-    if problems:
-        return fallback(*problems)
-    return Rewritten(text, "model", "居服員", model.name, PROMPT_VERSION)
+    return checked_rewrite(
+        draft, summary, place=place, profile="居服員", model=model,
+        prompt=build_prompt(draft, style), prompt_version=PROMPT_VERSION,
+        kept=lambda text: _kept(draft, text),
+    )

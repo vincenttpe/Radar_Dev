@@ -36,7 +36,15 @@ from pathlib import Path
 from typing import Any
 
 from radar_agent.caregiver import event_notes
-from radar_agent.device_events import HEARTBEAT_GAP, TIMESTAMP_FORMAT, Summary, read_records, summarize
+from radar_agent.device_events import (
+    HEARTBEAT_GAP,
+    TIMESTAMP_FORMAT,
+    Summary,
+    parse_timestamp,
+    read_records,
+    summarize,
+    timeline,
+)
 
 ALIAS_PREFIX = "FIELD-"
 MASKED = "MASKED-ID"
@@ -70,37 +78,31 @@ class Report:
     first: datetime | None = None
     last: datetime | None = None
     events: Counter[str] = field(default_factory=Counter)
-    gaps: list[tuple[datetime, datetime]] = field(default_factory=list)
+    gaps: list[tuple[datetime, datetime]] = field(default_factory=list)  # 斷線：前一段在線時段結束到下一段開始
+    ended_offline: list[datetime] = field(default_factory=list)         # 資料結束前就送出 offline 的時間
     presence_by_hour: Counter[int] = field(default_factory=Counter)
 
 
 def inspect(records: list[dict[str, Any]], layout: str) -> Report:
     report = Report(records=len(records), layout=layout)
-    seen: set[str] = set()
-    times: dict[str, list[datetime]] = {}
-    for record in records:
-        key = json.dumps(record, sort_keys=True, ensure_ascii=False)
-        if key in seen:
-            report.duplicates += 1
-            continue
-        seen.add(key)
+    line = timeline(records)
+    report.duplicates = line.duplicates
+    for record in [r for _, r in line.no_topic + line.commands + line.unreadable_time] + [e.record for e in line.entries]:
         device = device_of(record)
         if device is None:
             report.no_topic += 1
+        else:
+            report.devices[device] += 1
+    report.commands = sum(device_of(r) is not None for _, r in line.commands)
+    report.unreadable_time = sum(device_of(r) is not None for _, r in line.unreadable_time)
+    by_topic: dict[str, list[dict[str, Any]]] = {}
+    for entry in line.entries:
+        if device_of(entry.record) is None:
             continue
-        report.devices[device] += 1
-        if str(record.get("topic", "")).count("/") > 1:
-            report.commands += 1
-            continue
-        try:
-            when = datetime.strptime(str(record["timestamp"]), TIMESTAMP_FORMAT)
-        except (KeyError, ValueError):
-            report.unreadable_time += 1
-            continue
-        times.setdefault(device, []).append(when)
+        when, payload = entry.when, entry.payload
+        by_topic.setdefault(entry.topic, []).append(entry.record)
         report.first = when if report.first is None else min(report.first, when)
         report.last = when if report.last is None else max(report.last, when)
-        payload = record.get("payload")
         event = payload.get("event") if isinstance(payload, dict) else None
         if event == "fall" and isinstance(payload, dict):
             report.events[f"fall（{payload.get('mode')}）"] += 1
@@ -108,16 +110,25 @@ def inspect(records: list[dict[str, Any]], layout: str) -> Report:
             report.events[str(event)] += 1
         if event == "presence":
             report.presence_by_hour[when.hour] += 1
-    for ts in times.values():
-        ts.sort()
-        report.gaps += [(a, b) for a, b in pairwise(ts) if b - a > HEARTBEAT_GAP]
+    # 斷線和 radar-caregiver 用同一個定義：在線時段之間的空檔（超過 HEARTBEAT_GAP 沒有可判讀的資料，或裝置送出 offline）
+    for device_records in by_topic.values():
+        summary = summarize(device_records)
+        report.gaps += [(a.end, b.start) for a, b in pairwise(summary.online)]
+        if summary.ended_offline is not None:
+            report.ended_offline.append(summary.ended_offline)
     report.gaps.sort()
+    report.ended_offline.sort()
     return report
 
 
 def _span(d: timedelta) -> str:
     minutes = int(d.total_seconds() // 60)
     return f"{minutes // 60} 小時 {minutes % 60} 分" if minutes >= 60 else f"{minutes} 分 {int(d.total_seconds()) % 60} 秒"
+
+
+def _gap_label() -> str:
+    """有收到但 payload 讀不懂的紀錄不算心跳（和 radar-caregiver 一樣，那段寫「無法判斷」），所以寫「可判讀」。"""
+    return f"斷線（超過 {int(HEARTBEAT_GAP.total_seconds())} 秒沒有可判讀的資料，或 offline）"
 
 
 def report_text(r: Report) -> str:
@@ -142,11 +153,13 @@ def report_text(r: Report) -> str:
     if r.gaps:
         longest = max(r.gaps, key=lambda g: g[1] - g[0])
         lines.append(
-            f"超過 {int(HEARTBEAT_GAP.total_seconds())} 秒沒資料：{len(r.gaps)} 段，"
+            f"{_gap_label()}：{len(r.gaps)} 段，"
             f"最長 {_span(longest[1] - longest[0])}（{longest[0]:%m-%d %H:%M:%S} 起）"
         )
     else:
-        lines.append(f"超過 {int(HEARTBEAT_GAP.total_seconds())} 秒沒資料：沒有")
+        lines.append(f"{_gap_label()}：沒有")
+    for t in r.ended_offline:
+        lines.append(f"  {t:%m-%d %H:%M:%S} 送出 offline 之後就沒有資料，之後的狀況不明")
     hours = " ".join(f"{h:02d}:{r.presence_by_hour[h]}" for h in range(24))
     lines.append(f"每小時有人（presence）次數：{hours}")
     lines.append("  檢查時區（A27）：浴廁使用若集中在 00～06 點，時間戳可能差了 8 小時")
@@ -175,11 +188,11 @@ def mask(records: list[dict[str, Any]], *, shift_hours: int = 0) -> tuple[dict[s
             text = text.replace(device, alias)
         masked: dict[str, Any] = json.loads(MAC_LIKE.sub(MASKED, text))
         if shift:
-            try:
-                when = datetime.strptime(str(masked["timestamp"]), TIMESTAMP_FORMAT)
-                masked["timestamp"] = (when + shift).strftime(TIMESTAMP_FORMAT)
-            except (KeyError, ValueError):
+            when = parse_timestamp(masked.get("timestamp"))
+            if when is None:
                 unshifted += 1
+            else:
+                masked["timestamp"] = (when + shift).strftime(TIMESTAMP_FORMAT)
         out.setdefault(alias, []).append(masked)
     return out, unshifted
 
@@ -301,7 +314,7 @@ def _expected(sc: Scenario) -> str:
     if sc.kind == "longstay":
         return "久待警報"
     if sc.kind == "offline":
-        return "斷線（超過 30 秒沒資料或 offline）"
+        return _gap_label()  # 和 inspect 同一種說法
     text = " → ".join(_fall_label(m, t) for m, t in sc.falls)
     if sc.resolved:
         text += " → " + " → ".join(f"解除（{r}）" for r in sc.resolved)
@@ -371,10 +384,9 @@ def compare(steps: list[Step], records: list[dict[str, Any]]) -> Comparison:
     """依紀錄表逐項比對；資料時間戳與手錶差幾小時，取對得上最多項的那一種（同分時取 0）。"""
     timed: list[tuple[datetime, dict[str, Any]]] = []
     for r in records:
-        try:
-            timed.append((datetime.strptime(str(r["timestamp"]), TIMESTAMP_FORMAT), r))
-        except (KeyError, ValueError):
-            continue
+        when = parse_timestamp(r.get("timestamp"))
+        if when is not None:
+            timed.append((when, r))
     timed.sort(key=lambda x: x[0])
     nexts = [next((s.at for s in steps[i + 1:] if s.at is not None), None) for i in range(len(steps))]
     best: Comparison | None = None
