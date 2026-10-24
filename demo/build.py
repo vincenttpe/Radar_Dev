@@ -30,7 +30,7 @@ from radar_agent.caregiver import (
     trend_text,
     usage_trend,
 )
-from radar_agent.device_events import Summary, summarize
+from radar_agent.device_events import Summary, read_records, summarize
 from radar_agent.event_ask import EVENT_QUESTIONS, pick
 from radar_agent.field_data import MAC_LIKE, check_out_dir
 from radar_agent.output_check import check_output
@@ -59,10 +59,6 @@ def _section(report: str, heading: str) -> list[str]:
     return lines[start:end]
 
 
-def _jsonl(path: Path) -> list[dict[str, Any]]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-
-
 def ask_data(summary: Summary, place: str) -> list[dict[str, str]]:
     """事件提問的六題與答案：和 radar-ask --pick 同一套函式（不經模型），答案先通過輸出檢查。"""
     out = []
@@ -84,9 +80,9 @@ def demo_data(events: Path | None = None, place: str = PLACE,
     if events is not None:
         if MAC_LIKE.search(events.read_text(encoding="utf-8")):
             raise ValueError(f"{events} 裡還有像 MAC 的字串，請先用 radar-field-data mask 遮罩")
-        records = _jsonl(events)
+        records = read_records(events)
     elif records is None:
-        records = _jsonl(REPO / "data" / "samples_demo" / "bathroom_morning.jsonl")
+        records = read_records(REPO / "data" / "samples_demo" / "bathroom_morning.jsonl")
     summary = summarize(records)
     if not summary.online:
         raise ValueError("沒有讀得懂的紀錄，無法產生頁面")

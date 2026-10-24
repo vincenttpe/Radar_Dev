@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from radar_agent.device_events import summarize
+from radar_agent.device_events import parse_timestamp, summarize, timeline
 
 TOPIC = "radar10/DEVICE01"
 
@@ -249,3 +249,25 @@ def test_record_without_topic_is_unreadable_not_another_device():
     no_topic = {"timestamp": "2026-10-13 10:00:05", "payload": {"event": "absence"}}
     summary = summarize([rec("10:00:00", "absence"), no_topic])
     assert summary.unreadable == [no_topic]
+
+
+def test_parse_timestamp_refuses_anything_but_the_cloud_format():
+    assert parse_timestamp("2026-10-19 09:00:05") == datetime(2026, 10, 19, 9, 0, 5)
+    for value in ("2026/10/19 09:00", "2026-10-19T09:00:05", 1760864405, None, ""):
+        assert parse_timestamp(value) is None
+
+
+def test_timeline_sorts_and_sorts_out_every_record():
+    """讀得懂的依時間排序；重複、指令、沒有 topic、時間讀不懂的各自留下，不悄悄略過。"""
+    a = {"timestamp": "2026-10-19 09:00:10", "topic": "radar10/X", "payload": {"event": "absence"}}
+    b = {"timestamp": "2026-10-19 09:00:05", "topic": "radar10/Y", "payload": "壞掉"}
+    command = {"timestamp": "2026-10-19 09:00:00", "topic": "radar10/X/config/set", "payload": {}}
+    no_topic = {"timestamp": "2026-10-19 09:00:00", "payload": {}}
+    bad_time = {"timestamp": "09:00", "topic": "radar10/X", "payload": {}}
+    line = timeline([a, a, b, command, no_topic, bad_time])
+    assert [(e.record, e.index) for e in line.entries] == [(b, 2), (a, 0)]
+    assert line.entries[0].payload == "壞掉"          # 多台裝置、壞掉的 payload 交給使用端決定
+    assert line.duplicates == 1
+    assert line.commands == [(3, command)]
+    assert line.no_topic == [(4, no_topic)]
+    assert line.unreadable_time == [(5, bad_time)]

@@ -41,9 +41,10 @@ from radar_agent.caregiver import (
 )
 from radar_agent.device_events import (
     HEARTBEAT_GAP,
-    TIMESTAMP_FORMAT,
     Summary,
     disconnected,
+    parse_timestamp,
+    read_records,
     summarize,
 )
 from radar_agent.output_check import wording_problems
@@ -310,9 +311,8 @@ def diagnostics(records: list[dict[str, Any]], summary: Summary) -> dict[str, An
     注意：實測資料的 topic 是 radar10/<MAC>。回報對象（例如雷達廠商）算不算第三方（會議清單 F10）、
     要不要把 MAC 換成代號，正式化前要決定；一戶一台時地點名稱也可能認得出是誰。現在只用模擬資料。
     """
-    readable = [(datetime.strptime(r["timestamp"], TIMESTAMP_FORMAT), r) for r in records
-                if isinstance(r.get("timestamp"), str) and _readable(r["timestamp"])]
-    readable.sort(key=lambda tr: tr[0])
+    stamped = [(parse_timestamp(r.get("timestamp")), r) for r in records]
+    readable = sorted(((t, r) for t, r in stamped if t is not None), key=lambda tr: tr[0])
 
     def event(r: dict[str, Any]) -> Any:
         payload = r.get("payload")
@@ -367,14 +367,6 @@ def _shape(record: dict[str, Any]) -> str:
     keys = sorted(payload) if isinstance(payload, dict) else type(payload).__name__
     return json.dumps({"timestamp": record.get("timestamp"), "topic": record.get("topic"), "payload 欄位": keys},
                       ensure_ascii=False)[:200]
-
-
-def _readable(stamp: str) -> bool:
-    try:
-        datetime.strptime(stamp, TIMESTAMP_FORMAT)
-    except ValueError:
-        return False
-    return True
 
 
 def device_rows(devices: list[tuple[str, list[dict[str, Any]]]],
@@ -673,7 +665,7 @@ def scenario_data(build: Any, morning: list[dict[str, Any]], devices: list[tuple
 def dashboard_data() -> dict[str, Any]:
     """預設是「事情多的上午」；calm 是「平靜的上午」要換掉的部分，頁面依網址（#caregiver/calm）合併。"""
     build = _load_build()
-    morning = build._jsonl(REPO / "data" / "samples_demo" / "bathroom_morning.jsonl")
+    morning = read_records(REPO / "data" / "samples_demo" / "bathroom_morning.jsonl")
     registry = load_registry()
     # 居服員畫面的句子會進照護紀錄：裝置沒有設定紀錄就不產生（不能出現「未登記地點雷達偵測到…」）
     if CARE_DEVICE not in registry:

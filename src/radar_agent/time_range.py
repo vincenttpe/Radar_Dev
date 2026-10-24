@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from radar_agent.device_events import TIMESTAMP_FORMAT
+from radar_agent.device_events import parse_timestamp
 
 BOUND_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M")
 
@@ -32,9 +32,8 @@ def in_range(records: list[dict[str, Any]], start: datetime | None, end: datetim
         raise ValueError(f"開始時間 {start:%Y-%m-%d %H:%M:%S} 要早於結束時間 {end:%Y-%m-%d %H:%M:%S}")
     kept = []
     for record in records:
-        try:
-            when = datetime.strptime(str(record["timestamp"]), TIMESTAMP_FORMAT)
-        except (KeyError, TypeError, ValueError):
+        when = parse_timestamp(record.get("timestamp"))
+        if when is None:
             kept.append(record)
             continue
         if (start is None or when >= start) and (end is None or when < end):

@@ -44,7 +44,7 @@ def test_inspect_reports_counts_gaps_and_hours_without_printing_the_mac(records)
     assert "時間戳讀不懂（不是 %Y-%m-%d %H:%M:%S）：1 筆" in lines
     assert "時間範圍：2026-10-19 09:00:00 ～ 2026-10-19 09:05:00（時間戳沒有時區，照原樣）" in lines
     assert "事件：absence 2、fall（radar） 1、moving 1、online 1、presence 1、resolved 1" in lines
-    assert "超過 30 秒沒資料：1 段，最長 4 分 35 秒（10-19 09:00:25 起）" in lines
+    assert "斷線（超過 30 秒沒資料或 offline）：1 段，最長 4 分 35 秒（10-19 09:00:25 起）" in lines
     hours = next(line for line in lines if line.startswith("每小時有人"))
     assert " 09:1 " in hours and " 08:0 " in hours
 
@@ -63,7 +63,23 @@ def test_inspect_with_no_readable_time():
 
 def test_inspect_without_gaps():
     text = report_text(inspect([rec("09:00:00", "absence", device="X"), rec("09:00:05", "absence", device="X")], "JSON 陣列"))
-    assert "超過 30 秒沒資料：沒有" in text and "MAC" not in text.split("每小時")[0]
+    assert "斷線（超過 30 秒沒資料或 offline）：沒有" in text and "MAC" not in text.split("每小時")[0]
+
+
+def test_inspect_counts_disconnections_the_same_way_as_summarize():
+    """裝置送出 offline、幾秒後又有資料：radar-caregiver 算斷線，inspect 也要算（同一份資料不能報出兩種斷線）。"""
+    from radar_agent.device_events import summarize
+
+    records = [rec("09:00:00", "absence", device="X"), rec("09:00:05", "offline", device="X"),
+               rec("09:00:10", "online", device="X"), rec("09:00:15", "absence", device="X"),
+               rec("09:00:20", "offline", device="X")]
+    report = inspect(records, "JSON 陣列")
+    summary = summarize(records)
+    assert len(report.gaps) == len(summary.online) - 1 == 1
+    assert report.ended_offline == [summary.ended_offline]
+    text = report_text(report)
+    assert "斷線（超過 30 秒沒資料或 offline）：1 段" in text
+    assert "10-19 09:00:20 送出 offline 之後就沒有資料，之後的狀況不明" in text
 
 
 def test_mask_replaces_every_device_id_and_mac_like_string(records):

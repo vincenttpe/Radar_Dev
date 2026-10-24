@@ -21,12 +21,11 @@ import contextlib
 import html
 import io
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from radar_agent.caregiver import main as caregiver_main
-from radar_agent.device_events import HEARTBEAT_GAP, TIMESTAMP_FORMAT, read_records
+from radar_agent.device_events import HEARTBEAT_GAP, parse_timestamp, read_records
 from radar_agent.field_data import MAC_LIKE, check_out_dir
 from radar_agent.time_range import in_range, parse_bound
 
@@ -62,16 +61,8 @@ def run_caregiver(events: Path, place: str, start: str, end: str) -> str:
 def data_side(records: list[dict[str, Any]], start: str, end: str) -> dict[str, Any]:
     """② Dashboard 那一側：範圍內有幾筆、第一筆與最後一筆的時間。"""
     kept = in_range(records, parse_bound(start), parse_bound(end))
-    stamps = sorted(str(r["timestamp"]) for r in kept if _readable(r))
+    stamps = sorted(str(r["timestamp"]) for r in kept if parse_timestamp(r.get("timestamp")) is not None)
     return {"count": len(kept), "first": stamps[0] if stamps else None, "last": stamps[-1] if stamps else None}
-
-
-def _readable(record: dict[str, Any]) -> bool:
-    try:
-        datetime.strptime(str(record["timestamp"]), TIMESTAMP_FORMAT)
-    except (KeyError, TypeError, ValueError):
-        return False
-    return True
 
 
 def pending(report: dict[str, Any], side: dict[str, Any], end: str) -> list[str]:
@@ -85,7 +76,7 @@ def pending(report: dict[str, Any], side: dict[str, Any], end: str) -> list[str]
         notes.append(f"Dashboard 有 {side['count']} 筆紀錄，回傳的文字卻是「沒有收到資料」：本 repo 讀不懂這種格式"
                      "（例如 Radar60FL，docs/05 A45）。居服員會以為裝置沒送資料，要先確認格式。")
     last = side["last"]
-    if last is not None and parse_bound(end) - datetime.strptime(last, TIMESTAMP_FORMAT) > HEARTBEAT_GAP:
+    if last is not None and parse_bound(end) - parse_bound(last) > HEARTBEAT_GAP:
         notes.append(f"要的是到 {end[11:]}，資料只到 {last[11:]}；回傳的文字沒有寫出之後沒有資料，"
                      "Dashboard 也分不出是沒有事件還是資料還沒到。回傳要附資料到哪裡為止（例如 data_until），待決。")
     return notes

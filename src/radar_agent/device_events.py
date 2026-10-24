@@ -162,48 +162,95 @@ def summarize_days(records: list[dict[str, Any]]) -> tuple[dict[date, Summary], 
     by_day: dict[date, list[dict[str, Any]]] = {}
     unplaced: list[dict[str, Any]] = []
     for record in records:
-        try:
-            day = datetime.strptime(str(record["timestamp"]), TIMESTAMP_FORMAT).date()
-        except (KeyError, TypeError, ValueError):
+        when = parse_timestamp(record.get("timestamp"))
+        if when is None:
             unplaced.append(record)
             continue
-        by_day.setdefault(day, []).append(record)
+        by_day.setdefault(when.date(), []).append(record)
     return {day: summarize(rs) for day, rs in sorted(by_day.items())}, unplaced
+
+
+def parse_timestamp(value: Any) -> datetime | None:
+    """紀錄的 timestamp（TIMESTAMP_FORMAT，沒有時區，照原樣）；不是字串或讀不懂就回傳 None，不猜。"""
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.strptime(value, TIMESTAMP_FORMAT)
+    except ValueError:
+        return None
+
+
+def is_command(record: dict[str, Any]) -> bool:
+    """topic 多層（例如 radar10/<裝置>/config/set）：伺服器下給裝置的指令，不是裝置送出的，也不算心跳。"""
+    return str(record.get("topic", "")).count("/") > 1
+
+
+@dataclass(frozen=True)
+class Entry:
+    when: datetime
+    topic: str
+    payload: Any                # 原值；不是物件時由使用端決定怎麼算
+    record: dict[str, Any]
+    index: int                  # 在原始紀錄裡的位置
+
+
+@dataclass
+class Timeline:
+    """讀得懂時間的裝置紀錄，依時間排序（同一秒保留原順序）；其他紀錄分類留下，不悄悄略過（REVIEW.md 3.1）。"""
+    entries: list[Entry] = field(default_factory=list)
+    duplicates: int = 0                                              # 完全相同的重複，只留第一筆
+    commands: list[tuple[int, dict[str, Any]]] = field(default_factory=list)
+    no_topic: list[tuple[int, dict[str, Any]]] = field(default_factory=list)
+    unreadable_time: list[tuple[int, dict[str, Any]]] = field(default_factory=list)
+
+
+def timeline(records: list[dict[str, Any]]) -> Timeline:
+    """去重、分出伺服器指令與沒有 topic 的紀錄、解析時間，依時間排序。可以混多台裝置。"""
+    result = Timeline()
+    seen: set[str] = set()
+    for index, record in enumerate(records):
+        key = json.dumps(record, sort_keys=True, ensure_ascii=False)
+        if key in seen:
+            result.duplicates += 1
+            continue
+        seen.add(key)
+        if is_command(record):
+            result.commands.append((index, record))
+            continue
+        topic = str(record.get("topic", ""))
+        if not topic:
+            result.no_topic.append((index, record))
+            continue
+        when = parse_timestamp(record.get("timestamp"))
+        if when is None:
+            result.unreadable_time.append((index, record))
+            continue
+        result.entries.append(Entry(when, topic, record.get("payload"), record, index))
+    result.entries.sort(key=lambda e: e.when)
+    return result
 
 
 def _parse(
     records: list[dict[str, Any]], summary: Summary
 ) -> list[tuple[datetime, dict[str, Any], dict[str, Any]]]:
-    """去重、略過伺服器下的指令、解析時間，依時間排序（同一秒保留原順序）。"""
-    seen: set[str] = set()
-    parsed = []
+    """summarize 用的時間軸：只收一台裝置，payload 不是物件的紀錄列為無法判讀。"""
+    line = timeline(records)
+    summary.duplicates_removed = line.duplicates
     device: str | None = None
-    for record in records:
-        key = json.dumps(record, sort_keys=True, ensure_ascii=False)
-        if key in seen:
-            summary.duplicates_removed += 1
-            continue
-        seen.add(key)
-        topic = str(record.get("topic", ""))
-        if topic.count("/") > 1:
-            # 例如 radar10/<裝置>/config/set：伺服器下給裝置的指令，不是裝置送出的，也不算心跳
-            continue
-        if not topic:
-            summary.unreadable.append(record)
-            continue
+    topics = [(e.index, e.topic) for e in line.entries] + [(i, str(r["topic"])) for i, r in line.unreadable_time]
+    for _, topic in sorted(topics):
         if device is None:
             device = topic
         elif topic != device:
             raise ValueError(f"一次只整理一台裝置，收到 {device} 與 {topic}")
-        try:
-            when = datetime.strptime(record["timestamp"], TIMESTAMP_FORMAT)
-            payload = record["payload"]
-            payload.get("event")
-        except (KeyError, TypeError, ValueError, AttributeError):
-            summary.unreadable.append(record)
-            continue
-        parsed.append((when, payload, record))
-    parsed.sort(key=lambda item: item[0])
+    unreadable = line.no_topic + line.unreadable_time
+    parsed = []
+    for entry in line.entries:
+        if isinstance(entry.payload, dict):
+            parsed.append((entry.when, entry.payload, entry.record))
+        else:
+            unreadable.append((entry.index, entry.record))
+    summary.unreadable = [r for _, r in sorted(unreadable, key=lambda ir: ir[0])]
     return parsed
 
 
