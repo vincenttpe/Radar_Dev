@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -41,13 +42,23 @@ def falls_and_calls(summary: Summary) -> tuple[list[FallAlert], list[FallAlert]]
             [a for a in summary.fall_alerts if a.distress_call])
 
 
-def period_head(summary: Summary, place: str) -> str:
-    """「1 號廁所 10/14：」；跨日寫成「10/13–10/14」。summary.online 不能是空的。"""
+def period_head(summary: Summary, place: str, *, clock: bool = False) -> str:
+    """「1 號廁所 10/14：」；跨日寫成「10/13–10/14」。summary.online 不能是空的。
+
+    clock=True 時加上時刻「1 號廁所 10/14 08:00–11:59：」：radar-ask 的題目不解析「今天早上」這類時段，
+    答案自己寫出涵蓋哪一段（2026-10-19 決定）。
+    """
     first, last = summary.online[0].start, summary.online[-1].end
-    days = f"{first.month}/{first.day}"
+    if not clock:
+        days = f"{first.month}/{first.day}"
+        if last.date() != first.date():
+            days += f"–{last.month}/{last.day}"
+        return f"{place} {days}："
+    start = f"{place} {first.month}/{first.day} {first:%H:%M}"
     if last.date() != first.date():
-        days += f"–{last.month}/{last.day}"
-    return f"{place} {days}："
+        return f"{start}–{last.month}/{last.day} {last:%H:%M}："
+    # 頭尾在同一分鐘（例如只有一筆資料）只寫一個時間，不寫「09:00–09:00」（#66）
+    return f"{start}：" if f"{last:%H:%M}" == f"{first:%H:%M}" else f"{start}–{last:%H:%M}："
 
 
 def count_sentence(summary: Summary, label: str, times: list[datetime]) -> str:
@@ -230,6 +241,71 @@ def note_kind(prompt: str) -> tuple[str, str]:
     if prompt not in NOTE_KINDS:
         raise ValueError(f"NOTE_KINDS 沒有這句處置提示：{prompt}")
     return NOTE_KINDS[prompt]
+
+
+# ── 依主題的事件摘要：radar-ask 的答案（句型 2026-10-19 確認，docs/11）──
+# 主題就是事件提問的題號；每個主題要補哪些斷線、無法判斷、裝置問題的句子都在這裡決定，呼叫端不必知道。
+
+def _falls(summary: Summary) -> list[str]:
+    return [count_sentence(summary, "跌倒警報", [a.time for a in falls_and_calls(summary)[0]]),
+            *no_need_help_sentences(summary)]
+
+
+def _calls_also(summary: Summary) -> list[str]:
+    """跌倒主題最後補一句主動呼救：不算跌倒，但不能漏掉（2026-10-19 決定）。"""
+    calls = falls_and_calls(summary)[1]
+    return [count_sentence(summary, "另有主動呼救", [a.time for a in calls])] if calls else []
+
+
+def _calls(summary: Summary) -> list[str]:
+    return [count_sentence(summary, "主動呼救", [a.time for a in falls_and_calls(summary)[1]])]
+
+
+def _longstay(summary: Summary) -> list[str]:
+    return [count_sentence(summary, "久待警報", summary.longstay_alerts)]
+
+
+def _offline(summary: Summary) -> list[str]:
+    return offline_sentences(summary) or ["這段時間裝置都在線。"]
+
+
+def _alerts(summary: Summary, place: str) -> list[str]:
+    """和 radar-caregiver 的【處置提示】同一份，前面補上事件種類。中間斷線已在處置提示裡。"""
+    lines = []
+    for n in event_notes(summary, place):
+        title = note_kind(n.prompt)[1]
+        said = n.prompt if title in n.prompt else f"{title}：{n.prompt}"
+        lines.append(f"{n.span or f'{n.time:%H:%M}'} {said}")
+    if not lines:
+        return ["在線期間沒有警報。" if disconnected(summary) else "這段時間沒有警報。"]
+    return ["警報與處置提示：", *lines]
+
+
+# 主題 → （句子主體, 斷線時「無法判斷」的對象；None 表示主體自己處理斷線）
+_TOPICS: dict[str, tuple[Callable[[Summary, str], list[str]], str | None]] = {
+    "falls": (lambda s, _: _falls(s), "是否有跌倒"),
+    "calls": (lambda s, _: _calls(s), "是否有人呼救"),
+    "longstay": (lambda s, _: _longstay(s), "是否有人待太久"),
+    "visits": (lambda s, _: usage_sentences(s), "使用情形"),
+    "offline": (lambda s, _: _offline(s), None),
+    "alerts": (_alerts, None),
+}
+
+
+SUMMARY_TOPICS = tuple(_TOPICS)
+
+
+def topic_sentences(topic: str, summary: Summary, place: str) -> list[str]:
+    """某個主題的事件摘要句子（不含開頭的地點與時段）。summary.online 不能是空的；topic 不在 SUMMARY_TOPICS 時丟 KeyError。"""
+    body, what = _TOPICS[topic]
+    lines = body(summary, place)
+    if topic == "alerts":  # 中間斷線在【處置提示】裡已經有了，只補資料結束前斷線那一句
+        lines += ended_offline_sentences(summary)
+    elif what is not None:
+        lines += offline_sentences(summary, what)
+    if topic == "falls":
+        lines += _calls_also(summary)
+    return lines + device_problem_sentences(summary)
 
 
 def _stamp(when: datetime) -> str:

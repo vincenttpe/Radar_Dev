@@ -237,3 +237,11 @@ def test_answer_head_writes_one_time_when_start_and_end_share_a_minute():
         text = answer("visits", summary, place=PLACE)
         assert text.startswith(f"{PLACE} 10/14 09:00：") and "09:00–09:00" not in text
         assert check_output(text, summary, place=PLACE) == []
+
+
+def test_every_question_is_a_summary_topic():
+    """題號就是 caregiver 的事件摘要主題：多一題或改題號，兩邊要一起改。"""
+    from radar_agent.caregiver import SUMMARY_TOPICS
+    from radar_agent.event_ask import EVENT_QUESTIONS
+
+    assert [q.id for q in EVENT_QUESTIONS] == list(SUMMARY_TOPICS)
