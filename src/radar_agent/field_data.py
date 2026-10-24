@@ -110,7 +110,7 @@ def inspect(records: list[dict[str, Any]], layout: str) -> Report:
             report.events[str(event)] += 1
         if event == "presence":
             report.presence_by_hour[when.hour] += 1
-    # 斷線和 radar-caregiver 用同一個定義：在線時段之間的空檔（超過 HEARTBEAT_GAP 沒資料，或裝置送出 offline）
+    # 斷線和 radar-caregiver 用同一個定義：在線時段之間的空檔（超過 HEARTBEAT_GAP 沒有可判讀的資料，或裝置送出 offline）
     for device_records in by_topic.values():
         summary = summarize(device_records)
         report.gaps += [(a.end, b.start) for a, b in pairwise(summary.online)]
@@ -124,6 +124,11 @@ def inspect(records: list[dict[str, Any]], layout: str) -> Report:
 def _span(d: timedelta) -> str:
     minutes = int(d.total_seconds() // 60)
     return f"{minutes // 60} 小時 {minutes % 60} 分" if minutes >= 60 else f"{minutes} 分 {int(d.total_seconds()) % 60} 秒"
+
+
+def _gap_label() -> str:
+    """有收到但 payload 讀不懂的紀錄不算心跳（和 radar-caregiver 一樣，那段寫「無法判斷」），所以寫「可判讀」。"""
+    return f"斷線（超過 {int(HEARTBEAT_GAP.total_seconds())} 秒沒有可判讀的資料，或 offline）"
 
 
 def report_text(r: Report) -> str:
@@ -148,11 +153,11 @@ def report_text(r: Report) -> str:
     if r.gaps:
         longest = max(r.gaps, key=lambda g: g[1] - g[0])
         lines.append(
-            f"斷線（超過 {int(HEARTBEAT_GAP.total_seconds())} 秒沒資料或 offline）：{len(r.gaps)} 段，"
+            f"{_gap_label()}：{len(r.gaps)} 段，"
             f"最長 {_span(longest[1] - longest[0])}（{longest[0]:%m-%d %H:%M:%S} 起）"
         )
     else:
-        lines.append(f"斷線（超過 {int(HEARTBEAT_GAP.total_seconds())} 秒沒資料或 offline）：沒有")
+        lines.append(f"{_gap_label()}：沒有")
     for t in r.ended_offline:
         lines.append(f"  {t:%m-%d %H:%M:%S} 送出 offline 之後就沒有資料，之後的狀況不明")
     hours = " ".join(f"{h:02d}:{r.presence_by_hour[h]}" for h in range(24))
