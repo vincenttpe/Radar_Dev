@@ -23,26 +23,20 @@ from types import ModuleType
 from typing import Any
 
 from radar_agent.caregiver import (
-    NOTE_KINDS,
-    caregiver_report,
+    OutputRejected,
     check_trend,
-    event_notes,
+    report_data,
     trend_text,
     usage_trend,
 )
 from radar_agent.device_events import Summary, read_records, summarize
 from radar_agent.event_ask import EVENT_QUESTIONS, pick
 from radar_agent.field_data import MAC_LIKE, check_out_dir
-from radar_agent.output_check import check_output
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 PLACE = "1 號廁所"
 PLACEHOLDER = "/*DEMO_DATA*/null"
-
-# 處置提示 → （卡片等級, 卡片標題）：和 radar-caregiver --json 用同一份對照（caregiver.NOTE_KINDS）。
-KINDS = NOTE_KINDS
-
 
 def _load_generator() -> ModuleType:
     spec = importlib.util.spec_from_file_location("demo_generate", REPO / "data" / "samples_demo" / "generate.py")
@@ -50,13 +44,6 @@ def _load_generator() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def _section(report: str, heading: str) -> list[str]:
-    lines = report.splitlines()
-    start = lines.index(heading) + 1
-    end = next((i for i in range(start, len(lines)) if not lines[i]), len(lines))
-    return lines[start:end]
 
 
 def ask_data(summary: Summary, place: str) -> list[dict[str, str]]:
@@ -86,39 +73,22 @@ def demo_data(events: Path | None = None, place: str = PLACE,
     summary = summarize(records)
     if not summary.online:
         raise ValueError("沒有讀得懂的紀錄，無法產生頁面")
-    report = caregiver_report(summary, place=place)
-    problems = check_output(report, summary, place=place)
-    if problems:
-        raise ValueError(f"radar-caregiver 輸出檢查沒通過：{problems}")
-
-    notes = event_notes(summary, place)
-    prompts = _section(report, "【處置提示】") if notes else []
-    drafts = _section(report, "【照護紀錄草稿】") if notes else []
-    cards = []
-    for note, prompt_line, draft in zip(notes, prompts, drafts, strict=True):
-        label = note.span or f"{note.time:%H:%M}"
-        if prompt_line != f"{label} {note.prompt}" or draft != note.record:
-            raise ValueError(f"處置提示與事件對不上：{prompt_line}")
-        if note.prompt not in KINDS:
-            raise ValueError(f"build.py 的 KINDS 沒有這句處置提示，請補上：{note.prompt}")
-        level, title = KINDS[note.prompt]
-        cards.append({
-            "at": f"{note.time:%Y-%m-%d %H:%M:%S}", "label": label, "level": level, "title": title,
-            "prompt": note.prompt, "record": note.record,
-        })
+    # 卡片、事件摘要與斷線都直接取 radar-caregiver --json 的結構化輸出（輸出檢查在裡面），不從文字切回來
+    try:
+        report = report_data(summary, place=place)
+    except OutputRejected as e:
+        raise ValueError(f"radar-caregiver 輸出檢查沒通過：{e.problems}") from e
 
     data: dict[str, Any] = {
         "source": "field" if events is not None else "sim",
         "place": place,
         "day": f"{summary.online[0].start:%Y-%m-%d}",
-        "from": f"{summary.online[0].start:%Y-%m-%d %H:%M:%S}",
-        "to": f"{summary.online[-1].end:%Y-%m-%d %H:%M:%S}",
-        "summary": _section(report, "【事件摘要】")[0],
+        "from": report["from"],
+        "to": report["to"],
+        "summary": report["summary"],
         "visits": [[f"{v.start:%Y-%m-%d %H:%M:%S}", f"{v.end:%Y-%m-%d %H:%M:%S}"] for v in summary.visits],
-        "offline": [
-            [f"{a.end:%Y-%m-%d %H:%M:%S}", f"{b.start:%Y-%m-%d %H:%M:%S}"] for a, b in zip(summary.online, summary.online[1:], strict=False)
-        ],
-        "events": cards,
+        "offline": report["counts"]["offline"],
+        "events": report["events"],
         "ask": ask_data(summary, place),
         "trend": None,
     }
