@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
-import json
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import demo_page  # demo/ 底下的共用外殼；直接執行或測試時 demo/ 都在 sys.path
 from radar_agent.caregiver import (
     OutputRejected,
     check_trend,
@@ -111,15 +111,11 @@ def demo_data(events: Path | None = None, place: str = PLACE,
 
 
 def fragment(data: dict[str, Any]) -> str:
-    template = (HERE / "template.html").read_text(encoding="utf-8")
-    payload = json.dumps(data, ensure_ascii=False, indent=1).replace("</", "<\\/")
-    return template.replace(PLACEHOLDER, payload)
+    return demo_page.fragment(HERE / "template.html", PLACEHOLDER, data)
 
 
 def page(data: dict[str, Any]) -> str:
-    head = '<!doctype html>\n<html lang="zh-Hant">\n<meta charset="utf-8">\n'
-    head += '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
-    return head + fragment(data) + "</html>\n"
+    return demo_page.page(HERE / "template.html", PLACEHOLDER, data)
 
 
 FIELD_OUT = REPO / "outputs" / "field_prototype.html"

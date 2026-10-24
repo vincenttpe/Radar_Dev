@@ -32,6 +32,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import demo_page  # demo/ 底下的共用外殼；直接執行或測試時 demo/ 都在 sys.path
 from radar_agent.caregiver import (
     CHANGE_AT_LEAST,
     CHANGE_RATIO,
@@ -689,15 +690,11 @@ def dashboard_data() -> dict[str, Any]:
 
 
 def fragment(data: dict[str, Any]) -> str:
-    template = (HERE / "dashboard_template.html").read_text(encoding="utf-8")
-    payload = json.dumps(data, ensure_ascii=False, indent=1).replace("</", "<\\/")
-    return template.replace(PLACEHOLDER, payload)
+    return demo_page.fragment(HERE / "dashboard_template.html", PLACEHOLDER, data)
 
 
 def page(data: dict[str, Any]) -> str:
-    head = '<!doctype html>\n<html lang="zh-Hant">\n<meta charset="utf-8">\n'
-    head += '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
-    return head + fragment(data) + "</html>\n"
+    return demo_page.page(HERE / "dashboard_template.html", PLACEHOLDER, data)
 
 
 if __name__ == "__main__":
