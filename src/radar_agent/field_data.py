@@ -314,7 +314,7 @@ def _expected(sc: Scenario) -> str:
     if sc.kind == "longstay":
         return "久待警報"
     if sc.kind == "offline":
-        return "斷線（超過 30 秒沒資料或 offline）"
+        return _gap_label()  # 和 inspect 同一種說法
     text = " → ".join(_fall_label(m, t) for m, t in sc.falls)
     if sc.resolved:
         text += " → " + " → ".join(f"解除（{r}）" for r in sc.resolved)

@@ -335,3 +335,14 @@ def test_inspect_counts_a_stretch_with_only_unreadable_payloads_like_summarize()
     report = inspect(records, "JSON 陣列")
     assert len(report.gaps) == len(summarize(records).online) - 1 == 1
     assert "斷線（超過 30 秒沒有可判讀的資料，或 offline）：1 段" in report_text(report)
+
+
+def test_compare_expects_the_same_disconnection_wording_as_inspect():
+    """同一支 radar-field-data 只有一種斷線說法：操演的「斷線」項目與 inspect 的斷線那一行一致。"""
+    from radar_agent.field_data import SCENARIOS, _expected
+
+    offline = [sc for sc in SCENARIOS.values() if sc.kind == "offline"]
+    assert offline
+    label = report_text(inspect([rec("09:00:00", "absence", device="X")], "JSON 陣列"))
+    for sc in offline:
+        assert f"{_expected(sc)}：沒有" in label
