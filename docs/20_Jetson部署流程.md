@@ -8,7 +8,7 @@
 
 1. **Python 版本**：本 repo 要求 Python 3.11 以上（`pyproject.toml`）。JetPack 6.x 是 Ubuntu 22.04，內建 Python 3.10（待核對），要另外裝 3.11 以上（例如 `uv` 或 deadsnakes）。
 2. **只能用原始碼加可編輯安裝**：`kg_rules`、`kg_source`、`kg_manifest`、`event_validation` 用 `Path(__file__).parents[2]` 讀 repo 裡的 `kg/` 與 `schemas/`（`pyproject.toml` 也有註明）。打包成 wheel 安裝，執行時會找不到知識圖譜。帶上 Jetson 的一律是原始碼（git checkout，或某個 tag 的 tar 檔）。
-3. **Dashboard 現在的實測資料讀不懂**：Dashboard 下載的實測資料是 Radar60FL 格式，本 repo 只讀得懂 radar10，遇到 Radar60FL 只會寫「沒有收到資料，無法判斷」（`docs/16`；會議清單 A45～A50）。在格式問題解決前，實測資料走完流程也只會得到這句話，驗收要用模擬資料或 radar10 的資料。
+3. **Dashboard 現在的實測資料讀不懂**：Dashboard 下載的實測資料是 Radar60FL 格式，本 repo 只讀得懂 radar10，遇到 Radar60FL 只會寫「沒有收到資料，無法判斷」（`docs/16`；會議清單 A45～A50）。在格式問題解決前，實測資料走完流程也只會得到這句話，驗收要用模擬資料，或之前取得的 radar10 裝置事件（10/09～10/13 一台裝置，A10）。
 4. **和 Dashboard 交換資料的程式還沒有**：目前只有命令列（`radar-caregiver --json`、`radar-ask --json`）。方向已定：由 Jetson 向 Dashboard 要資料、產生文字後傳回（`docs/16`「第一階段的流程」，2026-10-23）；網址、認證、參數、文字傳回哪裡、多久一次都還沒約定（週一清單 4-1、4-2；會議清單 B4、B10）。
 5. **跌倒即時警示不經過本 repo**（`docs/adr/0006`）：本 repo 部署失敗不影響警示，可以分階段上線。
 
@@ -35,7 +35,7 @@
 - 目錄（草案）：
   - `/opt/radar_agent/releases/<版本>`：每個版本一份原始碼，各自有自己的 venv（`<版本>/.venv`）；
   - `/opt/radar_agent/current`：連到使用中的版本；
-  - `/var/lib/radar_agent`：紀錄與輸出，屬個人資料（B12）；不同步到雲端的客戶，這裡是唯一一份資料，備份方式待 A16；
+  - `/var/lib/radar_agent`：紀錄與輸出，屬個人資料（B12）；不同步到雲端的客戶，這裡是唯一一份資料，備份方式待 A16；放進來的紀錄檔與產生的輸出要留多久、誰來清還沒決定（歷史資料要留多久見 E8）；
   - `/opt/models`：模型檔。
 
 ## 2. 安裝程式
@@ -49,7 +49,7 @@
   - 要在 Jetson 上跑測試的話，再加 `[dev]` 的依賴。
 
   安裝時用 `pip install --no-index --find-links <下載目錄> -e .`（待核對：實際跑一次確認沒有漏掉的套件）。
-- 裝完，在該版本的 repo 根目錄確認（下面的資料路徑是相對 repo 根目錄）：
+- 裝完，在該版本的 repo 根目錄、用**該版本自己的 venv** 確認（先 `source .venv/bin/activate`；下面的資料路徑是相對 repo 根目錄）：
 
   ```bash
   radar-kg-build --check
@@ -71,18 +71,21 @@
 
 ## 4. 和 Dashboard 交換資料（要寫新程式）
 
-方向已定：Jetson 向 Dashboard 要資料、產生文字後傳回（`docs/16`）。細節還沒約定前，可以分兩段：
+方向已定：Jetson 向 Dashboard 要資料、產生文字後傳回（`docs/16`）。細節還沒約定前，依用途分成三種：
 
 | 做法 | 怎麼運作 | 用在 |
 |---|---|---|
-| 過渡：手動或檔案交換 | 照 `docs/16`「資料交換 API 草案」的手動方式：Dashboard 的 Logs 頁匯出 NDJSON，放到 Jetson 的固定目錄；排程或手動執行 `radar-caregiver --json --from --to`，結果寫到另一個目錄給 Dashboard 取 | API 約定前、Demo 彩排 |
+| 過渡：手動或檔案交換 | 照 `docs/16`「資料交換 API 草案」的手動方式：Dashboard 的 Logs 頁設定時間範圍、打開 heartbeat 與 topic 後匯出 NDJSON（沒有心跳，報告會把整段判成斷線或無法判斷），放到 Jetson 的固定目錄；排程或手動執行 `radar-caregiver --json --from --to`，結果寫到另一個目錄給 Dashboard 取 | API 約定前、Demo 彩排 |
 | 正式：Jetson 定時去拉 | 照 `docs/16` 的 API 草案向 Dashboard 要資料，產生文字後送回 | API 約定後 |
 | 提問：Jetson 開一個小型 HTTP 服務 | Dashboard 呼叫 Jetson 跑 `radar-ask`；提問要即時回覆時才需要（B10；`docs/16`「還沒定的」：提問是即時呼叫還是同一條路） | 有即時提問時 |
 
 注意：
 
 - 不論哪一種，交換資料的程式都會讀取、搬移長者的資料，屬單向門「個人資料的流向」，照 `REVIEW.md` 審查。
-- `radar-caregiver` 的結束碼：輸出檢查沒通過是 1，不輸出文字；讀檔失敗或參數錯誤（例如時間看不懂）是 2。交換資料的程式與 Dashboard 端都要能處理這兩種情況，不能把空輸出當成「沒有事件」。
+- 結束碼：
+  - `radar-caregiver`：輸出檢查沒通過是 1，不輸出文字；讀檔失敗或參數錯誤（例如時間看不懂）是 2。不能把空輸出當成「沒有事件」。
+  - `radar-ask`：輸出檢查沒通過也是 1，但仍輸出 JSON，`answer` 是 `null`、原因在 `rejected`（`docs/16`）。
+  - 交換資料的程式與 Dashboard 端都要能處理這些情況。
 - 實測資料目前是 Radar60FL，讀不懂（見「先知道的五件事」第 3 點）。
 
 ## 5. 讓服務自動執行（草案）
@@ -98,7 +101,7 @@
 ## 6. 驗收與彩排
 
 - 模擬資料從頭走一遍第 4 步的流程，`demo/flow_check.html` 列的情境都要走過。
-- 用 radar10 的實測資料（先用 `radar-field-data mask` 遮罩；實測資料不進 repo）再走一次。Radar60FL 的格式問題解決前，用它走只會得到「沒有收到資料，無法判斷」。
+- 用 radar10 的實測資料（10/09～10/13 的裝置事件，A10；先用 `radar-field-data mask` 遮罩；實測資料不進 repo）再走一次。Radar60FL 的格式問題解決前，用它走只會得到「沒有收到資料，無法判斷」。
 - 量 `radar-ask` 從提問到回覆的總時間。
 - 同時灌 MQTT 事件，確認接收延遲不受推論影響（`docs/06` 第 4 節第 3 項）。
 - 部署完成、確認在 Jetson 上執行後，才請 Dashboard 打開「在 Jetson 本機執行、提問與資料不出場域」的開關（`docs/16`，2026-10-19 決定）。
@@ -114,7 +117,7 @@
 ## 個人資料
 
 - 本 repo 給 Dashboard 的 JSON 只寫地點名稱，不含裝置識別碼（`caregiver.report_data`）；地點名稱不放長者姓名（`docs/16`）。
-- 輸入的紀錄檔含裝置 MAC，一戶一台時等於可識別個人（`docs/02`）。留在 `/var/lib/radar_agent`；要給研究或第三方之前，依 F10 換成代號（`radar-field-data mask`）。
+- 輸入的紀錄檔含裝置 MAC，一戶一台時等於可識別個人（`docs/02`）。留在 `/var/lib/radar_agent`；給研究或第三方時怎麼處理待 F10，在那之前先用 `radar-field-data mask` 換成代號。
 
 ## 之後（第 2、3 階段）
 
