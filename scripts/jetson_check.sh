@@ -62,6 +62,7 @@ fi
 
 # ── 電源模式：影響速度，實測時要記下（docs/06 第 4 節）────
 section "電源模式"
+pm=""
 if has nvpmodel; then
   pm=$(nvpmodel -q 2>/dev/null | tr '\n' ' ')
   row "nvpmodel -q" "${pm:-沒有權限或讀不到（可請管理者執行 sudo nvpmodel -q）}"
@@ -82,7 +83,7 @@ section "磁碟"
 root_fs=$(df -P / 2>/dev/null | awk 'NR==2 {print $1}')
 root_avail=""
 for d in / /opt /var/lib; do
-  [ -d "$d" ] || continue
+  [ -d "$ROOT$d" ] || continue
   info=$(df -Ph "$d" 2>/dev/null | awk -v r="$root_fs" 'NR==2 {print $4 "|" $2 "|" ($1 == r ? "和 / 同一個分割區" : "另一個分割區")}')
   IFS='|' read -r avail_d size_d where_d <<<"$info"
   [ "$d" = / ] && root_avail=$avail_d
@@ -91,14 +92,14 @@ done
 
 # ── Python：本 repo 要 MIN_PY 以上 ─────────────────
 section "Python 與工具"
-py_ok=""
-py_ok_name=""
+py_exe=""
+py_name=""
 check_py() {  # $1 執行檔，$2 顯示的名稱
   local v
   v=$("$1" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null) || return
   if "$1" -c "import sys; sys.exit(sys.version_info < $MIN_PY_TUPLE)" 2>/dev/null; then
     row "$2" "$v（可用）"
-    [ -n "$py_ok" ] || { py_ok=$1; py_ok_name=$2; }
+    [ -n "$py_exe" ] || { py_exe=$1; py_name=$2; }
   else
     row "$2" "$v（低於 $MIN_PY，本 repo 不能用）"
   fi
@@ -112,11 +113,11 @@ fi
 for t in git pip3 uv curl; do
   if has "$t"; then row "$t" "有"; else row "$t" "沒有"; fi
 done
-if [ -n "$py_ok" ]; then
+if [ -n "$py_exe" ]; then
   # Ubuntu 沒裝 pythonX.Y-venv 時 venv 模組還在，但缺 ensurepip，建 venv 才會失敗
-  if "$py_ok" -c 'import ensurepip, venv' >/dev/null 2>&1; then row "$py_ok_name 建 venv" "可以"; else
-    row "$py_ok_name 建 venv" "不行：缺 ensurepip（Ubuntu 要另裝 pythonX.Y-venv）"
-    note "$py_ok_name 不能建 venv，要另外裝 venv 套件。"
+  if "$py_exe" -c 'import ensurepip, venv' >/dev/null 2>&1; then row "$py_name 建 venv" "可以"; else
+    row "$py_name 建 venv" "不行：缺 ensurepip（Ubuntu 要另裝 pythonX.Y-venv）"
+    note "$py_name 不能建 venv，要另外裝 venv 套件。"
   fi
 else
   note "沒有 Python $MIN_PY 以上：要另外裝（docs/20「先知道的五件事」第 1 點），不要換掉系統內建的 python3。"
@@ -125,7 +126,7 @@ fi
 # ── B2：上面還跑什麼 ───────────────────────────────
 section "正在執行的服務（B2 的線索）"
 if has systemctl; then
-  for s in mosquitto docker ollama llama-server radar-agent nvargus-daemon; do
+  for s in mosquitto docker ollama llama-server radar-agent; do
     state=$(systemctl is-active "$s" 2>/dev/null)
     [ "$state" = "active" ] && row "$s" "執行中"
   done
@@ -146,6 +147,7 @@ fi
 # ── B5：外網 ───────────────────────────────────────
 section "外網（B5）"
 net_ok=""
+net="沒有測"
 if [ "$OFFLINE" = 1 ]; then
   row "外網" "略過（--offline）"
 elif has curl; then
@@ -153,8 +155,10 @@ elif has curl; then
     if curl -fsS -o /dev/null --max-time 8 "$u" 2>/dev/null; then row "$u" "連得到"; net_ok=1; else row "$u" "連不到"; fi
   done
   if [ -z "$net_ok" ]; then
+    net="連不到"
     note "連不到 pypi.org 與 github.com：要用離線安裝（docs/20 第 2 步）。"
   else
+    net="連得到"
     note "外網只測了能不能連上；現場若走 proxy 或登入頁，要實際 pip install 一次才算數。"
   fi
 else
@@ -165,8 +169,10 @@ fi
 section "摘要"
 row "型號／記憶體" "${model:-不明} / ${mem:-讀不到}"
 row "JetPack" "${jetpack:-看 L4T}"
+row "電源模式" "${pm:-讀不到}"
+row "外網" "$net"
 row "根目錄可用空間" "${root_avail:-讀不到}（點雲預設在 Jetson 上留一個月，要一起算，A24；點雲存在哪要問雷達負責人）"
-row "Python $MIN_PY 以上" "${py_ok_name:-沒有}"
+row "Python $MIN_PY 以上" "${py_name:-沒有}"
 if [ "${#NOTES[@]}" -gt 0 ]; then
   echo "要注意："
   for n in "${NOTES[@]}"; do echo "  - $n"; done

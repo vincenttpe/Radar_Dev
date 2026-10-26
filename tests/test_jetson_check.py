@@ -66,6 +66,8 @@ def jetson(tmp_path):
     (root / "proc" / "device-tree" / "model").write_bytes(b"NVIDIA Jetson Orin Nano Developer Kit\0")
     (root / "proc" / "meminfo").write_text("MemTotal:        7812000 kB\nMemAvailable:    4100000 kB\n")
     (root / "etc").mkdir()
+    (root / "opt").mkdir()
+    (root / "var" / "lib").mkdir(parents=True)
     (root / "etc" / "nv_tegra_release").write_text("# R36 (release), REVISION: 4.3, GCID: 38968081, BOARD: generic\n")
     (root / "etc" / "os-release").write_text('PRETTY_NAME="Ubuntu 22.04.5 LTS"\n')
     bin_dir = tmp_path / "bin"
@@ -85,8 +87,8 @@ def jetson(tmp_path):
     return root, bin_dir
 
 
-def run(*args, root=None, bin_dir=None):
-    """bin_dir 給了就只用它當 PATH，不讀執行測試那台機器的指令。"""
+def run(*args, root=None, bin_dir=None, code=0):
+    """bin_dir 給了就只用它當 PATH，不讀執行測試那台機器的指令。結束碼要是 code。"""
     env = dict(os.environ)
     if root is not None:
         env["JETSON_CHECK_ROOT"] = str(root)
@@ -95,7 +97,9 @@ def run(*args, root=None, bin_dir=None):
     script = os.path.join(os.path.dirname(__file__), "..", "scripts", "jetson_check.sh")
     bash = shutil.which("bash")
     assert bash
-    return subprocess.run([bash, script, *args], capture_output=True, text=True, timeout=60, check=False, env=env)
+    r = subprocess.run([bash, script, *args], capture_output=True, text=True, timeout=60, check=False, env=env)
+    assert r.returncode == code, r.stderr
+    return r
 
 
 def assert_no_identifiers(out):
@@ -109,7 +113,6 @@ def assert_no_identifiers(out):
 
 def test_runs_on_plain_linux_offline():
     r = run("--offline")
-    assert r.returncode == 0, r.stderr
     for title in ["型號與系統（B1）", "記憶體", "磁碟", "Python 與工具", "正在執行的服務（B2 的線索）", "外網（B5）", "摘要"]:
         assert f"## {title}" in r.stdout
     assert "略過（--offline）" in r.stdout
@@ -120,7 +123,6 @@ def test_jetson_specs_services_and_network(jetson):
     root, bin_dir = jetson
     fake_python(bin_dir, "python3.11", "3.11.9")
     r = run(root=root, bin_dir=bin_dir)
-    assert r.returncode == 0, r.stderr
     out = r.stdout
     assert "- 型號：NVIDIA Jetson Orin Nano Developer Kit" in out
     assert "- CUDA：Build cuda_12.6.r12.6/compiler.34714021_0" in out
@@ -128,6 +130,8 @@ def test_jetson_specs_services_and_network(jetson):
     assert "- JetPack（nvidia-jetpack 套件）：6.2.1+b38" in out
     assert "- 作業系統：Ubuntu 22.04.5 LTS" in out
     assert "NV Power Mode: 15W" in out
+    assert "- 電源模式：NV Power Mode: 15W 0" in out
+    assert "- 外網：連得到" in out
     assert "- 總共／目前可用：7628 MiB / 4003 MiB" in out
     assert "- python3：3.10.12（低於 3.11，本 repo 不能用）" in out
     assert "- python3.11：3.11.9（可用）" in out
@@ -175,6 +179,7 @@ def test_no_python_and_no_network_are_flagged(jetson):
     assert "- Python 3.11 以上：沒有" in out
     assert "沒有 Python 3.11 以上：要另外裝" in out
     assert "- https://pypi.org：連不到" in out
+    assert "- 外網：連不到" in out
     assert "要用離線安裝" in out
 
 
@@ -227,6 +232,46 @@ def test_mqtt_tls_port_and_partial_network(jetson):
     assert "要用離線安裝" not in out
 
 
+def test_first_usable_python_is_picked(jetson):
+    root, bin_dir = jetson
+    fake(bin_dir, "python3.11", "exit 1")  # 存在但跑不起來（例如缺共用函式庫）
+    fake_python(bin_dir, "python3.12", "3.12.3")
+    fake_python(bin_dir, "python3.13", "3.13.1")
+    fake(bin_dir, "uv", "exit 2")  # uv 找不到符合的 Python
+    out = run("--offline", root=root, bin_dir=bin_dir).stdout
+    assert "python3.11：" not in out
+    assert "- python3.13：3.13.1（可用）" in out
+    assert "uv 找到的 Python" not in out
+    assert "- Python 3.11 以上：python3.12" in out
+
+
+def test_tools_that_print_nothing_or_fail(jetson):
+    root, bin_dir = jetson
+    for name in ["systemctl", "ss"]:
+        (bin_dir / name).unlink()
+    fake(bin_dir, "ps", "exit 0")
+    fake(bin_dir, "tegrastats", "exit 0")
+    fake(bin_dir, "df", "exit 1")
+    (root / "opt").rmdir()
+    out = run("--offline", root=root, bin_dir=bin_dir).stdout
+    assert "執行中" not in out
+    assert "TCP 埠" not in out
+    assert "- 相關的程式名稱：沒有看到" in out
+    assert "- tegrastats（一次取樣）：讀不到" in out
+    assert "- /：可用 ?／共 ?（讀不到）" in out
+    assert "- /opt：" not in out
+    assert "- /var/lib：可用 ?／共 ?（讀不到）" in out
+    assert "- 根目錄可用空間：讀不到" in out
+
+
+def test_ss_without_output(jetson):
+    root, bin_dir = jetson
+    fake(bin_dir, "ss", "exit 0")
+    out = run("--offline", root=root, bin_dir=bin_dir).stdout
+    assert "- 有在聽的 TCP 埠：讀不到" in out
+    assert "- MQTT：" not in out
+
+
 def test_min_python_matches_pyproject(repo):
     requires = tomllib.loads((repo / "pyproject.toml").read_text(encoding="utf-8"))["project"]["requires-python"]
     script = (repo / "scripts" / "jetson_check.sh").read_text(encoding="utf-8")
@@ -235,6 +280,5 @@ def test_min_python_matches_pyproject(repo):
 
 @pytest.mark.parametrize("args", [["--fix"], ["--offline", "extra"]])
 def test_bad_arguments_are_usage_error(args):
-    r = run(*args)
-    assert r.returncode == 2
+    r = run(*args, code=2)
     assert r.stderr.strip() == "用法：bash scripts/jetson_check.sh [--offline]"
