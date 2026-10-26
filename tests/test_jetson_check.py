@@ -282,3 +282,26 @@ def test_min_python_matches_pyproject(repo):
 def test_bad_arguments_are_usage_error(args):
     r = run(*args, code=2)
     assert r.stderr.strip() == "用法：bash scripts/jetson_check.sh [--offline]"
+
+
+def test_unreadable_model_jetpack_os_and_cores(jetson):
+    root, bin_dir = jetson
+    (root / "proc" / "device-tree" / "model").unlink()
+    (root / "etc" / "os-release").unlink()
+    (bin_dir / "dpkg-query").unlink()
+    fake(bin_dir, "nproc", "exit 1")
+    out = run("--offline", root=root, bin_dir=bin_dir).stdout
+    assert "- 型號：讀不到（/proc/device-tree/model）" in out
+    assert "- JetPack（nvidia-jetpack 套件）：沒有安裝這個套件" in out
+    assert "- 作業系統：讀不到" in out
+    assert "- CPU 核心數：讀不到" in out
+    assert "- 型號／記憶體：不明 / 7628 MiB" in out
+    assert "- JetPack：看 L4T" in out
+
+
+def test_nothing_to_note(jetson):
+    root, bin_dir = jetson
+    fake_python(bin_dir, "python3.11", "3.11.9")
+    out = run("--offline", root=root, bin_dir=bin_dir).stdout
+    assert "要注意" not in out
+    assert "- 外網：沒有測" in out
