@@ -15,9 +15,9 @@ set -u
 export LC_ALL=C
 
 OFFLINE=0
-case "${1:-}" in
-  --offline) OFFLINE=1 ;;
-  "") ;;
+case "$#:${1:-}" in
+  1:--offline) OFFLINE=1 ;;
+  0:) ;;
   *) echo "用法：bash scripts/jetson_check.sh [--offline]" >&2; exit 2 ;;
 esac
 
@@ -55,7 +55,7 @@ cuda="$ROOT/usr/local/cuda"
 if [ -x "$cuda/bin/nvcc" ]; then
   row "CUDA" "$("$cuda/bin/nvcc" --version | tail -1)"
 elif [ -r "$cuda/version.json" ]; then
-  row "CUDA" "$(grep -m1 -o '"version" *: *"[^"]*"' "$cuda/version.json")"
+  row "CUDA" "$(grep -m1 -o '"version" *: *"[^"]*"' "$cuda/version.json" | sed 's/.*"\([^"]*\)"$/\1/')"
 else
   row "CUDA" "找不到 /usr/local/cuda"
 fi
@@ -78,11 +78,16 @@ avail=$(mib MemAvailable)
 row "總共／目前可用" "${mem:-讀不到} / ${avail:-讀不到}"
 
 section "磁碟"
+# 不印掛載點：外接碟可能掛在 /media/<使用者名稱>/ 底下
+root_fs=$(df -P / 2>/dev/null | awk 'NR==2 {print $1}')
+root_avail=""
 for d in / /opt /var/lib; do
   [ -d "$d" ] || continue
-  row "$d" "$(df -Ph "$d" 2>/dev/null | awk 'NR==2 {print "可用 " $4 "／共 " $2 "（掛在 " $6 "）"}')"
+  info=$(df -Ph "$d" 2>/dev/null | awk -v r="$root_fs" 'NR==2 {print $4 "|" $2 "|" ($1 == r ? "和 / 同一個分割區" : "另一個分割區")}')
+  IFS='|' read -r avail_d size_d where_d <<<"$info"
+  [ "$d" = / ] && root_avail=$avail_d
+  row "$d" "可用 ${avail_d:-?}／共 ${size_d:-?}（${where_d:-讀不到}）"
 done
-root_avail=$(df -Ph / 2>/dev/null | awk 'NR==2 {print $4}')
 
 # ── Python：本 repo 要 MIN_PY 以上 ─────────────────
 section "Python 與工具"
@@ -102,7 +107,7 @@ for py in python3 python3.11 python3.12 python3.13; do
   has "$py" && check_py "$py" "$py"
 done
 if has uv; then  # uv 裝的 Python 不在 PATH 上；不印路徑（含使用者名稱）
-  uv_py=$(uv python find ">=$MIN_PY" 2>/dev/null) && [ -n "$uv_py" ] && check_py "$uv_py" "uv 管理的 Python"
+  uv_py=$(uv python find ">=$MIN_PY" 2>/dev/null) && [ -n "$uv_py" ] && check_py "$uv_py" "uv 找到的 Python"
 fi
 for t in git pip3 uv curl; do
   if has "$t"; then row "$t" "有"; else row "$t" "沒有"; fi
