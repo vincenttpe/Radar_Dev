@@ -1,0 +1,132 @@
+# Jetson 部署流程（草案，2026-10-26）
+
+把本 repo 部署到現場 Jetson PC 的步驟。型號怎麼選見 `docs/06_Jetson硬體評估.md`；第一階段和 Dashboard 怎麼交換資料見 `docs/16_Dashboard對接說明.md`。
+
+標「待核對」的是還沒在實機上確認的事，拿到 Jetson 後要先驗證；標「草案」的是這份文件提出的做法，還沒有決策紀錄，待 B11（誰維護、怎麼更新）確認後再定。
+
+## 先知道的五件事
+
+1. **Python 版本**：本 repo 要求 Python 3.11 以上（`pyproject.toml`）。JetPack 6.x 是 Ubuntu 22.04，內建 Python 3.10（待核對），要另外裝 3.11 以上（例如 `uv` 或 deadsnakes）。
+2. **只能用原始碼加可編輯安裝**：`kg_rules`、`kg_source`、`kg_manifest`、`event_validation` 用 `Path(__file__).parents[2]` 讀 repo 裡的 `kg/` 與 `schemas/`（`pyproject.toml` 也有註明）。打包成 wheel 安裝，執行時會找不到知識圖譜。帶上 Jetson 的一律是原始碼（git checkout，或某個 tag 的 tar 檔）。
+3. **Dashboard 現在的實測資料讀不懂**：Dashboard 下載的實測資料是 Radar60FL 格式，本 repo 只讀得懂 radar10，遇到 Radar60FL 只會寫「沒有收到資料，無法判斷」（`docs/16`；會議清單 A45～A50）。在格式問題解決前，實測資料走完流程也只會得到這句話，驗收要用模擬資料，或之前取得的 radar10 裝置事件（10/09～10/13 一台裝置，A10）。
+4. **和 Dashboard 交換資料的程式還沒有**：目前只有命令列（`radar-caregiver --json`、`radar-ask --json`）。方向已定：由 Jetson 向 Dashboard 要資料、產生文字後傳回（`docs/16`「第一階段的流程」，2026-10-23）；網址、認證、參數、文字傳回哪裡、多久一次都還沒約定（週一清單 4-1、4-2；會議清單 B4、B10）。
+5. **跌倒即時警示不經過本 repo**（`docs/adr/0006`）：本 repo 部署失敗不影響警示，可以分階段上線。
+
+## 0. 開始前要有答案
+
+| 題號 | 問題 | 卡住哪一步 |
+|---|---|---|
+| 週一清單 3-1（B1） | Jetson 型號、記憶體、JetPack 版本、可用磁碟（點雲在 Jetson 上預設保留一個月，要一起算，A24） | 模型大小、Python 怎麼裝、磁碟夠不夠 |
+| 週一清單 3-2（B2） | Jetson 上還跑什麼（MQTT broker、radarLLM、音訊檔目錄） | 資源分配、要隔離的目錄 |
+| 週一清單 3-3（B5） | 能不能連外網 | 線上安裝，或先在別台下載好再離線帶上去 |
+| 週一清單 3-4（F2） | 在地模型選哪個；授權能否商用、能否在機構現場部署 | 第 3 步 |
+| 週一清單 4-1、4-2（B4） | Dashboard 的 API：網址、認證、參數、文字傳回哪裡 | 第 4 步 |
+| B10 | 報告多久產生一次、幾點前要好；提問是不是即時 | 排程時間；`docs/06` 第 5 節「批次時段內只用一半時間跑完」 |
+| B11 | 誰維護、能不能遠端登入與更新、程式失敗通知誰、日誌存哪 | 第 5、7 步 |
+| B12 | 磁碟加密、MQTT 與 HTTPS 的加密與認證、實體上誰碰得到 | 資安設定 |
+| A16、A17 | 客戶要求不同步到雲端時，Jetson 上的資料是唯一一份：要不要備份、備份到哪；「不同步」以誰為單位 | 第 1 步的資料目錄與備份 |
+
+## 1. 準備 Jetson
+
+- 刷好 JetPack，記下版本與電源模式（`docs/06` 第 4 節第 5 項：結果才能重現、比較）。
+- 裝 Python 3.11 以上與 `git`。
+- 開專用帳號（例如 `radar`），程式不用 root 跑。
+- 用檔案權限讓這個帳號讀不到音訊檔目錄（`docs/adr/0005`）。
+- 目錄（草案）：
+  - `/opt/radar_agent/releases/<版本>`：每個版本一份原始碼，各自有自己的 venv（`<版本>/.venv`）；
+  - `/opt/radar_agent/current`：連到使用中的版本；
+  - `/var/lib/radar_agent`：紀錄與輸出，屬個人資料（B12）；不同步到雲端的客戶，這裡是唯一一份資料，備份方式待 A16；放進來的紀錄檔與產生的輸出要留多久、誰來清還沒決定（歷史資料要留多久見 E8）；
+  - `/opt/models`：模型檔。
+
+## 2. 安裝程式
+
+- 部署用的版本在 main 打 tag（草案：只部署 tag，不部署任意分支）。
+- 每個版本放進自己的 `releases/<版本>`，在那個資料夾裡建 venv、`pip install -e .`。可編輯安裝記下的是安裝時的實際路徑，所以**不能共用 venv，也不能只換原始碼不重裝**。正式機只裝執行依賴，不必裝 `[dev]`。
+- **能連外網**：`git clone` → `git checkout <tag>` → 建 venv → `pip install -e .`。
+- **不能連外網**：在一台 aarch64、同樣 Python 版本、可上網的機器上，把下面這些都下載好，連同 tag 的原始碼（tar 檔或 git bundle）一起帶上 Jetson：
+  - 執行依賴：`jsonschema`、`rfc3339-validator` 及其相依套件；
+  - 建置可編輯安裝需要的 `setuptools>=68`（`pyproject.toml` 的 `[build-system]`）與 `wheel`；
+  - 要在 Jetson 上跑測試的話，再加 `[dev]` 的依賴。
+
+  安裝時用 `pip install --no-index --find-links <下載目錄> -e .`（待核對：實際跑一次確認沒有漏掉的套件）。
+- 裝完，在該版本的 repo 根目錄、用**該版本自己的 venv** 確認（先 `source .venv/bin/activate`；下面的資料路徑是相對 repo 根目錄）：
+
+  ```bash
+  radar-kg-build --check
+  radar-kg-manifest --check
+  radar-kg-level 來回行走 5.4
+  radar-caregiver data/samples_demo/bathroom_morning.jsonl --place "1 號廁所" --json
+  ```
+
+- 建議在 Jetson 上另外裝 `[dev]`、跑一次完整的 `python -m pytest`：CI 只在 x86 上跑過，ARM 平台還沒驗證。
+
+## 3. 在地模型
+
+- 推論伺服器：llama.cpp server（CUDA 版）或 Ollama，兩者都有 OpenAI 相容 API，`radar-ask`、`radar-model-eval` 可以直接接（`--endpoint`）。
+- **只聽 `127.0.0.1`**：`local_model.HttpChatModel` 只給本機或區網的模型伺服器用，不對外開放。
+- 推論伺服器會不會記錄 prompt（裡面可能有讀者打的字），部署時要確認並關掉（`docs/12_Demo預演.md` 問答）。
+- 下載模型前記下開發者、base model、授權（`docs/adr/0003`）；先試 Llama-Breeze2 3B。中國開發或以其為基底的模型，`radar-model-eval` 會依名稱擋下。
+- 實測照 `docs/06` 第 4 節與 4.1 節做：題組、通過門檻、要量的項目（速度、記憶體峰值、連續 1 小時以上的溫度與降頻）、要記錄的 JetPack 版本、電源模式、量化方式與推論框架版本，都以那兩節為準。
+- 決策順序照 `docs/06` 第 5 節：先找通過品質門檻的最小模型，再看記憶體有沒有 30% 餘裕，最後看速度。
+
+## 4. 和 Dashboard 交換資料（要寫新程式）
+
+方向已定：Jetson 向 Dashboard 要資料、產生文字後傳回（`docs/16`）。細節還沒約定前，依用途分成三種：
+
+| 做法 | 怎麼運作 | 用在 |
+|---|---|---|
+| 過渡：手動或檔案交換 | 照 `docs/16`「資料交換 API 草案」的手動方式：Dashboard 的 Logs 頁設定時間範圍、打開 heartbeat 與 topic 後匯出 NDJSON（沒有心跳，報告會把整段判成斷線或無法判斷），放到 Jetson 的固定目錄；排程或手動執行 `radar-caregiver --json --from --to`，結果寫到另一個目錄給 Dashboard 取 | API 約定前、Demo 彩排 |
+| 正式：Jetson 定時去拉 | 照 `docs/16` 的 API 草案向 Dashboard 要資料，產生文字後送回 | API 約定後 |
+| 提問：Jetson 開一個小型 HTTP 服務 | Dashboard 呼叫 Jetson 跑 `radar-ask`；提問要即時回覆時才需要（B10；`docs/16`「還沒定的」：提問是即時呼叫還是同一條路） | 有即時提問時 |
+
+注意：
+
+- 不論哪一種，交換資料的程式都會讀取、搬移長者的資料，屬單向門「個人資料的流向」，照 `REVIEW.md` 審查。
+- 結束碼：
+  - `radar-caregiver`：輸出檢查沒通過是 1，不輸出文字；讀檔失敗或參數錯誤（例如時間看不懂）是 2。不能把空輸出當成「沒有事件」。
+  - `radar-ask`：輸出檢查沒通過也是 1，但仍輸出 JSON，`answer` 是 `null`、原因在 `rejected`（`docs/16`）；讀檔失敗或模型不能用是 2，不輸出 JSON。
+  - 交換資料的程式與 Dashboard 端都要能處理這些情況。
+- 實測資料目前是 Radar60FL，讀不懂（見「先知道的五件事」第 3 點）。
+
+## 5. 讓服務自動執行（草案）
+
+- 用 systemd 管理：
+  - 推論伺服器：llama.cpp 用自己寫的 `llama-server.service`；Ollama 用它安裝時附的服務。開機啟動、掛掉自動重啟。
+  - 本 repo：過渡與正式做法是排程工作，用 `radar-agent.service` 加 `.timer`，時間依 B10；提問服務是常駐服務，不用 `.timer`。
+  - `ExecStart` 寫 `/opt/radar_agent/current/.venv/bin/...`，換版本時切換 `current` 後重啟就會用到新版本。
+- 資源隔離（`docs/02_目標架構.md`「在地模型負載與分流」）：推論用 `Nice`、`CPUQuota`、`MemoryMax` 限制，不能拖慢 MQTT 接收或 radarLLM；數值待實測後再定。
+- 日誌用 journald 並限制保存天數；日誌不寫裝置 MAC、紀錄內容、讀者打的字。
+- 防火牆只開 Dashboard 需要的埠；模型伺服器不對外。
+
+## 6. 驗收與彩排
+
+- 模擬資料從頭走一遍第 4 步的流程，`demo/flow_check.html` 列的情境都要走過。
+- 用 radar10 的實測資料（10/09～10/13 的裝置事件，A10；先用 `radar-field-data mask` 遮罩；實測資料不進 repo）再走一次。這份資料大多是無人，沒有跌倒與久待，只能確認在線與造訪；跌倒、久待的情境仍靠模擬資料。Radar60FL 的格式問題解決前，用它走只會得到「沒有收到資料，無法判斷」。
+- 量 `radar-ask` 從提問到回覆的總時間。
+- 同時灌 MQTT 事件，確認接收延遲不受推論影響（`docs/06` 第 4 節第 3 項）。
+- 部署完成、確認在 Jetson 上執行後，才請 Dashboard 打開「在 Jetson 本機執行、提問與資料不出場域」的開關（`docs/16`，2026-10-19 決定）。
+- Demo 前在 Jetson 上完整彩排一次（`docs/11_Demo規劃.md`，2026-10-19 決定）。
+
+## 7. 更新與回復（草案）
+
+- 更新：新的 tag 放進新的 `releases/<版本>`，照第 2 步建 venv、安裝、跑檢查 → 切換 `current` → 重啟服務。
+- 回復：把 `current` 切回上一版、重啟。舊版本的資料夾與 venv 保留到確認新版穩定為止。
+- 模型檔另外記版本；換模型要重跑第 3 步的題組。
+- 知識圖譜未核准前，輸出標「僅供測試」是正常的（`kg/README.md`）。
+
+## 個人資料
+
+- 本 repo 給 Dashboard 的 JSON 只寫地點名稱，不含裝置識別碼（`caregiver.report_data`）；地點名稱不放長者姓名（`docs/16`）。
+- 輸入的紀錄檔含裝置 MAC，一戶一台時等於可識別個人（`docs/02`）。留在 `/var/lib/radar_agent`；給研究或第三方時怎麼處理待 F10，在那之前先用 `radar-field-data mask` 換成代號。
+
+## 之後（第 2、3 階段）
+
+- Jetson 直接收 MQTT：payload 沒有時間戳，要由 Jetson 收到時補上（週一清單 2-1、A27）；斷線補傳（A13、A14）。
+- 多台 Jetson 的分工、綁定與版本同步（B7～B9）。
+- Neo4j 是否放 Jetson 本機（B3），會和模型搶記憶體（`docs/06` 第 1 節）。
+
+## 建議順序（以 11 月中 Demo 為目標）
+
+1. 現在：在筆電跑完 `docs/06` 第 4.1 節的準確率題組；和 Dashboard 負責人約定 API（週一清單 4-1、4-2），並追 Radar60FL 的格式（A45～A50）。
+2. 拿到 Jetson 規格與存取權後：第 1、2、3 步，重量速度。
+3. API 約定後：寫交換資料的程式、第 5 步，然後第 6 步彩排。
