@@ -7,7 +7,9 @@
 #
 # 用法：bash scripts/jetson_check.sh            # 含外網測試（連 pypi.org、github.com）
 #       bash scripts/jetson_check.sh --offline  # 不連外
-# 結束碼一律是 0：這是盤點，判斷寫在最後的「摘要」。
+# 結束碼：盤點跑完一律是 0，判斷寫在最後的「摘要」；參數錯誤是 2。
+#
+# 測試用：JETSON_CHECK_ROOT 設成一個資料夾時，系統檔（/etc、/proc、/usr/local/cuda 底下）改從那裡讀。
 
 set -u
 export LC_ALL=C
@@ -16,8 +18,12 @@ OFFLINE=0
 case "${1:-}" in
   --offline) OFFLINE=1 ;;
   "") ;;
-  *) echo "用法：bash $0 [--offline]" >&2; exit 2 ;;
+  *) echo "用法：bash scripts/jetson_check.sh [--offline]" >&2; exit 2 ;;
 esac
+
+ROOT=${JETSON_CHECK_ROOT:-}
+MIN_PY=3.11   # pyproject.toml 的 requires-python
+MIN_PY_TUPLE="(${MIN_PY/./, })"
 
 NOTES=()
 note() { NOTES+=("$1"); }
@@ -30,10 +36,10 @@ echo "# Jetson 盤點（scripts/jetson_check.sh，$(date -u +%Y-%m-%dT%H:%MZ)）
 # ── B1：型號與 JetPack ─────────────────────────────
 section "型號與系統（B1）"
 model=""
-[ -r /proc/device-tree/model ] && model=$(tr -d '\0' </proc/device-tree/model)
+[ -r "$ROOT/proc/device-tree/model" ] && model=$(tr -d '\0' <"$ROOT/proc/device-tree/model")
 row "型號" "${model:-讀不到（/proc/device-tree/model）}"
-if [ -r /etc/nv_tegra_release ]; then
-  row "L4T" "$(head -1 /etc/nv_tegra_release)"
+if [ -r "$ROOT/etc/nv_tegra_release" ]; then
+  row "L4T" "$(head -1 "$ROOT/etc/nv_tegra_release")"
 else
   row "L4T" "沒有 /etc/nv_tegra_release（可能不是 Jetson）"
   note "不是 Jetson，或 JetPack 沒裝好：下面的結果只能參考。"
@@ -41,14 +47,15 @@ fi
 jetpack=$(dpkg-query -W -f='${Version}' nvidia-jetpack 2>/dev/null || true)
 row "JetPack（nvidia-jetpack 套件）" "${jetpack:-沒有安裝這個套件（不一定代表沒有 JetPack，看上面的 L4T）}"
 # shellcheck disable=SC1091  # 執行時才讀系統檔
-os=$( . /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-}")
+os=$( . "$ROOT/etc/os-release" 2>/dev/null && echo "${PRETTY_NAME:-}")
 row "作業系統" "${os:-讀不到}"
 row "架構／核心" "$(uname -m) / $(uname -r)"
 row "CPU 核心數" "$(nproc 2>/dev/null || echo 讀不到)"
-if [ -x /usr/local/cuda/bin/nvcc ]; then
-  row "CUDA" "$(/usr/local/cuda/bin/nvcc --version | tail -1)"
-elif [ -r /usr/local/cuda/version.json ]; then
-  row "CUDA" "$(grep -m1 -o '"version" *: *"[^"]*"' /usr/local/cuda/version.json)"
+cuda="$ROOT/usr/local/cuda"
+if [ -x "$cuda/bin/nvcc" ]; then
+  row "CUDA" "$("$cuda/bin/nvcc" --version | tail -1)"
+elif [ -r "$cuda/version.json" ]; then
+  row "CUDA" "$(grep -m1 -o '"version" *: *"[^"]*"' "$cuda/version.json")"
 else
   row "CUDA" "找不到 /usr/local/cuda"
 fi
@@ -65,40 +72,49 @@ fi
 # ── B1：記憶體與磁碟 ───────────────────────────────
 section "記憶體（GPU 與 CPU 共用）"
 free -h | sed 's/^/    /'
-mem_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
-avail_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
-row "總共／目前可用" "$((mem_kb / 1024)) MiB / $((avail_kb / 1024)) MiB"
+mib() { awk -v k="$1" '$1 == k ":" {print int($2 / 1024) " MiB"}' "$ROOT/proc/meminfo" 2>/dev/null; }
+mem=$(mib MemTotal)
+avail=$(mib MemAvailable)
+row "總共／目前可用" "${mem:-讀不到} / ${avail:-讀不到}"
 
 section "磁碟"
 for d in / /opt /var/lib; do
   [ -d "$d" ] || continue
   row "$d" "$(df -Ph "$d" 2>/dev/null | awk 'NR==2 {print "可用 " $4 "／共 " $2 "（掛在 " $6 "）"}')"
 done
-root_avail_gb=$(df -Pk / | awk 'NR==2 {print int($4 / 1048576)}')
+root_avail=$(df -Ph / 2>/dev/null | awk 'NR==2 {print $4}')
 
-# ── Python：本 repo 要 3.11 以上（pyproject.toml）──────
+# ── Python：本 repo 要 MIN_PY 以上 ─────────────────
 section "Python 與工具"
 py_ok=""
-for py in python3 python3.11 python3.12 python3.13; do
-  has "$py" || continue
-  v=$("$py" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null) || continue
-  if "$py" -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then
-    row "$py" "$v（可用）"
-    py_ok=${py_ok:-$py}
+py_ok_name=""
+check_py() {  # $1 執行檔，$2 顯示的名稱
+  local v
+  v=$("$1" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null) || return
+  if "$1" -c "import sys; sys.exit(sys.version_info < $MIN_PY_TUPLE)" 2>/dev/null; then
+    row "$2" "$v（可用）"
+    [ -n "$py_ok" ] || { py_ok=$1; py_ok_name=$2; }
   else
-    row "$py" "$v（低於 3.11，本 repo 不能用）"
+    row "$2" "$v（低於 $MIN_PY，本 repo 不能用）"
   fi
+}
+for py in python3 python3.11 python3.12 python3.13; do
+  has "$py" && check_py "$py" "$py"
 done
+if has uv; then  # uv 裝的 Python 不在 PATH 上；不印路徑（含使用者名稱）
+  uv_py=$(uv python find ">=$MIN_PY" 2>/dev/null) && [ -n "$uv_py" ] && check_py "$uv_py" "uv 管理的 Python"
+fi
 for t in git pip3 uv curl; do
   if has "$t"; then row "$t" "有"; else row "$t" "沒有"; fi
 done
 if [ -n "$py_ok" ]; then
-  if "$py_ok" -m venv --help >/dev/null 2>&1; then row "$py_ok -m venv" "可用"; else
-    row "$py_ok -m venv" "不能用（Ubuntu 要另裝 pythonX.Y-venv）"
-    note "$py_ok 沒有 venv 模組，要另外裝 venv 套件。"
+  # Ubuntu 沒裝 pythonX.Y-venv 時 venv 模組還在，但缺 ensurepip，建 venv 才會失敗
+  if "$py_ok" -c 'import ensurepip, venv' >/dev/null 2>&1; then row "$py_ok_name 建 venv" "可以"; else
+    row "$py_ok_name 建 venv" "不行：缺 ensurepip（Ubuntu 要另裝 pythonX.Y-venv）"
+    note "$py_ok_name 不能建 venv，要另外裝 venv 套件。"
   fi
 else
-  note "沒有 Python 3.11 以上：要另外裝（docs/20「先知道的五件事」第 1 點），不要換掉系統內建的 python3。"
+  note "沒有 Python $MIN_PY 以上：要另外裝（docs/20「先知道的五件事」第 1 點），不要換掉系統內建的 python3。"
 fi
 
 # ── B2：上面還跑什麼 ───────────────────────────────
@@ -129,19 +145,23 @@ if [ "$OFFLINE" = 1 ]; then
   row "外網" "略過（--offline）"
 elif has curl; then
   for u in https://pypi.org https://github.com; do
-    if curl -sS -o /dev/null --max-time 8 "$u" 2>/dev/null; then row "$u" "連得到"; net_ok=1; else row "$u" "連不到"; fi
+    if curl -fsS -o /dev/null --max-time 8 "$u" 2>/dev/null; then row "$u" "連得到"; net_ok=1; else row "$u" "連不到"; fi
   done
-  [ -z "$net_ok" ] && note "連不到 pypi.org 與 github.com：要用離線安裝（docs/20 第 2 步）。"
+  if [ -z "$net_ok" ]; then
+    note "連不到 pypi.org 與 github.com：要用離線安裝（docs/20 第 2 步）。"
+  else
+    note "外網只測了能不能連上；現場若走 proxy 或登入頁，要實際 pip install 一次才算數。"
+  fi
 else
   row "外網" "沒有 curl，無法測"
 fi
 
 # ── 摘要 ───────────────────────────────────────────
 section "摘要"
-row "型號／記憶體" "${model:-不明} / $((mem_kb / 1024)) MiB"
+row "型號／記憶體" "${model:-不明} / ${mem:-讀不到}"
 row "JetPack" "${jetpack:-看 L4T}"
-row "根目錄可用空間" "${root_avail_gb} GiB（點雲預設在 Jetson 上留一個月，要一起算，A24）"
-row "Python 3.11 以上" "${py_ok:-沒有}"
+row "根目錄可用空間" "${root_avail:-讀不到}（點雲預設在 Jetson 上留一個月，要一起算，A24；點雲存在哪要問雷達負責人）"
+row "Python $MIN_PY 以上" "${py_ok_name:-沒有}"
 if [ "${#NOTES[@]}" -gt 0 ]; then
   echo "要注意："
   for n in "${NOTES[@]}"; do echo "  - $n"; done
