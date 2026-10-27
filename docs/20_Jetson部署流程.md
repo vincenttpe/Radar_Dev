@@ -85,6 +85,25 @@ B1、B5 和 B2 的一部分可以自己查：拿到 Jetson 的登入帳號後執
   ```
 
   Ollama 預設只聽 `127.0.0.1:11434`，不要改成對外。Gemma 4 E4B 在 Ollama 的模型名稱、在 Jetson 上能不能用 Ollama 跑都待核對；NVIDIA Jetson AI Lab 的做法是 llama.cpp 容器（`docs/adr/0003`）。Llama 3.2 與 Gemma 4 的授權能不能商用、能不能在機構現場部署仍待 F2。安裝指令沒有固定版本，裝完記下 `ollama --version`（`docs/06` 第 4 節第 5 項）。
+- **Gemma 4 E4B（第一候選）先用 llama.cpp 容器跑**：NVIDIA Jetson AI Lab 對 Orin NX 16GB 給的是 llama.cpp 容器（`ghcr.io/nvidia-ai-iot/llama_cpp:latest-jetson-orin`）＋ `llama-server` 跑 GGUF 量化檔（[教學](https://www.jetson-ai-lab.com/tutorials/gemma4-on-jetson/)，標示 JetPack 7.2.1；Demo 機台的 JetPack 版本能不能跑待核對）。照教學的指令改三處：
+  - 加 `--host 127.0.0.1`（容器用 `--network host` 時，伺服器會直接聽在機器的網卡上）；
+  - `--ctx-size` 調小：教學給 36864，我們的 prompt 短，調小可以省下記憶體（實際要多少待實測）；
+  - 映像檔與模型檔記下版本或雜湊，不用 `latest` 當紀錄（`docs/06` 第 4 節第 5 項）。
+
+  量化先用 Q4_K_M（E4B 約 5.3GB，`docs/adr/0003`）。啟動後接 `radar-model-eval --endpoint http://127.0.0.1:<埠號>/v1 --model <模型名稱>`。
+- **vLLM 先不用**：網路上常見的 vLLM 範例（`vllm/vllm-openai:latest` 加 NVFP4 量化檔）不能直接照抄：
+  - NVFP4 是 4-bit 浮點格式，Jetson AI Lab 只在 Thor 列 vLLM＋NVFP4；Orin 是 Ampere 架構，推測沒有 FP4 的硬體加速（待核對）；
+  - `vllm/vllm-openai` 是一般的映像檔，不是 Jetson 專用版，能不能在 Orin 上跑待核對；
+  - vLLM 預設聽所有網卡，要加 `--host 127.0.0.1`；
+  - `--gpu-memory-utilization 0.7` 會在啟動時先佔走約 70% 的記憶體，和 MQTT、radarLLM（B2）搶空間，也違反第 5 節的 30% 餘裕。
+
+  llama.cpp 量起來速度不夠時再評估。
+- **思維鏈（thinking）預設關閉**：我們的工作是選題號、照範本改寫，不需要深度推理。開了以後：
+  - 回覆變慢；
+  - 思考內容會吃掉 `local_model.HttpChatModel` 的 `max_tokens`（512），答案可能被截斷；
+  - 思考內容混進回覆時，輸出檢查會因為多出來的文字退回範本，採用率變低。
+
+  `HttpChatModel` 目前也不會送 `enable_thinking` 這類參數；要比較開與不開，得先改程式。推論伺服器的預設若會開，要在伺服器端關掉（待核對）。
 - **只聽 `127.0.0.1`**：`local_model.HttpChatModel` 只給本機或區網的模型伺服器用，不對外開放。
 - 推論伺服器會不會記錄 prompt（裡面可能有讀者打的字），部署時要確認並關掉（`docs/12_Demo預演.md` 問答）。
 - 下載模型前記下開發者、base model、授權（`docs/adr/0003`）；先試 Gemma 4 E4B，再拿 Gemma-3-TAIDE-12B-Chat 比繁體中文品質（Llama-Breeze2 已排除）。中國開發、以其為基底或含有中國開發部分的模型，`radar-model-eval` 會依名稱擋下。
@@ -152,7 +171,7 @@ B1、B5 和 B2 的一部分可以自己查：拿到 Jetson 的登入帳號後執
 Demo 機台已定（B1）、能連外網（B5），依下面四個階段進行（2026-10-27，使用者在對話中決定）：
 
 1. **安裝 Python 3.11**：照第 1 步用 `uv` 另外裝一份，系統的 3.10 不動。完成：`uv python find 3.11` 印出路徑。
-2. **裝推論伺服器與 Llama 模型**：照第 3 步裝 Ollama、拉一個 3B 模型，確認能回話，用 `tegrastats` 看記憶體與 GPU。模型品質要等第 3 階段用 `radar-model-eval` 量。
+2. **裝推論伺服器與在地模型**：照第 3 步用 Ollama 拉一個 3B 模型確認機器能跑模型，再用 llama.cpp 容器跑 Gemma 4 E4B，確認能回話，用 `tegrastats` 看記憶體與 GPU。模型品質要等第 3 階段用 `radar-model-eval` 量。
 3. **把 repo 放上 Jetson**：照第 2 步安裝（先在使用者家目錄試裝；`/opt` 目錄與只部署 tag 仍是草案，見 issue [#18](https://github.com/vincenttpe/Radar_Dev/issues/18)），裝 `[dev]`、跑確認指令、完整 `pytest` 與 `scripts/jetson_check.sh`；接上第 2 階段的模型跑 `radar-model-eval`，並照 `docs/06` 第 4 節連續跑 1 小時以上看溫度與降頻（無風扇機種）。
 4. **和雲端 Dashboard 配合**：API 約定（週一清單 4-1、4-2，B4）前，先照第 4 步的過渡做法手動交換檔案走一次；Radar60FL 的格式問題（A45～A50）解決前，用 Demo 模擬資料。API 約定後再寫交換資料的程式、第 5 步，然後第 6 步彩排。
 
