@@ -19,7 +19,7 @@ _FAMILIES: tuple[tuple[str, str], ...] = (
     (r"(?<![a-z])yi[-_.:]\d", "Yi（零一萬物）"),
     (r"hunyuan", "混元（騰訊）"),
     (r"internv(?:l|it)", "InternVL／InternViT（上海人工智慧實驗室）"),
-    (r"breeze-?2", "Llama-Breeze2 的視覺部分 InternViT（上海人工智慧實驗室）"),
+    (r"(?<![a-z])breeze[-_]?v?2", "Llama-Breeze2（視覺部分是上海人工智慧實驗室的 InternViT）"),
 )
 
 
@@ -28,5 +28,5 @@ def banned_origin(name: str) -> str | None:
     lowered = name.lower()
     for pattern, family in _FAMILIES:
         if re.search(pattern, lowered):
-            return f"{family}屬於中國開發的模型，依 docs/adr/0003 不使用"
+            return f"{family}：中國開發、以其為基底或含有中國開發的部分，依 docs/adr/0003 不使用"
     return None

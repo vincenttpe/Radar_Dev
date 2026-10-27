@@ -57,12 +57,12 @@ decode 速度主要受**記憶體頻寬**限制（每產生一個 token 要把�
 1. **準備真實工作**：用 Profile 改寫的實際 prompt（結構化事實＋範本指示），不要用通用測試題。**2026-10-17 已備妥**：`radar-model-eval` 內建 20 題（裝置事件 11 題、知識圖譜等級 9 題，全部是程式產生的模擬資料），每題走正式的 `rewrite()`，量採用率、每題延遲、token／秒，並統計退回原因。接法有三種：`--endpoint`（OpenAI 相容 API，例如 llama.cpp server、Ollama）、`--cmd`（任意指令，prompt 從標準輸入送入）、`--echo`（照抄原文的假模型，試跑用）。
 
    ```bash
-   radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model llama-breeze2-3b-instruct-q4_k_m
+   radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model gemma4-e4b-q4_k_m
    radar-model-eval --endpoint http://127.0.0.1:11434/v1 --model llama3.2:3b --show   # 印出被採用的輸出，給人看品質
    ```
 
    題組裡知識圖譜的建議原文（例如 K2 的「由醫師或物理治療師評估」）照規則必須一字不改；這段原文是否合乎非醫療器材的用語，待知識圖譜審核（E4～E6）。
-2. **候選模型**：Llama3-TAIDE-LX-8B、Llama 3.2 1B／3B、Gemma 3 1B／4B、Gemma 4 E2B／E4B、Gemma-3-TAIDE-12B-Chat 等（清單與理由見 `docs/adr/0003`，含 2026-10-27 的候選更新；Llama-Breeze2 已排除），各試 4-bit 與 8-bit 量化；每個候選都要記下開發者、base model 與授權（F2）。中國開發或以其為基底的模型不用，`radar-model-eval` 也會依名稱擋下。
+2. **候選模型**：Llama3-TAIDE-LX-8B、Llama 3.2 1B／3B、Gemma 3 1B／4B、Gemma 4 E2B／E4B、Gemma-3-TAIDE-12B-Chat 等（清單與理由見 `docs/adr/0003`，含 2026-10-27 的候選更新；Llama-Breeze2 已排除），各試 4-bit 與 8-bit 量化；每個候選都要記下開發者、base model 與授權（F2）。中國開發、以其為基底或含有中國開發部分的模型不用，`radar-model-eval` 也會依名稱擋下。
 3. **量測項目**：
    - prefill 與 decode 的 token/s；
    - 記憶體峰值（`tegrastats`）；
@@ -78,7 +78,7 @@ decode 速度主要受**記憶體頻寬**限制（每產生一個 token 要把�
 **步驟**
 
 1. **安裝推論伺服器**：llama.cpp 或 Ollama，兩者都提供 OpenAI 相容 API，`radar-model-eval` 可以直接接。
-2. **取得模型並記下來源**：先試 Gemma 4 E4B（`docs/adr/0003`，2026-10-27 起取代已排除的 Llama-Breeze2 3B），再拿 Gemma-3-TAIDE-12B-Chat 比繁體中文品質。
+2. **取得模型並記下來源**：先試 Gemma 4 E4B（`docs/adr/0003`；取代已排除的 Llama-Breeze2 3B，先試哪個是助理的建議，待確認），再拿 Gemma-3-TAIDE-12B-Chat 比繁體中文品質。
    - 下載前看 model card，記下開發者、base model 與授權，寫進下面的記錄表。
    - Gemma 4 E4B 若找不到可用的量化檔（GGUF）或跑不起來，先改用 Llama 3.2 3B 量同一份題組，並在記錄表註明。
    - 模型名稱屬於中國開發的家族時，`radar-model-eval` 會直接拒絕（`docs/adr/0003`）。
