@@ -84,10 +84,10 @@ B1、B5 和 B2 的一部分可以自己查：拿到 Jetson 的登入帳號後執
   radar-model-eval --endpoint http://127.0.0.1:11434/v1 --model llama3.2:3b
   ```
 
-  Ollama 預設只聽 `127.0.0.1:11434`，不要改成對外。Llama-Breeze2 3B 不在 Ollama 官方模型庫，要另外取得 GGUF 檔匯入（待核對）。Llama 3.2 與 Llama-Breeze2 的授權能不能商用、能不能在機構現場部署仍待 F2。安裝指令沒有固定版本，裝完記下 `ollama --version`（`docs/06` 第 4 節第 5 項）。
+  Ollama 預設只聽 `127.0.0.1:11434`，不要改成對外。Gemma 4 E4B 在 Ollama 的模型名稱、在 Jetson 上能不能用 Ollama 跑都待核對；NVIDIA Jetson AI Lab 的做法是 llama.cpp 容器（`docs/adr/0003`）。Llama 3.2 與 Gemma 4 的授權能不能商用、能不能在機構現場部署仍待 F2。安裝指令沒有固定版本，裝完記下 `ollama --version`（`docs/06` 第 4 節第 5 項）。
 - **只聽 `127.0.0.1`**：`local_model.HttpChatModel` 只給本機或區網的模型伺服器用，不對外開放。
 - 推論伺服器會不會記錄 prompt（裡面可能有讀者打的字），部署時要確認並關掉（`docs/12_Demo預演.md` 問答）。
-- 下載模型前記下開發者、base model、授權（`docs/adr/0003`）；先試 Llama-Breeze2 3B。中國開發或以其為基底的模型，`radar-model-eval` 會依名稱擋下。
+- 下載模型前記下開發者、base model、授權（`docs/adr/0003`）；先試 Gemma 4 E4B，再拿 Gemma-3-TAIDE-12B-Chat 比繁體中文品質（Llama-Breeze2 已排除）。中國開發、以其為基底或含有中國開發部分的模型，`radar-model-eval` 會依名稱擋下。
 - 實測照 `docs/06` 第 4 節與 4.1 節做：題組、通過門檻、要量的項目（速度、記憶體峰值、連續 1 小時以上的溫度與降頻）、要記錄的 JetPack 版本、電源模式、量化方式與推論框架版本，都以那兩節為準。
 - 決策順序照 `docs/06` 第 5 節：先找通過品質門檻的最小模型，再看記憶體有沒有 30% 餘裕，最後看速度。
 

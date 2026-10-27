@@ -19,6 +19,10 @@ from radar_agent.model_policy import banned_origin
     "openbmb/MiniCPM3-4B",
     "01-ai/Yi-1.5-6B-Chat",
     "hunyuan-7b",
+    "OpenGVLab/InternVL2_5-4B",
+    "InternViT-300M-448px",
+    "MediaTek-Research/Llama-Breeze2-3B-Instruct",   # 視覺部分是 InternViT（2026-10-27 排除）
+    "llama-breeze2-8b-instruct-q4_k_m",
 ])
 def test_chinese_model_families_are_refused(name):
     assert banned_origin(name)
@@ -27,7 +31,9 @@ def test_chinese_model_families_are_refused(name):
 @pytest.mark.parametrize("name", [
     "llama3.2:3b",
     "gemma3:4b",
-    "MediaTek-Research/Llama-Breeze2-3B-Instruct",
+    "MediaTek-Research/Breeze-7B-Instruct-v1_0",   # 第一代 Breeze 沒有視覺部分，不在這次排除範圍
+    "gemma4:e4b",
+    "taide/Gemma-3-TAIDE-12b-Chat",
     "taide/Llama3-TAIDE-LX-8B-Chat-Alpha1",
     "phi4-mini",
     "granite3.1-dense:2b",

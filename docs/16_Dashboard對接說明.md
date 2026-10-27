@@ -131,7 +131,7 @@ Dashboard 的 Logs 頁已經能依時間篩選、匯出 NDJSON（2026-10-23 截�
 1. 照護人員在輸入框打字送出。
 2. 有 `question`：先顯示 `confirm`，按「是」才顯示 `answer`；按「不是」就顯示 `menu`。
 3. 沒有 `question`：直接顯示 `menu`。點選單時改呼叫 `radar-ask ... --pick 題目id --json`，不經過模型。
-4. 答案旁固定標出 `model` 與 `seconds`，例如「在地模型 Llama-Breeze2 3B · 1.2 秒」，並標出 `from`–`to`。
+4. 答案旁固定標出 `model` 與 `seconds`，例如「在地模型 Gemma 4 E4B · 1.2 秒」，並標出 `from`–`to`。
 5. 「在 Jetson 本機執行、提問與資料不出場域」照部署設定顯示：Dashboard 端設一個開關，實際部署在 Jetson 上才打開（2026-10-19 決定），不要寫死。
 
 本 repo 不保存照護人員打的原文（可能含姓名），Dashboard 端也請不要寫進 log。
