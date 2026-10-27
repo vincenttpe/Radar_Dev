@@ -1,4 +1,5 @@
-"""在地模型的來源限制（docs/adr/0003）：不用中國開發、或以中國模型為基底的模型（含微調、蒸餾、量化版本）。
+"""在地模型的來源限制（docs/adr/0003）：不用中國開發、或以中國模型為基底的模型（含微調、蒸餾、量化版本），
+也不用有一部分是中國開發的模型（例如視覺部分用 InternViT 的 Llama-Breeze2）。
 
 這裡只用名稱比對常見的模型家族，是評估工具的第一道提醒，擋不住改過名字的模型。
 正式選型要看 model card 的開發者與 base model（docs/06「實測步驟」），結果記在選型紀錄。
@@ -17,6 +18,8 @@ _FAMILIES: tuple[tuple[str, str], ...] = (
     (r"minicpm", "MiniCPM（面壁智慧）"),
     (r"(?<![a-z])yi[-_.:]\d", "Yi（零一萬物）"),
     (r"hunyuan", "混元（騰訊）"),
+    (r"internv(?:l|it)", "InternVL／InternViT（上海人工智慧實驗室）"),
+    (r"(?<![a-z])breeze[-_]?v?2", "Llama-Breeze2（視覺部分是上海人工智慧實驗室的 InternViT）"),
 )
 
 
@@ -25,5 +28,5 @@ def banned_origin(name: str) -> str | None:
     lowered = name.lower()
     for pattern, family in _FAMILIES:
         if re.search(pattern, lowered):
-            return f"{family}屬於中國開發的模型，依 docs/adr/0003 不使用"
+            return f"{family}：中國開發、以其為基底或含有中國開發的部分，依 docs/adr/0003 不使用"
     return None

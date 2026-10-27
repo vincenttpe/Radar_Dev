@@ -6,7 +6,7 @@
 
 radar-model-eval --echo
     照抄原文的假模型，給 CI 與第一次試跑用（應該全部採用）。
-radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model llama-breeze2-3b-instruct-q4_k_m
+radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model gemma4-e4b-q4_k_m
     OpenAI 相容的 chat completions（llama.cpp server、Ollama 等）。只連本機或區網，不經過 proxy。
 radar-model-eval --cmd "某個指令"
     任意指令，prompt 從標準輸入送進去，標準輸出當成模型的回答。

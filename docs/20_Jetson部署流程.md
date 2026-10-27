@@ -74,20 +74,58 @@ B1、B5 和 B2 的一部分可以自己查：拿到 Jetson 的登入帳號後執
 ## 3. 在地模型
 
 - 推論伺服器：llama.cpp server（CUDA 版）或 Ollama，兩者都有 OpenAI 相容 API，`radar-ask`、`radar-model-eval` 可以直接接（`--endpoint`）。
-- Demo 先用 Ollama（待核對：官方安裝程式能不能認出這台機器的 JetPack、裝出用 GPU 的版本；裝完用 `tegrastats` 看推論時 GPU 有沒有在用）。安裝程式要 sudo，會建立 `ollama` 帳號與 systemd 服務，先問過維運的人（B11）。先用官方模型庫的模型確認能跑，再換成要評估的模型：
+- **Demo 用 Ollama，不需要 Docker**（2026-10-27 在 Demo 機台確認：剛裝好時是 100% CPU，加上下方的 libcuda 設定後才用到 GPU）。安裝程式要 sudo，會建立 `ollama` 帳號與 systemd 服務，先問過維運的人（B11）：
 
   ```bash
   curl -fsSL https://ollama.com/install.sh | sh
-  ollama pull llama3.2:3b
-  ollama run llama3.2:3b "用一句話介紹你自己"
+  ollama --version                     # 記下版本（docs/06 第 4 節第 5 項）；Demo 機台是 0.40.11
+  ollama run llama3.2:3b --verbose "用一句話介紹你自己"
+  ollama ps                            # PROCESSOR 要是 100% GPU
   # repo 裝好後（第 2 步）量採用率、延遲與速度：
   radar-model-eval --endpoint http://127.0.0.1:11434/v1 --model llama3.2:3b
   ```
 
-  Ollama 預設只聽 `127.0.0.1:11434`，不要改成對外。Llama-Breeze2 3B 不在 Ollama 官方模型庫，要另外取得 GGUF 檔匯入（待核對）。Llama 3.2 與 Llama-Breeze2 的授權能不能商用、能不能在機構現場部署仍待 F2。安裝指令沒有固定版本，裝完記下 `ollama --version`（`docs/06` 第 4 節第 5 項）。
+  Ollama 預設只聽 `127.0.0.1:11434`，不要改成對外。Gemma 4 E4B 在 Ollama 的名稱是 `gemma4:e4b`（Demo 機台已拉下並在 GPU 上跑過）。Llama 3.2 與 Gemma 4 的授權能不能商用、能不能在機構現場部署仍待 F2。
+- **`ollama ps` 顯示 100% CPU 時**，照這個順序查：
+  1. `journalctl -u ollama | grep -A8 "discovering available GPUs"`：看 `inference compute` 那行是 `library=cpu` 還是 `library=CUDA`；
+  2. 原因要開除錯紀錄才看得到：在服務的覆寫設定（`/etc/systemd/system/ollama.service.d/` 底下的 `.conf`，寫法同下方的 `printf`）加一行 `Environment="OLLAMA_DEBUG=1"`，`daemon-reload` 後重啟；日誌出現 `cuInit failed: 100` 代表 CUDA 找不到裝置；查完把這行拿掉；
+  3. 確認不是權限或驅動：`groups ollama` 要有 `video`、`render`，`lsmod | grep nvgpu` 要有東西；
+  4. `sudo dmesg | grep NVRM`：出現 `API mismatch`（使用者端元件和核心驅動版本不同）時，代表系統裡混有其他版本的 NVIDIA 元件，程式載入了錯的 `libcuda`。
+
+  Demo 機台是第 4 種：系統裡有 580.126.09 版的元件，核心驅動是 JetPack 6 的 540.4.0（[#25](https://github.com/vincenttpe/Radar_Dev/issues/25)）。解法是讓 Ollama 的服務優先用 L4T 自帶的 `libcuda`：
+
+  ```bash
+  sudo mkdir -p /etc/systemd/system/ollama.service.d
+  printf '[Service]\nEnvironment="LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/nvidia"\n' | sudo tee /etc/systemd/system/ollama.service.d/l4t-cuda.conf
+  sudo systemctl daemon-reload && sudo systemctl restart ollama
+  journalctl -u ollama --since "1 min ago" --no-pager | grep "inference compute"   # 要看到 library=CUDA、description=Orin
+  ```
+
+  覆寫設定的檔名可以自取，Demo 機台上用的是 `igpu.conf`，內容相同。重啟後日誌可能要等幾秒才寫出。  根本的解法（移除不屬於 JetPack 的元件）由維運決定，見 #25；決定前不要自己移除套件。
+- **Ollama 用不了 GPU 時的備案：llama.cpp**。NVIDIA Jetson AI Lab 對 Orin NX 16GB 給的是 llama.cpp 容器（`ghcr.io/nvidia-ai-iot/llama_cpp:latest-jetson-orin`）＋ `llama-server` 跑 GGUF 量化檔（[教學](https://www.jetson-ai-lab.com/tutorials/gemma4-on-jetson/)，標示 JetPack 7.2.1；Demo 機台是 JetPack 6.2 系列，能不能跑待核對）；也可以不用 Docker、在 Jetson 上自己編譯 llama.cpp。用容器要 Docker 與 sudo（或 docker 群組，等於 root 權限），先問過維運的人（B11、B12）。照教學的指令改三處：
+  - 加 `--host 127.0.0.1`（容器用 `--network host` 時，伺服器會直接聽在機器的網卡上）；
+  - `--ctx-size` 調小：教學給 36864，我們的 prompt 短，調小可以省下記憶體（實際要多少待實測）；
+  - 映像檔與模型檔記下版本或雜湊，不用 `latest` 當紀錄（`docs/06` 第 4 節第 5 項）。
+
+  量化先用 Q4_K_M（E4B 約 5.3GB，`docs/adr/0003`）。啟動後接 `radar-model-eval --endpoint http://127.0.0.1:<埠號>/v1 --model <模型名稱>`。
+
+  注意：系統裡的 `libcuda` 版本混用（#25）推測也會影響容器與自己編譯的 llama.cpp（待核對）。
+- **vLLM 先不用**：網路上常見的 vLLM 範例（`vllm/vllm-openai:latest` 加 NVFP4 量化檔）不能直接照抄：
+  - NVFP4 是 4-bit 浮點格式，Jetson AI Lab 只在 Thor 列 vLLM＋NVFP4；Orin 是 Ampere 架構，推測沒有 FP4 的硬體加速（待核對）；
+  - `vllm/vllm-openai` 是一般的映像檔，不是 Jetson 專用版，能不能在 Orin 上跑待核對；
+  - vLLM 預設聽所有網卡，要加 `--host 127.0.0.1`；
+  - `--gpu-memory-utilization 0.7` 會在啟動時先佔走約 70% 的記憶體，和 MQTT、radarLLM（B2）搶空間，也違反 `docs/06` 第 5 節的 30% 餘裕。
+
+  Ollama 與 llama.cpp 量起來速度都不夠時再評估。
+- **思維鏈（thinking）預設關閉**：我們的工作是選題號、照範本改寫，不需要深度推理。開了以後：
+  - 回覆變慢；
+  - 思考內容會吃掉 `local_model.HttpChatModel` 的 `max_tokens`（512），答案可能被截斷；
+  - 思考內容混進回覆時，輸出檢查可能因為多出來的文字退回範本，採用率變低（待核對）。
+
+  `HttpChatModel` 目前也不會送 `enable_thinking` 這類參數；要比較開與不開，得先改程式。Demo 機台上 `ollama run gemma4:e4b` 問三句話的問題，回了 792 個 token，`--verbose` 顯示總時間 2 分 15 秒（當時還在用 CPU），推測是預設開了思維鏈；`ollama run` 可以加 `--think=false` 關掉（Demo 機台上還沒驗證），經 API 呼叫時要怎麼關待核對。
 - **只聽 `127.0.0.1`**：`local_model.HttpChatModel` 只給本機或區網的模型伺服器用，不對外開放。
 - 推論伺服器會不會記錄 prompt（裡面可能有讀者打的字），部署時要確認並關掉（`docs/12_Demo預演.md` 問答）。
-- 下載模型前記下開發者、base model、授權（`docs/adr/0003`）；先試 Llama-Breeze2 3B。中國開發或以其為基底的模型，`radar-model-eval` 會依名稱擋下。
+- 下載模型前記下開發者、base model、授權（`docs/adr/0003`）；建議先試 Gemma 4 E4B（待確認），再拿 Gemma-3-TAIDE-12B-Chat 比繁體中文品質（Llama-Breeze2 已排除）。中國開發、以其為基底或含有中國開發部分的模型，`radar-model-eval` 會依名稱擋下。
 - 實測照 `docs/06` 第 4 節與 4.1 節做：題組、通過門檻、要量的項目（速度、記憶體峰值、連續 1 小時以上的溫度與降頻）、要記錄的 JetPack 版本、電源模式、量化方式與推論框架版本，都以那兩節為準。
 - 決策順序照 `docs/06` 第 5 節：先找通過品質門檻的最小模型，再看記憶體有沒有 30% 餘裕，最後看速度。
 

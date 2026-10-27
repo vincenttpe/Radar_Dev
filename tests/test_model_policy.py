@@ -19,6 +19,12 @@ from radar_agent.model_policy import banned_origin
     "openbmb/MiniCPM3-4B",
     "01-ai/Yi-1.5-6B-Chat",
     "hunyuan-7b",
+    "OpenGVLab/InternVL2_5-4B",
+    "InternViT-300M-448px",
+    "MediaTek-Research/Llama-Breeze2-3B-Instruct",   # 視覺部分是 InternViT（2026-10-27 排除）
+    "llama-breeze2-8b-instruct-q4_k_m",
+    "breeze_2-3b.gguf",
+    "breeze-v2-3b",
 ])
 def test_chinese_model_families_are_refused(name):
     assert banned_origin(name)
@@ -27,7 +33,10 @@ def test_chinese_model_families_are_refused(name):
 @pytest.mark.parametrize("name", [
     "llama3.2:3b",
     "gemma3:4b",
-    "MediaTek-Research/Llama-Breeze2-3B-Instruct",
+    "MediaTek-Research/Breeze-7B-Instruct-v1_0",   # 第一代 Breeze 沒有視覺部分，不在這次排除範圍
+    "gemma4:e4b",
+    "seabreeze2-1b",   # 名稱裡碰巧有 breeze2，不是 Breeze2
+    "taide/Gemma-3-TAIDE-12b-Chat",
     "taide/Llama3-TAIDE-LX-8B-Chat-Alpha1",
     "phi4-mini",
     "granite3.1-dense:2b",
@@ -35,3 +44,8 @@ def test_chinese_model_families_are_refused(name):
 ])
 def test_other_models_pass_the_name_check(name):
     assert banned_origin(name) is None
+
+
+def test_breeze2_reason_says_it_contains_a_chinese_part():
+    reason = banned_origin("MediaTek-Research/Llama-Breeze2-3B-Instruct")
+    assert reason and "InternViT" in reason and "含有中國開發的部分" in reason
