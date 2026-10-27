@@ -38,7 +38,9 @@ BASIC_TOOLS = ["tr", "head", "tail", "date", "uname", "nproc", "awk", "free", "s
 
 
 def fake(bin_dir, name, body):
+    """在 bin_dir 放一個假指令。原本是指向系統指令的捷徑時先刪掉捷徑，不能順著捷徑寫到系統的檔案。"""
     path = bin_dir / name
+    path.unlink(missing_ok=True)
     path.write_text("#!/bin/sh\n" + body + "\n", encoding="utf-8")
     path.chmod(0o755)
     return path
@@ -305,3 +307,14 @@ def test_nothing_to_note(jetson):
     out = run("--offline", root=root, bin_dir=bin_dir).stdout
     assert "要注意" not in out
     assert "- 外網：沒有測" in out
+
+
+def test_fake_replaces_a_symlink_without_touching_its_target(tmp_path):
+    target = tmp_path / "real-tool"
+    target.write_text("original", encoding="utf-8")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "tool").symlink_to(target)
+    fake(bin_dir, "tool", "exit 1")
+    assert target.read_text(encoding="utf-8") == "original"
+    assert not (bin_dir / "tool").is_symlink()
