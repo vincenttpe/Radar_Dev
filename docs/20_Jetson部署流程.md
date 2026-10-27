@@ -1,12 +1,12 @@
-# Jetson 部署流程（草案，2026-10-26）
+# Jetson 部署流程（草案，2026-10-26；2026-10-27 更新）
 
-把本 repo 部署到現場 Jetson PC 的步驟。型號怎麼選見 `docs/06_Jetson硬體評估.md`；第一階段和 Dashboard 怎麼交換資料見 `docs/16_Dashboard對接說明.md`。
+把本 repo 部署到現場 Jetson PC 的步驟。Demo 機台的規格與網路見 `docs/05` B1、B5（Orin NX 16GB，能連外網）。型號怎麼選見 `docs/06_Jetson硬體評估.md`；第一階段和 Dashboard 怎麼交換資料見 `docs/16_Dashboard對接說明.md`。
 
 標「待核對」的是還沒在實機上確認的事，拿到 Jetson 後要先驗證；標「草案」的是這份文件提出的做法，還沒有決策紀錄，待 B11（誰維護、怎麼更新）確認後再定。
 
 ## 先知道的五件事
 
-1. **Python 版本**：本 repo 要求 Python 3.11 以上（`pyproject.toml`）。JetPack 6.x 是 Ubuntu 22.04，內建 Python 3.10（待核對），要另外裝 3.11 以上（例如 `uv` 或 deadsnakes）。
+1. **Python 版本**：本 repo 要求 Python 3.11 以上（`pyproject.toml`）。Demo 機台內建 Python 3.10.12（2026-10-27 實機確認），要另外裝 3.11 以上，做法見第 1 步。**系統的 `python3` 不要升級或替換**（也不要用 `update-alternatives` 改指向）：apt 與機台上其他程式依賴它。
 2. **只能用原始碼加可編輯安裝**：`kg_rules`、`kg_source`、`kg_manifest`、`event_validation` 用 `Path(__file__).parents[2]` 讀 repo 裡的 `kg/` 與 `schemas/`（`pyproject.toml` 也有註明）。打包成 wheel 安裝，執行時會找不到知識圖譜。帶上 Jetson 的一律是原始碼（git checkout，或某個 tag 的 tar 檔）。
 3. **Dashboard 現在的實測資料讀不懂**：Dashboard 下載的實測資料是 Radar60FL 格式，本 repo 只讀得懂 radar10，遇到 Radar60FL 只會寫「沒有收到資料，無法判斷」（`docs/16`；會議清單 A45～A50）。在格式問題解決前，實測資料走完流程也只會得到這句話，驗收要用模擬資料，或之前取得的 radar10 裝置事件（10/09～10/13 一台裝置，A10）。
 4. **和 Dashboard 交換資料的程式還沒有**：目前只有命令列（`radar-caregiver --json`、`radar-ask --json`）。方向已定：由 Jetson 向 Dashboard 要資料、產生文字後傳回（`docs/16`「第一階段的流程」，2026-10-23）；網址、認證、參數、文字傳回哪裡、多久一次都還沒約定（週一清單 4-1、4-2；會議清單 B4、B10）。
@@ -31,7 +31,16 @@ B1、B5 和 B2 的一部分可以自己查：拿到 Jetson 的登入帳號後執
 ## 1. 準備 Jetson
 
 - 刷好 JetPack，記下版本與電源模式（`docs/06` 第 4 節第 5 項：結果才能重現、比較）。
-- 裝 Python 3.11 以上與 `git`。
+- 裝 Python 3.11 以上與 `git`。用 `uv` 另外放一份 3.11，裝在使用者自己的目錄，不需要 sudo，也不動系統的 3.10：
+
+  ```bash
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  source ~/.local/bin/env            # 舊版安裝程式沒有這個檔時，改 export PATH="$HOME/.local/bin:$PATH"
+  uv python install 3.11
+  uv python find 3.11                # 印出路徑就是裝好了
+  ```
+
+  用 deadsnakes（`sudo apt install python3.11 python3.11-venv`）也可以，但要動系統套件，先問過維運的人（B11）；`python3.11-venv` 一定要裝，否則建不了 venv。程式改由專用帳號執行時，uv 與 Python 也要裝在那個帳號下（或用 `UV_PYTHON_INSTALL_DIR` 放到共用目錄，待核對）。
 - 開專用帳號（例如 `radar`），程式不用 root 跑。
 - 用檔案權限讓這個帳號讀不到音訊檔目錄（`docs/adr/0005`）。
 - 目錄（草案）：
@@ -44,7 +53,7 @@ B1、B5 和 B2 的一部分可以自己查：拿到 Jetson 的登入帳號後執
 
 - 部署用的版本在 main 打 tag（草案：只部署 tag，不部署任意分支）。
 - 每個版本放進自己的 `releases/<版本>`，在那個資料夾裡建 venv、`pip install -e .`。可編輯安裝記下的是安裝時的實際路徑，所以**不能共用 venv，也不能只換原始碼不重裝**。正式機只裝執行依賴，不必裝 `[dev]`。
-- **能連外網**：`git clone` → `git checkout <tag>` → 建 venv → `pip install -e .`。
+- **能連外網**（Demo 機台是這種）：`git clone` → `git checkout <tag>` → `uv venv --seed --python 3.11 .venv`（`--seed` 會把 pip 一起裝進 venv）→ `source .venv/bin/activate` → `pip install -e .`（要在 Jetson 上跑測試時改 `pip install -e ".[dev]"`）。
 - **不能連外網**：在一台 aarch64、同樣 Python 版本、可上網的機器上，把下面這些都下載好，連同 tag 的原始碼（tar 檔或 git bundle）一起帶上 Jetson：
   - 執行依賴：`jsonschema`、`rfc3339-validator` 及其相依套件；
   - 建置可編輯安裝需要的 `setuptools>=68`（`pyproject.toml` 的 `[build-system]`）與 `wheel`；
@@ -65,6 +74,17 @@ B1、B5 和 B2 的一部分可以自己查：拿到 Jetson 的登入帳號後執
 ## 3. 在地模型
 
 - 推論伺服器：llama.cpp server（CUDA 版）或 Ollama，兩者都有 OpenAI 相容 API，`radar-ask`、`radar-model-eval` 可以直接接（`--endpoint`）。
+- Demo 先用 Ollama（待核對：官方安裝程式能不能認出這台機器的 JetPack、裝出用 GPU 的版本；裝完用 `tegrastats` 看推論時 GPU 有沒有在用）。安裝程式要 sudo，會建立 `ollama` 帳號與 systemd 服務，先問過維運的人（B11）。先用官方模型庫的模型確認能跑，再換成要評估的模型：
+
+  ```bash
+  curl -fsSL https://ollama.com/install.sh | sh
+  ollama pull llama3.2:3b
+  ollama run llama3.2:3b "用一句話介紹你自己"
+  # repo 裝好後（第 2 步）量採用率、延遲與速度：
+  radar-model-eval --endpoint http://127.0.0.1:11434/v1 --model llama3.2:3b
+  ```
+
+  Ollama 預設只聽 `127.0.0.1:11434`，不要改成對外。Llama-Breeze2 3B 不在 Ollama 官方模型庫，要另外取得 GGUF 檔匯入（待核對）。Llama 3.2 與 Llama-Breeze2 的授權能不能商用、能不能在機構現場部署仍待 F2。安裝指令沒有固定版本，裝完記下 `ollama --version`（`docs/06` 第 4 節第 5 項）。
 - **只聽 `127.0.0.1`**：`local_model.HttpChatModel` 只給本機或區網的模型伺服器用，不對外開放。
 - 推論伺服器會不會記錄 prompt（裡面可能有讀者打的字），部署時要確認並關掉（`docs/12_Demo預演.md` 問答）。
 - 下載模型前記下開發者、base model、授權（`docs/adr/0003`）；先試 Llama-Breeze2 3B。中國開發或以其為基底的模型，`radar-model-eval` 會依名稱擋下。
@@ -129,6 +149,11 @@ B1、B5 和 B2 的一部分可以自己查：拿到 Jetson 的登入帳號後執
 
 ## 建議順序（以 11 月中 Demo 為目標）
 
-1. 現在：在筆電跑完 `docs/06` 第 4.1 節的準確率題組；和 Dashboard 負責人約定 API（週一清單 4-1、4-2），並追 Radar60FL 的格式（A45～A50）。
-2. 拿到 Jetson 規格與存取權後：第 1、2、3 步，重量速度。
-3. API 約定後：寫交換資料的程式、第 5 步，然後第 6 步彩排。
+Demo 機台已定（B1）、能連外網（B5），依下面四個階段進行（2026-10-27，使用者在對話中決定）：
+
+1. **安裝 Python 3.11**：照第 1 步用 `uv` 另外裝一份，系統的 3.10 不動。完成：`uv python find 3.11` 印出路徑。
+2. **裝推論伺服器與 Llama 模型**：照第 3 步裝 Ollama、拉一個 3B 模型，確認能回話，用 `tegrastats` 看記憶體與 GPU。模型品質要等第 3 階段用 `radar-model-eval` 量。
+3. **把 repo 放上 Jetson**：照第 2 步安裝（先在使用者家目錄試裝；`/opt` 目錄與只部署 tag 仍是草案，見 issue [#18](https://github.com/vincenttpe/Radar_Dev/issues/18)），裝 `[dev]`、跑確認指令、完整 `pytest` 與 `scripts/jetson_check.sh`；接上第 2 階段的模型跑 `radar-model-eval`，並照 `docs/06` 第 4 節連續跑 1 小時以上看溫度與降頻（無風扇機種）。
+4. **和雲端 Dashboard 配合**：API 約定（週一清單 4-1、4-2，B4）前，先照第 4 步的過渡做法手動交換檔案走一次；Radar60FL 的格式問題（A45～A50）解決前，用 Demo 模擬資料。API 約定後再寫交換資料的程式、第 5 步，然後第 6 步彩排。
+
+同時進行：在筆電跑完 `docs/06` 第 4.1 節的準確率題組，並追 Radar60FL 的格式。
