@@ -62,7 +62,7 @@ decode 速度主要受**記憶體頻寬**限制（每產生一個 token 要把�
    ```
 
    題組裡知識圖譜的建議原文（例如 K2 的「由醫師或物理治療師評估」）照規則必須一字不改；這段原文是否合乎非醫療器材的用語，待知識圖譜審核（E4～E6）。
-2. **候選模型**：Llama-Breeze2 3B、Llama3-TAIDE-LX-8B、Llama 3.2 1B／3B、Gemma 3 1B／4B 等（清單與理由見 `docs/adr/0003`），各試 4-bit 與 8-bit 量化；每個候選都要記下開發者、base model 與授權（F2）。中國開發或以其為基底的模型不用，`radar-model-eval` 也會依名稱擋下。
+2. **候選模型**：Llama-Breeze2 3B、Llama3-TAIDE-LX-8B、Llama 3.2 1B／3B、Gemma 3 1B／4B、Gemma 4 E2B／E4B、Gemma-3-TAIDE-12B 等（清單與理由見 `docs/adr/0003`，含 2026-10-27 的候選更新與 Breeze2 待決定事項），各試 4-bit 與 8-bit 量化；每個候選都要記下開發者、base model 與授權（F2）。中國開發或以其為基底的模型不用，`radar-model-eval` 也會依名稱擋下。
 3. **量測項目**：
    - prefill 與 decode 的 token/s；
    - 記憶體峰值（`tegrastats`）；
