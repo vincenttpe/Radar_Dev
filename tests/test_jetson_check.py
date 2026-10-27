@@ -74,8 +74,8 @@ def jetson(tmp_path):
     (root / "etc" / "os-release").write_text('PRETTY_NAME="Ubuntu 22.04.5 LTS"\n')
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for tool in BASIC_TOOLS:
-        (bin_dir / tool).symlink_to(shutil.which(tool))
+    for tool in BASIC_TOOLS:  # 包一層小腳本轉呼叫系統指令，不用捷徑：bin_dir 裡沒有任何路徑通到系統的檔案
+        fake(bin_dir, tool, f'exec {shutil.which(tool)} "$@"')
     df_cases = "\n".join(f'  {d}) echo "{line}" ;;' for d, line in DF.items())
     fake(bin_dir, "df", f'eval d=\\${{$#}}\necho "Filesystem Size Used Avail Use% Mounted"\ncase "$d" in\n{df_cases}\nesac')
     fake(bin_dir, "nvpmodel", "echo 'NV Power Mode: 15W'; echo 0")
@@ -318,3 +318,11 @@ def test_fake_replaces_a_symlink_without_touching_its_target(tmp_path):
     fake(bin_dir, "tool", "exit 1")
     assert target.read_text(encoding="utf-8") == "original"
     assert not (bin_dir / "tool").is_symlink()
+    assert (bin_dir / "tool").read_text(encoding="utf-8") == "#!/bin/sh\nexit 1\n"
+    assert subprocess.run([str(bin_dir / "tool")], check=False).returncode == 1
+
+
+def test_fake_environment_has_no_links_to_system_files(jetson):
+    _, bin_dir = jetson
+    assert [p.name for p in bin_dir.iterdir() if p.is_symlink()] == []
+    assert subprocess.run([str(bin_dir / "tr"), "a", "b"], input="a", capture_output=True, text=True, check=False).stdout == "b"
