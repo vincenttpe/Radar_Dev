@@ -216,26 +216,30 @@ EVENT_ASK_CASES: list[AskCase] = [
     AskCase("V13", "他今天血壓多少", None),
     AskCase("V14", "晚餐吃什麼", None),
     AskCase("V15", "他是不是生病了", None),
+    # 2026-10-28 改 longstay 題目文字（加上「久待警報有幾次」）後新增，題目調整時沒有拿來對過
+    AskCase("V16", "今天有幾次待太久", "longstay"),
+    AskCase("V17", "久待的次數", "longstay"),
+    AskCase("V18", "上廁所上很久的有幾次", "longstay"),
     # 真實打字習慣（2026-10-28 補）：錯字、只打兩三個字、口語
-    AskCase("V16", "有人跌到嗎", "falls"),
-    AskCase("V17", "有沒有人摔道", "falls"),
-    AskCase("V18", "雷達段線了嗎", "offline"),
-    AskCase("V19", "跌倒？", "falls"),
-    AskCase("V20", "斷線", "offline"),
-    AskCase("V21", "警報", "alerts"),
-    AskCase("V22", "幾次", "visits"),
-    AskCase("V23", "有沒有人倒在那", "falls"),
-    AskCase("V24", "有人叫人嗎", "calls"),
-    AskCase("V25", "誰卡在廁所很久", "longstay"),
-    AskCase("V26", "機器還活著嗎", "offline"),
+    AskCase("V19", "有人跌到嗎", "falls"),
+    AskCase("V20", "有沒有人摔道", "falls"),
+    AskCase("V21", "雷達段線了嗎", "offline"),
+    AskCase("V22", "跌倒？", "falls"),
+    AskCase("V23", "斷線", "offline"),
+    AskCase("V24", "警報", "alerts"),
+    AskCase("V25", "幾次", "visits"),
+    AskCase("V26", "有沒有人倒在那", "falls"),
+    AskCase("V27", "有人叫人嗎", "calls"),
+    AskCase("V28", "誰卡在廁所很久", "longstay"),
+    AskCase("V29", "機器還活著嗎", "offline"),
     # 追問：每次提問都不帶上一題，沒有題目可對；之後支援追問時要改預期
-    AskCase("V27", "那昨天呢", None),
-    AskCase("V28", "廁所那台呢", None),
+    AskCase("V30", "那昨天呢", None),
+    AskCase("V31", "廁所那台呢", None),
     # 醫療判斷、閒聊、要模型寫文字：都要回 0
-    AskCase("V29", "她要不要去看醫生", None),
-    AskCase("V30", "跌倒要吃什麼藥", None),
-    AskCase("V31", "你好", None),
-    AskCase("V32", "幫我寫一份交班紀錄", None),
+    AskCase("V32", "她要不要去看醫生", None),
+    AskCase("V33", "跌倒要吃什麼藥", None),
+    AskCase("V34", "你好", None),
+    AskCase("V35", "幫我寫一份交班紀錄", None),
 ]
 
 
@@ -399,6 +403,8 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as e:
         print(f"錯誤：{e}", file=sys.stderr)
         return 2
+    if args.reasoning_effort is not None:  # 開不開思維鏈結果差很多，報告上要看得出這次用了什麼設定
+        print(f"設定：reasoning_effort={args.reasoning_effort}")
     if args.questions:
         print(report_asks(evaluate_asks(model, ASK_CASES)))
         return 0

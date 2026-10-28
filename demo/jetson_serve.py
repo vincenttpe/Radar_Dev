@@ -4,7 +4,7 @@
 只多了兩件事：輸入框接上 event_ask.ask_events()（模型只選題號，答案仍是固定句型並通過輸出檢查），
 以及頁面角落的 Jetson 狀態（tegrastats 讀得到時才顯示）。
 
-    python demo/jetson_serve.py --endpoint http://127.0.0.1:11434/v1 --model gemma4:e4b
+    python demo/jetson_serve.py --endpoint http://127.0.0.1:11434/v1 --model gemma4:e4b --reasoning-effort none
     # 再用 Jetson 上的瀏覽器開 http://127.0.0.1:8765/#replay
 
 - 只聽 127.0.0.1，同網段的其他電腦連不進來；不提供改聽其他網卡的參數。

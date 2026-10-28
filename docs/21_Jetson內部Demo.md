@@ -38,16 +38,16 @@ Ollama gemma4:e4b（127.0.0.1:11434，GPU）
 
 前提：`docs/20` 第 1～3 步做完（Python 3.11 venv、`pip install -e .`、Ollama 在 GPU 上跑 `gemma4:e4b`）。
 
-1. **先量一次準確率與延遲**，確認思維鏈沒有開著（每題要在幾秒內回完；要是每題十幾秒以上，先照 `docs/20` 第 3 步「思維鏈」處理）：
+1. **先量一次準確率與延遲**。Gemma 4 在 Ollama 預設開著思維鏈，一定要加 `--reasoning-effort none`（2026-10-28 在 Demo 機台實測：關掉後每題約 0.4～0.5 秒，開著時約 8.7 秒，`docs/06`「4.1」）：
 
    ```bash
-   radar-model-eval --endpoint http://127.0.0.1:11434/v1 --model gemma4:e4b --event-questions
+   radar-model-eval --endpoint http://127.0.0.1:11434/v1 --model gemma4:e4b --reasoning-effort none --event-questions
    ```
 
 2. **啟動服務**（在 repo 根目錄、用 repo 的 venv）：
 
    ```bash
-   python demo/jetson_serve.py --endpoint http://127.0.0.1:11434/v1 --model gemma4:e4b
+   python demo/jetson_serve.py --endpoint http://127.0.0.1:11434/v1 --model gemma4:e4b --reasoning-effort none
    ```
 
    啟動時會先問一題暖機，印出「暖機：x.x 秒」；之後印出網址。找不到 `tegrastats` 時只是不顯示 Jetson 狀態。`--port` 換埠號，`--no-warmup`、`--no-stats` 關掉暖機與狀態。
@@ -75,7 +75,6 @@ Ollama gemma4:e4b（127.0.0.1:11434，GPU）
 | 項目 | 怎麼確認 |
 |---|---|
 | Jetson 有沒有接螢幕、桌面環境 | 有 Firefox（2026-10-28 確認）；螢幕與桌面用 `scripts/jetson_check.sh` 或直接看。第 3 步的 kiosk 指令在 snap 版 Firefox 上能不能用待核對 |
-| Ollama 經 API 呼叫時思維鏈有沒有開 | 第 1 步的延遲；`docs/20` 第 3 步 |
 | `tegrastats` 的格式 | `demo/jetson_serve.py` 依 JetPack 6 的格式讀 `RAM`、`GR3D_FREQ`、`tj@`／`gpu@`；讀不到的項目不顯示 |
 | 執行帳號 | 用 `docs/20` 第 1 步的專用帳號跑服務；瀏覽器用登入桌面的帳號開即可（只連 127.0.0.1） |
 

@@ -24,11 +24,14 @@ from radar_agent.output_check import check_output
 from radar_agent.rewrite import Model
 
 SCHEMA = "event-ask-v0"
+# 提示詞（ask.build_prompt）加上 EVENT_QUESTIONS 的版本，記進每次提問的紀錄（prompt_version）。
+# 改了 EVENT_QUESTIONS 或 ask.build_prompt 都要升版：v1 是 2026-10-28 longstay 題目加上「久待警報有幾次」
+PROMPT_VERSION = "event-prompt-v1"
 
 EVENT_QUESTIONS: list[Question] = [
     Question("falls", "有沒有人跌倒？"),
     Question("calls", "有沒有人主動呼救？"),
-    Question("longstay", "有沒有人待太久？"),
+    Question("longstay", "有沒有人待太久？久待警報有幾次？"),
     Question("visits", "用了幾次？最久待多久？"),
     Question("offline", "裝置有沒有斷線？"),
     Question("alerts", "有哪些警報？要怎麼處理？"),
@@ -95,7 +98,7 @@ def _period(summary: Summary) -> tuple[str, str] | None:
 def ask_events(asked: str, summary: Summary, *, place: str, model: Model | None,
                clock: Callable[[], float] = time.perf_counter) -> Reply:
     started = clock()
-    match = match_question(asked, EVENT_QUESTIONS, model=model)
+    match = match_question(asked, EVENT_QUESTIONS, model=model, prompt_version=PROMPT_VERSION)
     seconds = clock() - started
     if match.question is None:
         return Reply(match, None, seconds, period=_period(summary))
