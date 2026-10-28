@@ -87,7 +87,8 @@ def check_output(text: str, source: Summary | Assessment, *, place: str = "") ->
         for label in ("跌倒警報", "主動呼救", "久待警報"):
             if re.search(rf"(?<!在線期間){label} 0 次", text):
                 problems.append(f"裝置有斷線，不能寫「{label} 0 次」而不註明在線期間")
-        if "裝置都在線" in text:
-            problems.append("裝置有斷線，不能寫「裝置都在線」")
+        for claim in ("裝置都在線", "裝置都有連線"):  # 後者是事件提問的口語說法（docs/21）
+            if claim in text:
+                problems.append(f"裝置有斷線，不能寫「{claim}」")
     return problems
 
