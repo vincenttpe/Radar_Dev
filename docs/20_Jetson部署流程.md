@@ -118,10 +118,10 @@ B1、B5 和 B2 的一部分可以自己查：拿到 Jetson 的登入帳號後執
   - `--gpu-memory-utilization 0.7` 會在啟動時先佔走約 70% 的記憶體，和 MQTT、radarLLM（B2）搶空間，也違反 `docs/06` 第 5 節的 30% 餘裕。
 
   Ollama 與 llama.cpp 量起來速度都不夠時再評估。
-- **思維鏈（thinking）預設關閉**：我們的工作是選題號、照範本改寫，不需要深度推理。開了以後：
+- **思維鏈（thinking）要關掉**：我們的工作是選題號、照範本改寫，不需要深度推理。程式預設不送參數，Ollama 跑 Gemma 4 這類模型時思維鏈預設是開的，要加 `--reasoning-effort none`。開著的話：
   - 回覆變慢；
   - 思考內容會吃掉 `local_model.HttpChatModel` 的 `max_tokens`（512），答案可能被截斷；
-  - 思考內容混進回覆時，輸出檢查可能因為多出來的文字退回範本，採用率變低（待核對）。
+  - 思考把 `max_tokens` 用完時回答是空的，提問對應會記成「模型回答不是單一編號」（Demo 機台實測）；思考內容會不會混進改寫的回覆、被輸出檢查退回，待核對。
 
   Demo 機台實測（2026-10-28，`gemma4:e4b`，提問對應的提示）：思維鏈開著時想了約 400～500 token、每題約 9 秒，有一題把 512 token 全用在思考、回答是空的；關掉後每題約 0.4 秒。經 `/v1/chat/completions`（`HttpChatModel` 用的介面）關掉的方法是送 `reasoning_effort: "none"`；送 `think: false` 沒有作用（Ollama 自己的 `/api/chat` 才認 `think`）。命令列加 `--reasoning-effort none`（`radar-ask`、`radar-model-eval` 都有），預設不送，因為不是每個伺服器都認得這個參數。
 - **只聽 `127.0.0.1`**：`local_model.HttpChatModel` 只給本機或區網的模型伺服器用，不對外開放。

@@ -31,7 +31,7 @@ class HttpChatModel:
                  reasoning_effort: str | None = None):
         self.url = endpoint.rstrip("/") + "/chat/completions"
         self.model, self.timeout, self.max_tokens = model, timeout, max_tokens
-        # 有思維鏈的模型（例如 Gemma 4）會先想再答，慢又會把 max_tokens 用完；Ollama 用 "none" 關掉（docs/20 第 3 步）。
+        # 有思維鏈的模型（例如 Gemma 4）會先想再答，慢，也可能把 max_tokens 用完；Ollama 用 "none" 關掉（docs/20 第 3 步）。
         # 不是每個伺服器都認得這個參數，所以預設不送
         self.reasoning_effort = reasoning_effort
         self.name = model
