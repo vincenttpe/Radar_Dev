@@ -383,6 +383,8 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as e:
         print(f"錯誤：{e}", file=sys.stderr)
         return 2
+    if args.reasoning_effort is not None:  # 開不開思維鏈結果差很多，報告上要看得出這次用了什麼設定
+        print(f"設定：reasoning_effort={args.reasoning_effort}")
     if args.questions:
         print(report_asks(evaluate_asks(model, ASK_CASES)))
         return 0

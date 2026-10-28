@@ -149,6 +149,9 @@ def test_reasoning_effort_is_sent_only_when_given(server):
 def test_cli_passes_reasoning_effort(server, capsys):
     assert main(["--endpoint", server, "--model", "m", "--reasoning-effort", "none", "--only", "E1"]) == 0
     assert _Handler.seen[-1][1]["reasoning_effort"] == "none"
+    assert capsys.readouterr().out.startswith("設定：reasoning_effort=none\n模型：m")
+    assert main(["--echo", "--reasoning-effort", "none", "--only", "E1"]) == 2
+    assert "--reasoning-effort 只能搭配 --endpoint" in capsys.readouterr().err
 
 
 def test_server_errors_fall_back_to_the_template(server):

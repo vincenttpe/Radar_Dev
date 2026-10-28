@@ -82,6 +82,8 @@ def model_from_args(args: argparse.Namespace) -> Any:
     banned = banned_origin(args.model or args.cmd or "")
     if banned:
         raise ValueError(banned)
+    if args.reasoning_effort is not None and not args.endpoint:
+        raise ValueError("--reasoning-effort 只能搭配 --endpoint")
     if args.echo:
         return EchoModel()
     if args.endpoint:
