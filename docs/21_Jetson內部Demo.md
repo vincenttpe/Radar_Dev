@@ -52,13 +52,16 @@ Ollama gemma4:e4b（127.0.0.1:11434，GPU）
 
    啟動時會先問一題暖機，印出「暖機：x.x 秒」；之後印出網址。找不到 `tegrastats` 時只是不顯示 Jetson 狀態。`--port` 換埠號，`--no-warmup`、`--no-stats` 關掉暖機與狀態。
 
-3. **在 Jetson 的螢幕上開頁面**（全螢幕；按 Alt+F4 離開）：
+3. **在 Jetson 的螢幕上開頁面**：Demo 機台有 Firefox（2026-10-28 確認）。用一個專用的設定檔開全螢幕（kiosk），按 Alt+F4 離開：
 
    ```bash
-   chromium-browser --kiosk --app=http://127.0.0.1:8765/#replay
+   mkdir -p ~/radar-demo-firefox
+   firefox --kiosk --new-instance --profile ~/radar-demo-firefox http://127.0.0.1:8765/#replay
    ```
 
-   沒有 Chromium 時用 Firefox：`firefox --kiosk http://127.0.0.1:8765/#replay`。
+   - 用專用設定檔是因為 Firefox 已經開著時，`--kiosk` 只會在原本的視窗開新分頁，不會進全螢幕；專用設定檔也不會帶到平常瀏覽的分頁與書籤。
+   - 設定檔目錄不要用 `.` 開頭：Ubuntu 22.04 的 Firefox 是 snap 版，讀不到家目錄裡的隱藏目錄（待核對）。
+   - 第一次開可能會跳出歡迎頁或「設為預設瀏覽器」的詢問，先在這個設定檔裡關掉一次，展示時就不會再出現。
 
 4. **展示**：按「下一個事件」重播完，再打字提問。建議的順序：
    1. 先點選單問一題，說明原本的做法；
@@ -71,7 +74,7 @@ Ollama gemma4:e4b（127.0.0.1:11434，GPU）
 
 | 項目 | 怎麼確認 |
 |---|---|
-| Jetson 有沒有接螢幕、有沒有桌面環境與瀏覽器 | `scripts/jetson_check.sh`；Ubuntu 22.04 的 Chromium 是 snap 版，`--kiosk` 能不能用待核對 |
+| Jetson 有沒有接螢幕、桌面環境 | 有 Firefox（2026-10-28 確認）；螢幕與桌面用 `scripts/jetson_check.sh` 或直接看。第 3 步的 kiosk 指令在 snap 版 Firefox 上能不能用待核對 |
 | Ollama 經 API 呼叫時思維鏈有沒有開 | 第 1 步的延遲；`docs/20` 第 3 步 |
 | `tegrastats` 的格式 | `demo/jetson_serve.py` 依 JetPack 6 的格式讀 `RAM`、`GR3D_FREQ`、`tj@`／`gpu@`；讀不到的項目不顯示 |
 | 執行帳號 | 用 `docs/20` 第 1 步的專用帳號跑服務；瀏覽器用登入桌面的帳號開即可（只連 127.0.0.1） |
