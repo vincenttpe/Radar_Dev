@@ -8,6 +8,7 @@
     # 再用 Jetson 上的瀏覽器開 http://127.0.0.1:8765/#replay
 
 - 只聽 127.0.0.1，同網段的其他電腦連不進來；不提供改聽其他網卡的參數。
+- --endpoint 只接受本機（127.0.0.1、localhost、::1）：提問不送到區網上的其他機器。
 - 讀者打的原文不寫進 log、不存檔：log 只記方法、路徑與狀態碼。
 - 只用模擬資料（data/samples_demo/），不接受實測資料：實測資料走 build.py --events（遮罩、不發布）。
 - 把讀者打的字送進模型，屬於單向門「個人資料的流向」（REVIEW.md 第 2 節）。
@@ -23,6 +24,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import ModuleType
@@ -53,6 +55,8 @@ PORT = 8765
 # 提問本身限 100 字（ask.MAX_ASKED）；這裡只擋明顯不是提問的大量資料，避免把記憶體吃光
 MAX_BODY = 4096
 WARMUP_ASKED = "有人跌倒嗎"
+# 畫面寫「在這台 Jetson 上執行」，所以模型伺服器只能在本機（local_model 本身允許區網）
+LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 
 # tegrastats 一行的格式依 JetPack 版本不同；以下依 JetPack 6 的格式寫，Demo 機台上待核對（docs/21）
 _RAM = re.compile(r"\bRAM (\d+)/(\d+)MB")
@@ -159,7 +163,7 @@ def make_handler(demo: Demo, port: int) -> type[BaseHTTPRequestHandler]:
                 self._json(404, {"error": "找不到這個網址"})
 
         def do_POST(self) -> None:
-            if self.path != "/api/ask":
+            if self.path.split("?", 1)[0] != "/api/ask":
                 self._json(404, {"error": "找不到這個網址"})
                 return
             # 別的網頁（同一台機器的瀏覽器開著的其他網站）不能借這個服務送提問
@@ -202,6 +206,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-warmup", action="store_true", help="啟動時不先問一題暖機")
     ap.add_argument("--no-stats", action="store_true", help="不讀 tegrastats")
     args = ap.parse_args(sys.argv[1:] if argv is None else argv)
+    if args.endpoint and urllib.parse.urlsplit(args.endpoint).hostname not in LOOPBACK:
+        print(f"錯誤：--endpoint 只能是本機（{'、'.join(sorted(LOOPBACK))}）；內部 Demo 的模型要跑在這台 Jetson 上",
+              file=sys.stderr)
+        return 2
     try:
         model = model_from_args(args)
     except ValueError as e:

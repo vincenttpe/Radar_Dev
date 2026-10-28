@@ -383,7 +383,7 @@ $("ask-form").onsubmit = ev => {
 
 // Jetson 內部 Demo（demo/jetson_serve.py 提供頁面時才有 DATA.live）：打字提問送到同一台 Jetson 上的在地模型。
 // 模型只選題號；答案是服務端用固定句型產生、通過輸出檢查的文字，按「對」才顯示。
-// 打的字只留在畫面上（不存檔、不進 log），重播或重新整理就消失
+// 打的字只留在畫面上（服務不寫進 log），重播或重新整理就消失
 const LIVE = DATA.live;
 const chat = $("ask-chat");
 function say(who, lines, meta) {
@@ -412,7 +412,7 @@ async function liveAsk(typed) {
     refill(pending, ["連不上這台 Jetson 上的提問服務。請從上面選一題。"]);
     return;
   }
-  const meta = r.model ? `${r.model} · ${r.seconds.toFixed(2)} 秒 · 資料不出這台 Jetson` : null;
+  const meta = r.model ? `${r.model} · ${r.seconds.toFixed(2)} 秒 · 在這台 Jetson 上執行` : null;
   if (!r.question) { refill(pending, ["沒有對應到固定問題。請從上面選一題。"], meta); return; }
   refill(pending, [r.confirm], meta);
   const row = el("div", "yesno"), yes = el("button", null, "對"), no = el("button", null, "不是");
@@ -427,9 +427,9 @@ async function liveAsk(typed) {
   row.append(yes, no); pending.append(row); yes.focus();
 }
 if (LIVE) {
-  $("src-note").textContent = `非真實裝置紀錄；裝置名稱 DEMO-SIM-01，沒有任何長者資料。句子由範本產生；打字提問由這台 Jetson 上的在地模型（${LIVE.model}）選題，資料不出這台機器。`;
+  $("src-note").textContent = `非真實裝置紀錄；裝置名稱 DEMO-SIM-01，沒有任何長者資料。句子由範本產生；打字提問由這台 Jetson 上的在地模型（${LIVE.model}）選題；提問不寫進本服務的紀錄。`;
   $("ask-hint").textContent = "打字提問由這台 Jetson 上的在地模型對到下面其中一題，先問「您是想問……嗎？」，按「對」才顯示答案。答案是固定句型，不是模型寫的。也可以直接點題目。";
-  $("note-ask").textContent = "在地模型跑在這台 Jetson 上，只負責選題號；答案由固定句型產生，數字都通過輸出檢查。對不到題目時改從選單點。打的字只留在畫面上，不存檔、不寫進紀錄。";
+  $("note-ask").textContent = "在地模型跑在這台 Jetson 上，只負責選題號；答案由固定句型產生，數字都通過輸出檢查。對不到題目時改從選單點。打的字只留在畫面上，不寫進本服務的紀錄。";
   $("ask-answer").hidden = true; chat.hidden = false;
   askButtons.forEach((b, i) => {
     b.onclick = () => { const q = DATA.ask[i]; say("reader", [q.text]); say("system", q.answer.split("\n"), "從選單點選，不經模型"); };

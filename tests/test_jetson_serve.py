@@ -166,3 +166,17 @@ def test_warm_up_reports_success_and_failure(serve_mod):
     assert serve_mod.Demo(PickFirst()).warm_up().startswith("暖機完成：")
     failed = serve_mod.Demo(Broken()).warm_up()
     assert failed.startswith("暖機失敗") and "模型錯誤：TimeoutError" in failed
+
+
+@pytest.mark.parametrize("endpoint", ["http://192.168.1.20:11434/v1", "http://example.com/v1"])
+def test_cli_refuses_endpoints_off_this_machine(serve_mod, capsys, endpoint):
+    assert serve_mod.main(["--endpoint", endpoint, "--model", "gemma4:e4b"]) == 2
+    assert "只能是本機" in capsys.readouterr().err
+
+
+def test_query_string_on_ask_is_ignored(server):
+    _, url = server(PickFirst())
+    req = urllib.request.Request(url + "/api/ask?from=menu", data=json.dumps({"asked": "有人跌倒嗎"}).encode("utf-8"),
+                                 method="POST", headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req) as resp:
+        assert json.loads(resp.read())["question"]["id"] == "falls"

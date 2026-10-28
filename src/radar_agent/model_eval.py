@@ -226,8 +226,9 @@ EVENT_ASK_CASES: list[AskCase] = [
     AskCase("V21", "雷達段線了嗎", "offline"),
     AskCase("V22", "跌倒？", "falls"),
     AskCase("V23", "斷線", "offline"),
-    AskCase("V24", "警報", "alerts"),
-    AskCase("V25", "幾次", "visits"),
+    # V24、V25 原本是「警報」「幾次」：longstay 題目加上「久待警報有幾次」後預期不再唯一（2026-10-28 改）
+    AskCase("V24", "有哪些警報要處理", "alerts"),
+    AskCase("V25", "上了幾次廁所", "visits"),
     AskCase("V26", "有沒有人倒在那", "falls"),
     AskCase("V27", "有人叫人嗎", "calls"),
     AskCase("V28", "誰卡在廁所很久", "longstay"),
