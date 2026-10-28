@@ -27,18 +27,25 @@ class EchoModel:
 class HttpChatModel:
     """OpenAI 相容的 /chat/completions。只給本機或區網的模型伺服器用，刻意不走 proxy。"""
 
-    def __init__(self, endpoint: str, model: str, *, timeout: float = 120, max_tokens: int = 512):
+    def __init__(self, endpoint: str, model: str, *, timeout: float = 120, max_tokens: int = 512,
+                 reasoning_effort: str | None = None):
         self.url = endpoint.rstrip("/") + "/chat/completions"
         self.model, self.timeout, self.max_tokens = model, timeout, max_tokens
+        # 有思維鏈的模型（例如 Gemma 4）會先想再答，慢，也可能把 max_tokens 用完；Ollama 用 "none" 關掉（docs/20 第 3 步）。
+        # 不是每個伺服器都認得這個參數，所以預設不送
+        self.reasoning_effort = reasoning_effort
         self.name = model
         self.last_tokens: int | None = None
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
     def __call__(self, prompt: str) -> str:
-        body = json.dumps({
+        request: dict[str, Any] = {
             "model": self.model, "messages": [{"role": "user", "content": prompt}],
             "temperature": 0, "max_tokens": self.max_tokens,
-        }).encode("utf-8")
+        }
+        if self.reasoning_effort is not None:
+            request["reasoning_effort"] = self.reasoning_effort
+        body = json.dumps(request).encode("utf-8")
         req = urllib.request.Request(self.url, data=body, headers={"Content-Type": "application/json"})
         with self._opener.open(req, timeout=self.timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
@@ -67,6 +74,7 @@ def add_model_args(ap: argparse.ArgumentParser, *, required: bool) -> None:
     which.add_argument("--cmd", help="執行的指令；prompt 從標準輸入送入")
     ap.add_argument("--model", help="--endpoint 時的模型名稱（會記進追溯紀錄）")
     ap.add_argument("--timeout", type=float, default=120, help="每次呼叫的逾時秒數（預設 120）")
+    ap.add_argument("--reasoning-effort", help="--endpoint 時送給伺服器的 reasoning_effort；用 Ollama 跑有思維鏈的模型（例如 Gemma 4）時給 none 關掉")
 
 
 def model_from_args(args: argparse.Namespace) -> Any:
@@ -74,12 +82,14 @@ def model_from_args(args: argparse.Namespace) -> Any:
     banned = banned_origin(args.model or args.cmd or "")
     if banned:
         raise ValueError(banned)
+    if args.reasoning_effort is not None and not args.endpoint:
+        raise ValueError("--reasoning-effort 只能搭配 --endpoint")
     if args.echo:
         return EchoModel()
     if args.endpoint:
         if not args.model:
             raise ValueError("--endpoint 要搭配 --model")
-        return HttpChatModel(args.endpoint, args.model, timeout=args.timeout)
+        return HttpChatModel(args.endpoint, args.model, timeout=args.timeout, reasoning_effort=args.reasoning_effort)
     if args.cmd is not None:  # 空字串也照指令處理：每次呼叫都記成模型錯誤，不讓整個工具當掉
         return CommandModel(args.cmd, timeout=args.timeout)
     return None

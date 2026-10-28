@@ -86,7 +86,7 @@ decode 速度主要受**記憶體頻寬**限制（每產生一個 token 要把�
 4. **跑三份題組**（都是程式產生的模擬資料，不含真實資料）：
 
    ```bash
-   radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model 模型名稱 --event-questions   # 事件提問 15 題（Demo 主要功能）
+   radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model 模型名稱 --event-questions   # 事件提問 18 題（Demo 主要功能）
    radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model 模型名稱 --questions         # 知識圖譜提問 13 題
    radar-model-eval --endpoint http://127.0.0.1:8080/v1 --model 模型名稱 --show              # 改寫 20 題，--show 印出輸出給人看
    ```
@@ -97,7 +97,11 @@ decode 速度主要受**記憶體頻寬**限制（每產生一個 token 要把�
 
 | 日期 | 模型（含量化） | 開發者／base model／授權 | 推論框架與版本 | 筆電 CPU／GPU／記憶體 | 事件提問：正確／對錯題／沒對應到 | 每題延遲中位數 | 備註 |
 |---|---|---|---|---|---|---|---|
-| | | | | | | | |
+| 2026-10-28 | gemma4:e4b（量化待查，`ollama show`） | Google／—／Apache 2.0 | Ollama 0.40.11 | Demo 機台 Jetson Orin NX 16GB（40W 模式，GPU） | 14／0／1（15 題） | 8.68 秒 | 思維鏈開著（預設）。V6 把 512 token 全用在思考、回答是空的，算「沒對應到」；只跑 V6、用 Python 臨時把 `HttpChatModel(max_tokens=…)` 放寬到 2048／4096 時想完了（約 500 token、11 秒），仍對到 visits |
+| 2026-10-28 | 同上，`--reasoning-effort none` | 同上 | 同上 | 同上 | 14／**1**／0（15 題） | 0.42 秒 | V6「久待警報有幾次」對到 visits |
+| 2026-10-28 | 同上，`--reasoning-effort none`，longstay 改成「有沒有人待太久？久待警報有幾次？」 | 同上 | 同上 | 同上 | 15／0／0（V1～V15）；18／0／0（加上 V16～V18） | 0.42 秒；0.53 秒 | 採用（2026-10-28 決定）。V16～V18 是改題目時沒拿來對過的說法；18 題那次第一題含模型載入 12.83 秒 |
+
+同一台的其他實測（2026-10-28）：GPU 上產生約 45.7 token／秒（406 token、8.89 秒；同一模型在只能用 CPU 時是 6.74 token／秒）；讀 139～146 token 的提示 0.34～0.4 秒；`gemma4:e4b` 載入後 `tegrastats` 的 RAM 從約 3.6 GB 升到約 12.1 GB（共 15.6 GB），已超過第 5 節的 30% 餘裕，量化方式待查。
 
 **怎麼判斷夠不夠用（暫定，Demo 前再確認）**
 

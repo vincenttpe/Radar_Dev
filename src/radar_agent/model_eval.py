@@ -216,6 +216,10 @@ EVENT_ASK_CASES: list[AskCase] = [
     AskCase("V13", "他今天血壓多少", None),
     AskCase("V14", "晚餐吃什麼", None),
     AskCase("V15", "他是不是生病了", None),
+    # 2026-10-28 改 longstay 題目文字（加上「久待警報有幾次」）後新增，題目調整時沒有拿來對過
+    AskCase("V16", "今天有幾次待太久", "longstay"),
+    AskCase("V17", "久待的次數", "longstay"),
+    AskCase("V18", "上廁所上很久的有幾次", "longstay"),
 ]
 
 
@@ -379,6 +383,8 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as e:
         print(f"錯誤：{e}", file=sys.stderr)
         return 2
+    if args.reasoning_effort is not None:  # 開不開思維鏈結果差很多，報告上要看得出這次用了什麼設定
+        print(f"設定：reasoning_effort={args.reasoning_effort}")
     if args.questions:
         print(report_asks(evaluate_asks(model, ASK_CASES)))
         return 0

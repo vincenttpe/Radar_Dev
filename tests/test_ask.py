@@ -29,6 +29,12 @@ def test_model_reply_with_a_question_number_picks_that_question():
     assert (match.model, match.rejected) == ("scripted", ())
 
 
+def test_caller_can_record_its_own_prompt_version():
+    assert match_question("速度怎麼算的", MENU, model=Scripted("2")).prompt_version == "ask-v0"
+    match = match_question("速度怎麼算的", MENU, model=Scripted("x"), prompt_version="menu-v9")
+    assert (match.question, match.prompt_version) == (None, "menu-v9")
+
+
 def test_zero_means_no_question_fits():
     match = match_question("今天天氣如何", MENU, model=Scripted("0"))
     assert match.question is None
