@@ -113,11 +113,14 @@ class Demo:
     def ask(self, asked: str) -> dict[str, Any]:
         return ask_events(asked, self.summary, place=self.place, model=self.model).data()
 
-    def warm_up(self) -> float:
-        """服務啟動時先問一題，讓模型載入記憶體；現場的第一題才不會多等幾秒。"""
+    def warm_up(self) -> str:
+        """先問一題，讓模型載入記憶體；現場的第一題才不會多等十幾秒。回傳給終端機看的一行結果。"""
         started = time.perf_counter()
-        self.ask(WARMUP_ASKED)
-        return time.perf_counter() - started
+        data = self.ask(WARMUP_ASKED)
+        seconds = time.perf_counter() - started
+        if data["question"] is None:  # 例如 Ollama 沒開、模型名稱打錯：頁面仍能開，打字提問會改列選單
+            return f"暖機失敗（{seconds:.1f} 秒，{self.model.name}）：{'、'.join(data['rejected'])}"
+        return f"暖機完成：{seconds:.1f} 秒（{self.model.name}）"
 
 
 def make_handler(demo: Demo, port: int) -> type[BaseHTTPRequestHandler]:
@@ -208,10 +211,12 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_stats and not stats.start():
         print("找不到 tegrastats，頁面不顯示 Jetson 狀態", file=sys.stderr)
     demo = Demo(model, stats=stats)
-    if not args.no_warmup:
-        print(f"暖機：{demo.warm_up():.1f} 秒（{model.name}）", file=sys.stderr)
     httpd = serve(demo, args.port)
     print(f"開啟 http://{HOST}:{httpd.server_address[1]}/#replay （Ctrl+C 結束）", file=sys.stderr)
+    if not args.no_warmup:
+        # 先開埠再暖機：模型第一次載入要十幾秒，這段時間頁面也要打得開
+        print("暖機中（模型載入記憶體）…", file=sys.stderr)
+        threading.Thread(target=lambda: print(demo.warm_up(), file=sys.stderr), daemon=True).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

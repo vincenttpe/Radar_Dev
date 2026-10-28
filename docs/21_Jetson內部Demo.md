@@ -50,7 +50,7 @@ Ollama gemma4:e4b（127.0.0.1:11434，GPU）
    python demo/jetson_serve.py --endpoint http://127.0.0.1:11434/v1 --model gemma4:e4b --reasoning-effort none
    ```
 
-   啟動時會先問一題暖機，印出「暖機：x.x 秒」；之後印出網址。找不到 `tegrastats` 時只是不顯示 Jetson 狀態。`--port` 換埠號，`--no-warmup`、`--no-stats` 關掉暖機與狀態。
+   啟動後馬上印出網址，頁面就能開；同時在背景問一題暖機，完成時印出「暖機完成：x.x 秒」（第一次載入模型要十幾秒）。印出「暖機失敗」時看後面的原因，常見的是 Ollama 沒開或模型名稱打錯；這時頁面仍能開，但打字提問會改請人從選單點。找不到 `tegrastats` 時只是不顯示 Jetson 狀態。`--port` 換埠號，`--no-warmup`、`--no-stats` 關掉暖機與狀態。
 
 3. **在 Jetson 的螢幕上開頁面**：Demo 機台有 Firefox（2026-10-28 確認）。用一個專用的設定檔開全螢幕（kiosk），按 Alt+F4 離開：
 
@@ -69,6 +69,14 @@ Ollama gemma4:e4b（127.0.0.1:11434，GPU）
    3. 打「斷線」這種只有兩個字的問法；
    4. 打「他今天血壓多少」，系統不回答醫療問題，改請人從選單點；
    5. 拔掉網路線再問一次，說明模型就在這台 Jetson 上。
+
+## 頁面打不開時
+
+Firefox 顯示「Unable to connect／無法連線」代表 `127.0.0.1:8765` 沒有服務在聽：
+
+1. 看跑 `jetson_serve.py` 的終端機：有沒有印出「開啟 http://127.0.0.1:8765/#replay」。沒有的話看錯誤訊息（例如 `No such file or directory`：還沒切到有這個檔的分支或版本）。
+2. 服務要一直開著：關掉那個終端機或按 Ctrl+C，服務就停了。瀏覽器要在**另一個**終端機開。
+3. 確認埠有在聽：`ss -ltn | grep 8765`；或 `curl -s http://127.0.0.1:8765/ | head -c 80` 要看到 `<!doctype html>`。
 
 ## 待核對（在 Demo 機台上）
 

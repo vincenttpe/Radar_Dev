@@ -156,3 +156,9 @@ def test_parse_tegrastats_jetpack6_line(serve_mod):
 def test_cli_refuses_chinese_models(serve_mod, capsys):
     assert serve_mod.main(["--endpoint", "http://127.0.0.1:9/v1", "--model", "qwen2.5-3b"]) == 2
     assert "docs/adr/0003" in capsys.readouterr().err
+
+
+def test_warm_up_reports_success_and_failure(serve_mod):
+    assert serve_mod.Demo(PickFirst()).warm_up().startswith("暖機完成：")
+    failed = serve_mod.Demo(Broken()).warm_up()
+    assert failed.startswith("暖機失敗") and "模型錯誤：TimeoutError" in failed
