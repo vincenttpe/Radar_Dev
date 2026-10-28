@@ -121,7 +121,7 @@ Dashboard 的 Logs 頁已經能依時間篩選、匯出 NDJSON（2026-10-23 截�
 | `confirm` | 「您是想問「……」嗎？」 |
 | `answer` | 答案，開頭寫出涵蓋的時段（例如「1 號廁所 10/14 08:00–11:59：」）；對不到題目或答案沒通過檢查時是 `null` |
 | `menu` | 全部六題 `{id, text}`，對不到時讓照護人員自己點 |
-| `model`、`prompt_version` | 用了哪個模型、哪一版 prompt |
+| `model`、`prompt_version` | 用了哪個模型、哪一版 prompt（含選單；事件提問是 `event-prompt-v1`，2026-10-28 起，之前記成 `ask-v0`） |
 | `seconds` | 模型對應花的秒數 |
 | `from`、`to` | 答案涵蓋的資料時間。題目不解析「今天早上」這類時段，畫面要標出這段時間 |
 | `rejected` | 對不到或不顯示的原因 |

@@ -3,13 +3,15 @@
 事件用 Demo 模擬資料（data/samples_demo/bathroom_morning.jsonl）與 model_eval 的模擬題組，不含真實資料。
 答案句型於 2026-10-19 確認；用語一改這裡就會失敗。
 """
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
 from radar_agent.device_events import read_records, summarize
-from radar_agent.event_ask import EVENT_QUESTIONS, answer, ask_events, main, pick
+from radar_agent.ask import build_prompt
+from radar_agent.event_ask import EVENT_QUESTIONS, PROMPT_VERSION, answer, ask_events, main, pick
 from radar_agent.model_eval import EVENT_ASK_CASES, PLACE, event_cases
 from radar_agent.output_check import check_output
 
@@ -66,7 +68,7 @@ def test_model_picks_a_number_and_the_answer_comes_from_the_facts():
     data = reply.data()
     assert data["question"]["id"] == "longstay" and data["confirm"] == "您是想問「有沒有人待太久？久待警報有幾次？」嗎？"
     assert data["answer"].startswith("1 號廁所 10/14 08:00–11:59：在線期間久待警報 1 次（10:45）。")
-    assert (data["model"], data["prompt_version"], data["rejected"]) == ("scripted", "ask-v0", [])
+    assert (data["model"], data["prompt_version"], data["rejected"]) == ("scripted", "event-prompt-v1", [])
     assert "有人待很久嗎" not in json.dumps(data, ensure_ascii=False), "不保存讀者打的原文"
 
 
@@ -245,3 +247,10 @@ def test_every_question_is_a_summary_topic():
     from radar_agent.event_ask import EVENT_QUESTIONS
 
     assert [q.id for q in EVENT_QUESTIONS] == list(SUMMARY_TOPICS)
+
+
+def test_prompt_version_is_bumped_when_the_prompt_or_menu_changes():
+    """紀錄只記 prompt_version；選單或提示詞改了卻沒升版，就分不出模型當時看到哪一版。"""
+    digest = hashlib.sha256(build_prompt("{提問}", EVENT_QUESTIONS).encode("utf-8")).hexdigest()[:16]
+    assert (PROMPT_VERSION, digest) == ("event-prompt-v1", "e8fa8590ffbc5d73"), \
+        "EVENT_QUESTIONS 或 ask.build_prompt 改了：升 event_ask.PROMPT_VERSION，再更新這裡的版本與雜湊"
