@@ -19,7 +19,7 @@ python demo/build.py    # 改了 template.html、caregiver.py 的用語或 data/
 
 - 頁面上的句子**全部**來自 `caregiver_report()` 與 `trend_text()`，並先通過 `check_output()`、`check_trend()`；頁面不自己寫事件句子。只有卡片上的標籤（跌倒警報、主動呼救、久待警報、回覆沒事、起身解除、裝置斷線）寫在 `build.py` 的 `KINDS`，處置提示改了而 `KINDS` 沒跟著改，建置會失敗。
 - **提問**：六題的答案來自 `radar-ask --pick` 的同一套函式（`event_ask.pick`，不經模型），建置時先通過輸出檢查。靜態頁（`prototype.html`）沒有接上在地模型（接上模型的版本由 `jetson_serve.py` 提供，見 `docs/21`）：打字送出一律顯示「沒有對應到固定問題」並請人從選單點題，送出後輸入框清空、不保留原文。重播中和事件摘要一樣先不給答案。
-- 頁面頂端一直標明「模擬資料」與「句子由範本產生，尚未接上在地模型」。
+- 頁面頂端一直標明「模擬資料」與「句子由範本產生，尚未接上在地模型」。由 `jetson_serve.py` 提供的 Jetson 模式改標「打字提問由這台 Jetson 上的在地模型選題」，「模擬資料」照舊。
 - 操作：「下一個事件」逐一出現（鍵盤 → 也可以），「從頭重播」回到 08:00，「全部顯示」一次看完。網址加 `#replay`（`prototype.html#replay`）打開就從 08:00 開始；網址加 `#gaps` 會顯示「Gap 一覽」與畫面上的編號，**只在內部演示用**（`docs/13_內部演示流程.md`「用畫面說明 Gap」）；重播時會收起標題下的說明文字，讓 1366×768 的投影畫面看得到全部紀錄（`docs/12_Demo預演.md`）。警報解除時，前面那則要到場的通知會標上「HH:MM 已解除」。
 - **實測資料版**：`python demo/build.py --events outputs/field/FIELD-01.jsonl --place "1 號廁所"`，輸入要先用 `radar-field-data mask` 遮罩（還有像 MAC 的字串會拒絕產生），輸出固定寫到 `outputs/field_prototype.html`（不會被 commit），橫幅改成「實測資料」、沒有兩週趨勢，不提供發布用的版本。步驟見 `docs/11_Demo規劃.md`「10/19 實測資料」。
 - `tests/test_prototype.py` 檢查：`prototype.html` 與 `build.py` 的輸出一致、頁面句子與 `radar-caregiver` 輸出逐行相同、提問的答案與 `radar-ask --pick` 相同、在線不足的日子沒有畫成 0 次、模擬資料的標示還在。

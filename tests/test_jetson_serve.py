@@ -48,7 +48,8 @@ def server(serve_mod):
         httpd = serve_mod.serve(demo, 0)
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
         started.append(httpd)
-        return demo, f"http://127.0.0.1:{httpd.server_address[1]}"
+        host, port = httpd.server_address[:2]
+        return demo, f"http://{host}:{port}"
 
     yield start
     for httpd in started:
@@ -70,10 +71,13 @@ def _ask(url, asked, headers=None):
     return _post(url, json.dumps({"asked": asked}).encode("utf-8"), headers)
 
 
-def test_only_listens_on_localhost(serve_mod, server):
-    _, url = server(PickFirst())
-    assert url.startswith("http://127.0.0.1:")
-    assert serve_mod.HOST == "127.0.0.1"
+def test_only_listens_on_localhost(serve_mod):
+    """實際綁定的位址是 loopback，不是 0.0.0.0 或對外網卡：同網段的電腦連不進來（docs/21「安全」）。"""
+    httpd = serve_mod.serve(serve_mod.Demo(PickFirst()), 0)
+    try:
+        assert httpd.socket.getsockname()[0] == "127.0.0.1"
+    finally:
+        httpd.server_close()
 
 
 def test_page_is_the_prototype_marked_live(server):

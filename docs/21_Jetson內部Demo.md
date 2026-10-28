@@ -86,6 +86,10 @@ Firefox 顯示「Unable to connect／無法連線」代表 `127.0.0.1:8765` 沒�
 | `tegrastats` 的格式 | `demo/jetson_serve.py` 依 JetPack 6 的格式讀 `RAM`、`GR3D_FREQ`、`tj@`／`gpu@`；讀不到的項目不顯示 |
 | 執行帳號 | 用 `docs/20` 第 1 步的專用帳號跑服務；瀏覽器用登入桌面的帳號開即可（只連 127.0.0.1） |
 
+## 2026-10-28 在 Demo 機台上
+
+切到本分支後照第 2、3 步啟動：先印出網址，暖機完成 13.1 秒（`gemma4:e4b`，`--reasoning-effort none`；和 `docs/06`「4.1」量到的模型載入 12.83 秒相當），Firefox 打得開頁面。打字提問的耗時、Jetson 狀態列與 kiosk 全螢幕待補記。
+
 ## 2026-10-28 在雲端容器的試跑
 
 在雲端容器（x86 CPU，llama-cpp-python 0.3.36 跑 Gemma 4 E4B Q4_K_M）上用瀏覽器實際走過：暖機 0.7 秒；「有人跌到嗎」→「有沒有人跌倒？」0.72 秒，按〔對〕顯示的答案與 `radar-ask --pick falls` 相同；「他今天血壓多少」→ 沒有對應到；重播時對話清空。Jetson 狀態是用假的 `tegrastats` 試的。**不是在 Jetson 上跑的**，速度與顯示都要在 Demo 機台上再確認。
