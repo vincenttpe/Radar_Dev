@@ -143,11 +143,22 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .answer p { margin: 0; font-size: 16px; line-height: 1.7; max-width: 68ch; }
 .answer .wait { color: var(--muted); }
 .notes { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 14px; display: grid; gap: 4px; max-width: 72ch; }
+/* Jetson 內部 Demo（demo/jetson_serve.py）才顯示：對話、確認按鈕、Jetson 狀態 */
+.chat { display: grid; gap: 10px; }
+.chat .turn { max-width: min(68ch, 88%); padding: 10px 14px; border-radius: 12px; display: grid; gap: 4px; }
+.chat .turn p { margin: 0; font-size: 16px; line-height: 1.7; }
+.chat .reader { justify-self: end; background: var(--accent-soft); border: 1px solid var(--accent); }
+.chat .system { justify-self: start; background: var(--surface); border: 1px solid var(--line); }
+.chat .system.wait p { color: var(--muted); }
+.chat .meta { font: 12.5px var(--f-mono); color: var(--muted); }
+.chat .yesno { display: flex; gap: 8px; margin-top: 4px; }
+.jetson-stats { font-family: var(--f-mono); }
 </style>
 
 <div class="sim"><div class="wrap">
   <strong id="src-label">模擬資料</strong><button type="button" class="gap-badge" data-gap="1" aria-label="Gap 1">1</button>
   <span id="src-note">非真實裝置紀錄；裝置名稱 DEMO-SIM-01，沒有任何長者資料。句子由範本產生，尚未接上在地模型。</span>
+  <span id="jetson-stats" class="jetson-stats" hidden></span>
 </div></div>
 
 <header class="top"><div class="wrap">
@@ -227,9 +238,10 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
         <input id="ask-input" type="text" maxlength="100" placeholder="例如：今天早上有沒有人跌倒？" aria-label="提問">
         <button type="submit">送出</button>
       </form>
-      <p class="hint" style="margin:0">這一頁沒有接上在地模型。正式版由 Jetson 上的模型把提問對到下面其中一題，先問「您是想問……嗎？」再回答；現在請直接點題目。</p>
+      <p class="hint" style="margin:0" id="ask-hint">這一頁沒有接上在地模型。正式版由 Jetson 上的模型把提問對到下面其中一題，先問「您是想問……嗎？」再回答；現在請直接點題目。</p>
       <div class="menu" id="ask-menu"></div>
       <div class="answer" id="ask-answer" aria-live="polite"></div>
+      <div class="chat" id="ask-chat" aria-live="polite" hidden></div>
     </div>
   </section>
 
@@ -252,7 +264,7 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
       <li id="note-source">全部是模擬資料，還沒接上真實雷達資料。</li>
       <li>資料格式是現在雲端保存的裝置事件；正式部署後改讀 Jetson 的輸出。這一頁示意輸出的內容，不是 Dashboard 畫面，也不是即時警示。</li>
       <li>句子由範本產生，接上在地模型之前不稱為「LLM 產生」。</li>
-      <li>提問的答案由固定句型產生，數字都通過輸出檢查；這一頁沒有在地模型，打字送出不會對到題目，只能從選單點題。</li>
+      <li id="note-ask">提問的答案由固定句型產生，數字都通過輸出檢查；這一頁沒有在地模型，打字送出不會對到題目，只能從選單點題。</li>
       <li>斷線時段寫「無法判斷」，不算成 0 次跌倒。</li>
       <li>長者回覆沒事不直接算誤報；主動呼救另外列，不算進跌倒警報。</li>
       <li id="note-trend">使用趨勢是場域統計，沒有個人 ID，不代表特定長者。</li>
@@ -350,7 +362,7 @@ const askButtons = DATA.ask.map(q => {
 function renderAsk(done) {
   const out = $("ask-answer");
   out.replaceChildren();
-  if (!done) asked = null;  // 重播時清掉上一輪的答案
+  if (!done) { asked = null; chat.replaceChildren(); }  // 重播時清掉上一輪的答案與對話
   askButtons.forEach((b, i) => { b.disabled = !done; b.setAttribute("aria-pressed", String(DATA.ask[i].id === asked)); });
   if (!done) { out.append(el("p", "wait", "重播中。播完全部事件後再提問。")); return; }
   if (asked === "unmatched") { out.append(el("p", "wait", "沒有對應到固定問題（這一頁沒有接上在地模型）。請從上面選一題。")); return; }
@@ -364,9 +376,79 @@ $("ask-form").onsubmit = ev => {
   const typed = $("ask-input").value.trim();
   $("ask-input").value = "";
   if (!typed) return;
+  if (LIVE) { liveAsk(typed); return; }
   asked = shown === events.length ? "unmatched" : null;
   renderAsk(shown === events.length);
 };
+
+// Jetson 內部 Demo（demo/jetson_serve.py 提供頁面時才有 DATA.live）：打字提問送到同一台 Jetson 上的在地模型。
+// 模型只選題號；答案是服務端用固定句型產生、通過輸出檢查的文字，按「對」才顯示。
+// 打的字只留在畫面上（不存檔、不進 log），重播或重新整理就消失
+const LIVE = DATA.live;
+const chat = $("ask-chat");
+function say(who, lines, meta) {
+  const t = el("div", "turn " + who);
+  lines.forEach(line => t.append(el("p", null, line)));
+  if (meta) t.append(el("span", "meta", meta));
+  chat.append(t);
+  t.scrollIntoView({ block: "nearest" });
+  return t;
+}
+function refill(t, lines, meta) {
+  t.replaceChildren(); t.classList.remove("wait");
+  lines.forEach(line => t.append(el("p", null, line)));
+  if (meta) t.append(el("span", "meta", meta));
+}
+async function liveAsk(typed) {
+  if (shown !== events.length) { chat.replaceChildren(); say("system wait", ["重播中。播完全部事件後再提問。"]); return; }
+  say("reader", [typed]);
+  const pending = say("system wait", ["在地模型判斷中…"]);
+  let r;
+  try {
+    const res = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ asked: typed }) });
+    if (!res.ok) throw new Error(String(res.status));
+    r = await res.json();
+  } catch (e) {
+    refill(pending, ["連不上這台 Jetson 上的提問服務。請從上面選一題。"]);
+    return;
+  }
+  const meta = r.model ? `${r.model} · ${r.seconds.toFixed(2)} 秒 · 資料不出這台 Jetson` : null;
+  if (!r.question) { refill(pending, ["沒有對應到固定問題。請從上面選一題。"], meta); return; }
+  refill(pending, [r.confirm], meta);
+  const row = el("div", "yesno"), yes = el("button", null, "對"), no = el("button", null, "不是");
+  yes.type = no.type = "button";
+  const done = () => { yes.disabled = no.disabled = true; };
+  yes.onclick = () => {
+    done();
+    if (r.answer) say("system", r.answer.split("\n"), `答案涵蓋 ${r.from.slice(11, 16)}–${r.to.slice(11, 16)} 的資料；固定句型，不是模型寫的`);
+    else say("system", ["答案沒通過輸出檢查，不顯示。請從上面選一題。"]);
+  };
+  no.onclick = () => { done(); say("system", ["請從上面選一題。"]); };
+  row.append(yes, no); pending.append(row); yes.focus();
+}
+if (LIVE) {
+  $("src-note").textContent = `非真實裝置紀錄；裝置名稱 DEMO-SIM-01，沒有任何長者資料。句子由範本產生；打字提問由這台 Jetson 上的在地模型（${LIVE.model}）選題，資料不出這台機器。`;
+  $("ask-hint").textContent = "打字提問由這台 Jetson 上的在地模型對到下面其中一題，先問「您是想問……嗎？」，按「對」才顯示答案。答案是固定句型，不是模型寫的。也可以直接點題目。";
+  $("note-ask").textContent = "在地模型跑在這台 Jetson 上，只負責選題號；答案由固定句型產生，數字都通過輸出檢查。對不到題目時改從選單點。打的字只留在畫面上，不存檔、不寫進紀錄。";
+  $("ask-answer").hidden = true; chat.hidden = false;
+  askButtons.forEach((b, i) => {
+    b.onclick = () => { const q = DATA.ask[i]; say("reader", [q.text]); say("system", q.answer.split("\n"), "從選單點選，不經模型"); };
+  });
+  const stats = $("jetson-stats");
+  const poll = async () => {
+    try {
+      const s = (await (await fetch("/api/stats")).json()).stats;
+      if (!s) return;
+      const parts = [];
+      if (s.gpu_percent != null) parts.push(`GPU ${s.gpu_percent}%`);
+      if (s.ram_used_mb != null) parts.push(`記憶體 ${(s.ram_used_mb / 1024).toFixed(1)}/${(s.ram_total_mb / 1024).toFixed(1)} GB`);
+      if (s.temp_c != null) parts.push(`${s.temp_c.toFixed(0)}°C`);
+      stats.textContent = "Jetson：" + parts.join(" · ");
+      stats.hidden = false;
+    } catch (e) { /* 讀不到就不顯示 */ }
+  };
+  if (LIVE.stats) { poll(); setInterval(poll, 2000); }
+}
 
 const go = n => { shown = Math.max(0, Math.min(events.length, n)); render(); };
 $("btn-reset").onclick = () => { document.body.classList.add("present"); go(0); };

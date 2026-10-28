@@ -137,7 +137,7 @@ B1、B5 和 B2 的一部分可以自己查：拿到 Jetson 的登入帳號後執
 |---|---|---|
 | 過渡：手動或檔案交換 | 照 `docs/16`「資料交換 API 草案」的手動方式：Dashboard 的 Logs 頁設定時間範圍、打開 heartbeat 與 topic 後匯出 NDJSON（沒有心跳，報告會把整段判成斷線或無法判斷），放到 Jetson 的固定目錄；排程或手動執行 `radar-caregiver --json --from --to`，結果寫到另一個目錄給 Dashboard 取 | API 約定前、Demo 彩排 |
 | 正式：Jetson 定時去拉 | 照 `docs/16` 的 API 草案向 Dashboard 要資料，產生文字後送回 | API 約定後 |
-| 提問：Jetson 開一個小型 HTTP 服務 | Dashboard 呼叫 Jetson 跑 `radar-ask`；提問要即時回覆時才需要（B10；`docs/16`「還沒定的」：提問是即時呼叫還是同一條路） | 有即時提問時 |
+| 提問：Jetson 開一個小型 HTTP 服務 | Dashboard 呼叫 Jetson 跑 `radar-ask`；提問要即時回覆時才需要（B10；`docs/16`「還沒定的」：提問是即時呼叫還是同一條路）。內部 Demo 用的本機服務 `demo/jetson_serve.py`（`docs/21`）只聽 127.0.0.1、只給 Jetson 自己的瀏覽器用，不是給 Dashboard 的介面 | 有即時提問時 |
 
 注意：
 

@@ -1,0 +1,81 @@
+# Jetson 內部 Demo（草案，2026-10-28）
+
+在 Demo 機台（Orin NX 16GB，`docs/05` B1）上，**頁面、服務、在地模型都在同一台 Jetson**，畫面接在 Jetson 的螢幕上。目的是讓團隊先實際體會「打字提問、在地模型選題、資料不出機器」，再決定對甲方 Demo 要怎麼演（`docs/11`）。只用模擬資料，內部使用。
+
+## 架構
+
+```
+Jetson 螢幕
+└─ 瀏覽器全螢幕開 http://127.0.0.1:8765/#replay
+      │  打字提問：POST /api/ask（只送提問文字）
+      ▼
+demo/jetson_serve.py（Python 標準函式庫的 HTTP 服務，只聽 127.0.0.1）
+  ├─ GET /           原型頁（和 demo/build.py 產生的相同，另外標記 Jetson 模式）
+  ├─ POST /api/ask   event_ask.ask_events()：模型只選題號；答案是固定句型，通過輸出檢查
+  └─ GET /api/stats  tegrastats 的最新一筆（GPU 使用率、記憶體、溫度）
+      │
+      ▼
+Ollama gemma4:e4b（127.0.0.1:11434，GPU）
+```
+
+頁面和靜態原型頁（`demo/prototype.html`）是同一個範本，句子來源相同（`radar-caregiver`、`radar-ask --pick`）。Jetson 模式只多了：
+
+- **打字提問接上模型**：先顯示「您是想問「……」嗎？」，按〔對〕才顯示答案，按〔不是〕或對不到時請讀者從選單點。每則回覆標出模型名稱、耗時與「資料不出這台 Jetson」；答案旁註明「固定句型，不是模型寫的」。
+- **對話泡泡**：提問與回覆依序排下來。打的字只留在畫面上，重播或重新整理就消失。
+- **Jetson 狀態**：頂端橫幅顯示 GPU 使用率、記憶體與溫度（讀得到 `tegrastats` 時）。
+
+不做的：追問（「那昨天呢？」）、一句問兩件事、時段解析。這些要擴充模型的回覆格式，屬於單向門「給讀者的輸出與用語」，題目與時段選項要先由審核人確認（`docs/06`「4.1」）。
+
+## 安全
+
+- 服務只聽 `127.0.0.1`，沒有改聽其他網卡的參數；同網段的電腦連不進來。
+- 讀者打的原文不寫進 log、不存檔：log 只記方法、路徑與狀態碼（`tests/test_jetson_serve.py` 檢查）。
+- 請求帶 `Origin` 而且不是這個頁面時拒絕（403），避免 Jetson 瀏覽器開著的其他網站借這個服務送提問。
+- 這個服務把讀者打的字送進模型，屬於單向門「個人資料的流向」（`REVIEW.md` 第 2 節；`pr_gate.py` 的 `DOORS` 已列入）。
+- Ollama 會不會記錄 prompt 要確認並關掉（`docs/20` 第 3 步）。
+
+## 啟動步驟
+
+前提：`docs/20` 第 1～3 步做完（Python 3.11 venv、`pip install -e .`、Ollama 在 GPU 上跑 `gemma4:e4b`）。
+
+1. **先量一次準確率與延遲**，確認思維鏈沒有開著（每題要在幾秒內回完；要是每題十幾秒以上，先照 `docs/20` 第 3 步「思維鏈」處理）：
+
+   ```bash
+   radar-model-eval --endpoint http://127.0.0.1:11434/v1 --model gemma4:e4b --event-questions
+   ```
+
+2. **啟動服務**（在 repo 根目錄、用 repo 的 venv）：
+
+   ```bash
+   python demo/jetson_serve.py --endpoint http://127.0.0.1:11434/v1 --model gemma4:e4b
+   ```
+
+   啟動時會先問一題暖機，印出「暖機：x.x 秒」；之後印出網址。找不到 `tegrastats` 時只是不顯示 Jetson 狀態。`--port` 換埠號，`--no-warmup`、`--no-stats` 關掉暖機與狀態。
+
+3. **在 Jetson 的螢幕上開頁面**（全螢幕；按 Alt+F4 離開）：
+
+   ```bash
+   chromium-browser --kiosk --app=http://127.0.0.1:8765/#replay
+   ```
+
+   沒有 Chromium 時用 Firefox：`firefox --kiosk http://127.0.0.1:8765/#replay`。
+
+4. **展示**：按「下一個事件」重播完，再打字提問。建議的順序：
+   1. 先點選單問一題，說明原本的做法；
+   2. 打「有人跌到嗎」（故意打錯字），看確認句與耗時，按〔對〕；
+   3. 打「斷線」這種只有兩個字的問法；
+   4. 打「他今天血壓多少」，系統不回答醫療問題，改請人從選單點；
+   5. 拔掉網路線再問一次，說明模型就在這台 Jetson 上。
+
+## 待核對（在 Demo 機台上）
+
+| 項目 | 怎麼確認 |
+|---|---|
+| Jetson 有沒有接螢幕、有沒有桌面環境與瀏覽器 | `scripts/jetson_check.sh`；Ubuntu 22.04 的 Chromium 是 snap 版，`--kiosk` 能不能用待核對 |
+| Ollama 經 API 呼叫時思維鏈有沒有開 | 第 1 步的延遲；`docs/20` 第 3 步 |
+| `tegrastats` 的格式 | `demo/jetson_serve.py` 依 JetPack 6 的格式讀 `RAM`、`GR3D_FREQ`、`tj@`／`gpu@`；讀不到的項目不顯示 |
+| 執行帳號 | 用 `docs/20` 第 1 步的專用帳號跑服務；瀏覽器用登入桌面的帳號開即可（只連 127.0.0.1） |
+
+## 2026-10-28 在雲端容器的試跑
+
+在雲端容器（x86 CPU，llama-cpp-python 0.3.36 跑 Gemma 4 E4B Q4_K_M）上用瀏覽器實際走過：暖機 0.7 秒；「有人跌到嗎」→「有沒有人跌倒？」0.72 秒，按〔對〕顯示的答案與 `radar-ask --pick falls` 相同；「他今天血壓多少」→ 沒有對應到；重播時對話清空。Jetson 狀態是用假的 `tegrastats` 試的。**不是在 Jetson 上跑的**，速度與顯示都要在 Demo 機台上再確認。
