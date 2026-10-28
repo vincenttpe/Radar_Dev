@@ -64,7 +64,7 @@ def test_model_picks_a_number_and_the_answer_comes_from_the_facts():
     model = Scripted("3")
     reply = ask_events("有人待很久嗎", SUMMARY, place="1 號廁所", model=model)
     data = reply.data()
-    assert data["question"]["id"] == "longstay" and data["confirm"] == "您是想問「有沒有人待太久？」嗎？"
+    assert data["question"]["id"] == "longstay" and data["confirm"] == "您是想問「有沒有人待太久？久待警報有幾次？」嗎？"
     assert data["answer"].startswith("1 號廁所 10/14 08:00–11:59：在線期間久待警報 1 次（10:45）。")
     assert (data["model"], data["prompt_version"], data["rejected"]) == ("scripted", "ask-v0", [])
     assert "有人待很久嗎" not in json.dumps(data, ensure_ascii=False), "不保存讀者打的原文"

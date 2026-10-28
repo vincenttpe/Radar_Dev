@@ -28,7 +28,7 @@ SCHEMA = "event-ask-v0"
 EVENT_QUESTIONS: list[Question] = [
     Question("falls", "有沒有人跌倒？"),
     Question("calls", "有沒有人主動呼救？"),
-    Question("longstay", "有沒有人待太久？"),
+    Question("longstay", "有沒有人待太久？久待警報有幾次？"),
     Question("visits", "用了幾次？最久待多久？"),
     Question("offline", "裝置有沒有斷線？"),
     Question("alerts", "有哪些警報？要怎麼處理？"),

@@ -83,6 +83,7 @@ B1、B5 和 B2 的一部分可以自己查：拿到 Jetson 的登入帳號後執
   ollama ps                            # PROCESSOR 要是 100% GPU
   # repo 裝好後（第 2 步）量採用率、延遲與速度：
   radar-model-eval --endpoint http://127.0.0.1:11434/v1 --model llama3.2:3b
+  radar-model-eval --endpoint http://127.0.0.1:11434/v1 --model gemma4:e4b --reasoning-effort none --event-questions
   ```
 
   Ollama 預設只聽 `127.0.0.1:11434`，不要改成對外。Gemma 4 E4B 在 Ollama 的名稱是 `gemma4:e4b`（Demo 機台已拉下並在 GPU 上跑過）。Llama 3.2 與 Gemma 4 的授權能不能商用、能不能在機構現場部署仍待 F2。
@@ -122,7 +123,7 @@ B1、B5 和 B2 的一部分可以自己查：拿到 Jetson 的登入帳號後執
   - 思考內容會吃掉 `local_model.HttpChatModel` 的 `max_tokens`（512），答案可能被截斷；
   - 思考內容混進回覆時，輸出檢查可能因為多出來的文字退回範本，採用率變低（待核對）。
 
-  `HttpChatModel` 目前也不會送 `enable_thinking` 這類參數；要比較開與不開，得先改程式。Demo 機台上 `ollama run gemma4:e4b` 問三句話的問題，回了 792 個 token，`--verbose` 顯示總時間 2 分 15 秒（當時還在用 CPU），推測是預設開了思維鏈；`ollama run` 可以加 `--think=false` 關掉（Demo 機台上還沒驗證），經 API 呼叫時要怎麼關待核對。
+  Demo 機台實測（2026-10-28，`gemma4:e4b`，提問對應的提示）：思維鏈開著時想了約 400～500 token、每題約 9 秒，有一題把 512 token 全用在思考、回答是空的；關掉後每題約 0.4 秒。經 `/v1/chat/completions`（`HttpChatModel` 用的介面）關掉的方法是送 `reasoning_effort: "none"`；送 `think: false` 沒有作用（Ollama 自己的 `/api/chat` 才認 `think`）。命令列加 `--reasoning-effort none`（`radar-ask`、`radar-model-eval` 都有），預設不送，因為不是每個伺服器都認得這個參數。
 - **只聽 `127.0.0.1`**：`local_model.HttpChatModel` 只給本機或區網的模型伺服器用，不對外開放。
 - 推論伺服器會不會記錄 prompt（裡面可能有讀者打的字），部署時要確認並關掉（`docs/12_Demo預演.md` 問答）。
 - 下載模型前記下開發者、base model、授權（`docs/adr/0003`）；建議先試 Gemma 4 E4B（待確認），再拿 Gemma-3-TAIDE-12B-Chat 比繁體中文品質（Llama-Breeze2 已排除）。中國開發、以其為基底或含有中國開發部分的模型，`radar-model-eval` 會依名稱擋下。
