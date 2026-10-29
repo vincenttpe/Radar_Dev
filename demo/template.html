@@ -425,7 +425,8 @@ async function liveAsk(typed) {
   refill(pending, [r.confirm], meta);
   const row = el("div", "yesno"), yes = el("button", null, "對"), no = el("button", null, "不是");
   yes.type = no.type = "button";
-  const done = () => { yes.disabled = no.disabled = true; };
+  // 按鈕停用後焦點會掉到 body：移回輸入框，用鍵盤的人可以直接問下一題（輸入框固定在畫面上，不必捲頁）
+  const done = () => { yes.disabled = no.disabled = true; $("ask-input").focus({ preventScroll: true }); };
   yes.onclick = () => {
     done();
     if (r.answer) say("system", r.answer.split("\n"), `答案涵蓋 ${r.from.slice(11, 16)}–${r.to.slice(11, 16)} 的資料；固定句型，不是模型寫的`);
