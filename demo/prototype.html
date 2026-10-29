@@ -139,9 +139,10 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .chart .sep { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 2 3; }
 .trend-lines { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 72ch; }
 /* 提問 */
-.ask-form { display: flex; flex-wrap: wrap; gap: 8px; }
+/* 輸入框捲動時固定在頂端橫幅下方；回答出現在輸入框下面（2026-10-29） */
+.ask-form { display: flex; flex-wrap: wrap; gap: 8px; position: sticky; top: calc(var(--sim-h, 0px) + env(safe-area-inset-top, 0px)); z-index: 4; background: var(--surface); padding-block: 8px; margin-block: -8px; }
 .ask-form input { flex: 1 1 240px; min-width: 0; font: 15px var(--f-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
-.ask-form input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.ask-form input:focus-visible, .chat:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .menu { display: flex; flex-wrap: wrap; gap: 8px; }
 .menu button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
 .answer { display: grid; gap: 4px; min-height: 1.6em; }
@@ -149,7 +150,7 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .answer .wait { color: var(--muted); }
 .notes { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 14px; display: grid; gap: 4px; max-width: 72ch; }
 /* Jetson 內部 Demo（demo/jetson_serve.py）才顯示：對話、確認按鈕、Jetson 狀態 */
-.chat { display: grid; gap: 10px; }
+.chat { display: grid; gap: 10px; align-content: start; max-height: min(60vh, 520px); overflow-y: auto; overscroll-behavior: contain; }
 .chat .turn { max-width: min(68ch, 88%); padding: 10px 14px; border-radius: 12px; display: grid; gap: 4px; }
 .chat .turn p { margin: 0; font-size: 16px; line-height: 1.7; }
 .chat .reader { justify-self: end; background: var(--accent-soft); border: 1px solid var(--accent); }
@@ -243,10 +244,10 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
         <input id="ask-input" type="text" maxlength="100" placeholder="例如：今天早上有沒有人跌倒？" aria-label="提問">
         <button type="submit">送出</button>
       </form>
+      <div class="answer" id="ask-answer" aria-live="polite"></div>
+      <div class="chat" id="ask-chat" role="log" aria-live="polite" aria-label="提問對話" tabindex="0" hidden></div>
       <p class="hint" style="margin:0" id="ask-hint">這一頁沒有接上在地模型。正式版由 Jetson 上的模型把提問對到下面其中一題，先問「您是想問……嗎？」再回答；現在請直接點題目。</p>
       <div class="menu" id="ask-menu"></div>
-      <div class="answer" id="ask-answer" aria-live="polite"></div>
-      <div class="chat" id="ask-chat" aria-live="polite" hidden></div>
     </div>
   </section>
 
@@ -515,6 +516,10 @@ const pct = s => ((sec(s) - t0) / (t1 - t0) * 100).toFixed(3) + "%";
 const md = s => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
 const multiDay = DATA.from.slice(0, 10) !== DATA.to.slice(0, 10);
 const $ = id => document.getElementById(id);
+// 頂端橫幅的高度：提問輸入框固定在它下面。橫幅會換行，Jetson 版還會換說明文字、出現狀態列，高度變了就重量
+const simBar = document.querySelector(".sim");
+const fitSim = () => document.documentElement.style.setProperty("--sim-h", simBar.offsetHeight + "px");
+fitSim(); new ResizeObserver(fitSim).observe(simBar);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const events = DATA.events;
 let shown = events.length;
@@ -600,7 +605,7 @@ function renderAsk(done) {
   if (!done) { asked = null; chat.replaceChildren(); }  // 重播時清掉上一輪的答案與對話
   askButtons.forEach((b, i) => { b.disabled = !done; b.setAttribute("aria-pressed", String(DATA.ask[i].id === asked)); });
   if (!done) { out.append(el("p", "wait", "重播中。播完全部事件後再提問。")); return; }
-  if (asked === "unmatched") { out.append(el("p", "wait", "沒有對應到固定問題（這一頁沒有接上在地模型）。請從上面選一題。")); return; }
+  if (asked === "unmatched") { out.append(el("p", "wait", "沒有對應到固定問題（這一頁沒有接上在地模型）。請從下面選一題。")); return; }
   const q = DATA.ask.find(x => x.id === asked);
   if (!q) { out.append(el("p", "wait", "點一個題目看答案。")); return; }
   q.answer.split("\n").forEach(line => out.append(el("p", null, line)));
@@ -626,13 +631,14 @@ function say(who, lines, meta) {
   lines.forEach(line => t.append(el("p", null, line)));
   if (meta) t.append(el("span", "meta", meta));
   chat.append(t);
-  t.scrollIntoView({ block: "nearest" });
+  chat.scrollTop = chat.scrollHeight;  // 只捲對話框，不捲整頁：輸入框留在原位
   return t;
 }
 function refill(t, lines, meta) {
   t.replaceChildren(); t.classList.remove("wait");
   lines.forEach(line => t.append(el("p", null, line)));
   if (meta) t.append(el("span", "meta", meta));
+  chat.scrollTop = chat.scrollHeight;  // 換成較長的回覆後再捲到底，最新一則不被切掉
 }
 async function liveAsk(typed) {
   if (shown !== events.length) { chat.replaceChildren(); say("system wait", ["重播中。播完全部事件後再提問。"]); return; }
@@ -644,11 +650,11 @@ async function liveAsk(typed) {
     if (!res.ok) throw new Error(String(res.status));
     r = await res.json();
   } catch (e) {
-    refill(pending, ["連不上這台 Jetson 上的提問服務。請從上面選一題。"]);
+    refill(pending, ["連不上這台 Jetson 上的提問服務。請從下面選一題。"]);
     return;
   }
   const meta = r.model ? `${r.model} · ${r.seconds.toFixed(2)} 秒 · 在這台 Jetson 上執行` : null;
-  if (!r.question) { refill(pending, ["沒有對應到固定問題。請從上面選一題。"], meta); return; }
+  if (!r.question) { refill(pending, ["沒有對應到固定問題。請從下面選一題。"], meta); return; }
   refill(pending, [r.confirm], meta);
   const row = el("div", "yesno"), yes = el("button", null, "對"), no = el("button", null, "不是");
   yes.type = no.type = "button";
@@ -656,10 +662,10 @@ async function liveAsk(typed) {
   yes.onclick = () => {
     done();
     if (r.answer) say("system", r.answer.split("\n"), `答案涵蓋 ${r.from.slice(11, 16)}–${r.to.slice(11, 16)} 的資料；固定句型，不是模型寫的`);
-    else say("system", ["答案沒通過輸出檢查，不顯示。請從上面選一題。"]);
+    else say("system", ["答案沒通過輸出檢查，不顯示。請從下面選一題。"]);
   };
-  no.onclick = () => { done(); say("system", ["請從上面選一題。"]); };
-  row.append(yes, no); pending.append(row); yes.focus();
+  no.onclick = () => { done(); say("system", ["請從下面選一題。"]); };
+  row.append(yes, no); pending.append(row); chat.scrollTop = chat.scrollHeight; yes.focus({ preventScroll: true });
 }
 if (LIVE) {
   $("src-note").textContent = `非真實裝置紀錄；裝置名稱 DEMO-SIM-01，沒有任何長者資料。句子由範本產生；打字提問由這台 Jetson 上的在地模型（${LIVE.model}）選題；提問不寫進本服務的紀錄。`;
