@@ -139,7 +139,7 @@ def checked_rewrite(
 
 
 # ── 交班重點的口語改寫（草案，2026-10-29；Jetson 內部 Demo 的實驗功能，docs/21）──────────
-# 範本由 caregiver.handover_text 產生；模型只改說法。檢查比 rewrite() 多三項：每個時刻都要出現、
+# 原句由 caregiver.handover_text 產生（【重點】＋【事件摘要】）；模型只改寫事件摘要的說法。檢查比 rewrite() 多三項：每個時刻都要出現、
 # 「N 次／分鐘／秒」要整組對得上、不能加上範本沒有的時段詞與「我們」。numbers() 以集合比較，
 # 漏掉一個事件或改掉一個次數時，數字可能剛好在別處出現而沒被發現。
 HANDOVER_PROMPT_VERSION = "handover-v0"
@@ -152,7 +152,7 @@ _CLOCK = re.compile(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)")
 def build_handover_prompt(template: str) -> str:
     """交班口語化的 prompt：只放範本文字。"""
     return (
-        "你是長照機構的交班助手。下面是一個地點一段時間的事件紀錄（地點與時段另外標示，不用重寫），請改寫成一段口語的交班說明，"
+        "你是長照機構的交班助手。下面是一個地點一段時間的事件摘要（地點、時段與重點另外標示，不用重寫），請改寫成一段口語的交班說明，"
         "像跟下一班同事口頭交代一樣，讀起來順、好懂。\n"
         "規則：\n"
         "1. 只改說法，不新增、不刪除任何事實；不推測原因，不推測是哪一位長者，不加建議。\n"
@@ -204,8 +204,10 @@ def rewrite_handover(summary: Summary, *, place: str, model: Model | None = None
         raise ValueError("範本沒通過輸出檢查：" + "；".join(problems))
     if model is None or "\n" not in template:  # 沒有收到資料時只有一句，不必改寫
         return Rewritten(template, "template", "居服員")
-    # 第一行（地點、時段）由程式固定加上，模型只改寫下面的內容：模型常把開頭省掉（2026-10-29 實測）
-    head, body = template.split("\n", 1)
+    # 前兩行（地點與時段、【重點】）由程式固定顯示，模型只改寫下面的事件摘要：
+    # 實測模型常把開頭與【重點】整行省掉，而那兩行的數字在事件摘要裡都還有，檢查擋不到（2026-10-29）
+    first, highlight, body = template.split("\n", 2)
+    head = f"{first}\n{highlight}"
     result = checked_rewrite(
         body, summary, place=place, profile="居服員", model=model,
         prompt=build_handover_prompt(body), prompt_version=HANDOVER_PROMPT_VERSION,

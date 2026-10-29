@@ -1,6 +1,6 @@
-"""交班重點（草案，Jetson 內部 Demo 的實驗功能，docs/21）：規則產生範本，在地模型只改寫成口語。
+"""交班重點（草案，Jetson 內部 Demo 的實驗功能，docs/21）：原句是【重點】加【事件摘要】，在地模型只改寫事件摘要。
 
-範本用 Demo 的模擬資料（一間浴廁一個上午）；模型以假模型代替（外部服務的邊界，REVIEW.md 3.5）。
+原句用 Demo 的模擬資料（一間浴廁一個上午）；模型以假模型代替（外部服務的邊界，REVIEW.md 3.5）。
 GOOD_BODY 是 2026-10-29 Gemma 4 E4B（Q4_K_M）實際改寫的輸出，用來確認真實的口語版會被採用。
 """
 from pathlib import Path
@@ -9,45 +9,33 @@ import pytest
 from test_caregiver import timeline
 from test_rewrite import FakeModel
 
-from radar_agent.caregiver import handover_text
+from radar_agent.caregiver import caregiver_text, handover_text, highlights
 from radar_agent.device_events import read_records, summarize
 from radar_agent.output_check import check_output
 from radar_agent.rewrite import HANDOVER_PROMPT_VERSION, rewrite_handover
 
 PLACE = "1 號廁所"
 DEMO = summarize(read_records(Path(__file__).resolve().parent.parent / "data" / "samples_demo" / "bathroom_morning.jsonl"))
-HEAD = "1 號廁所 10/14 08:00–11:59：交班重點如下。"
+HEAD = "1 號廁所 10/14 08:00–11:59：交班重點如下。\n" + highlights(DEMO)
 GOOD_BODY = (
-    "08:32 1 號廁所雷達偵測到疑似跌倒，語音詢問 10 秒沒回應。接著 08:32 長者語音回覆沒事，警報解除。\n"
-    "09:16 1 號廁所雷達又偵測到疑似跌倒，長者語音說需要協助。09:19 偵測到長者起身，警報解除。\n"
-    "10:03 1 號廁所偵測到主動呼救。10:05 偵測到長者起身，警報解除。\n"
-    "10:45 1 號廁所停留超過設定時間（久待警報）。\n"
-    "使用情形是有人使用 5 次，最長一次是 22 分鐘。\n"
+    "1 號廁所，10/14 有人使用 5 次，最長一次是 22 分鐘。\n"
+    "在線期間跌倒警報有 2 次：08:32 時語音詢問了 10 秒沒回應，30 秒後長者回覆沒事，警報就解除；"
+    "09:16 長者回覆需要協助，3 分 10 秒後偵測到起身，警報也解除。\n"
+    "在線期間主動呼救有 1 次，是 10:03，2 分 35 秒後偵測到起身，警報解除。\n"
+    "在線期間久待警報有 1 次，發生在 10:45。\n"
     "11:10 到 11:25 裝置斷線，這段時間無法判斷是否有跌倒。"
 )
 
 
-def test_template_lists_every_event_in_time_order_then_usage_and_offline():
+def test_template_is_the_highlights_and_the_event_summary_under_a_fixed_heading():
     text = handover_text(DEMO, place=PLACE)
-    assert text.splitlines() == [
-        HEAD,
-        "事件（依時間）：",
-        "08:32 1 號廁所雷達偵測到疑似跌倒，語音詢問 10 秒未獲回應。",
-        "08:32 長者語音回覆沒事，警報解除。",
-        "09:16 1 號廁所雷達偵測到疑似跌倒，長者語音回覆需要協助。",
-        "09:19 偵測到長者起身，警報解除。",
-        "10:03 1 號廁所偵測到主動呼救。",
-        "10:05 偵測到長者起身，警報解除。",
-        "10:45 1 號廁所停留超過設定時間（久待警報）。",
-        "使用情形：有人使用 5 次，最長一次 22 分鐘。",
-        "11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。",
-    ]
+    assert text == f"{HEAD}\n{caregiver_text(DEMO, place=PLACE)}"
     assert check_output(text, DEMO, place=PLACE) == []
 
 
-def test_template_without_alerts_says_so():
+def test_template_without_alerts_still_has_highlights():
     quiet = summarize(timeline("09:00:00", "09:30:00", [("09:05:00", "09:13:00")]))
-    assert "這段時間沒有警報。" in handover_text(quiet, place=PLACE).splitlines()
+    assert "【重點】這段時間沒有警報，裝置都在線。" in handover_text(quiet, place=PLACE).splitlines()
 
 
 def test_template_without_data_cannot_tell_and_is_never_sent_to_the_model():
@@ -62,31 +50,32 @@ def test_without_a_model_the_template_is_used():
     assert (result.text, result.layer, result.rejected) == (handover_text(DEMO, place=PLACE), "template", ())
 
 
-def test_a_faithful_spoken_version_is_used_and_keeps_the_fixed_first_line():
+def test_a_faithful_spoken_version_is_used_under_the_fixed_heading_and_highlights():
     result = rewrite_handover(DEMO, place=PLACE, model=FakeModel(GOOD_BODY))
     assert (result.text, result.layer, result.model, result.prompt_version, result.rejected) == (
         f"{HEAD}\n{GOOD_BODY}", "model", "fake-0.1", HANDOVER_PROMPT_VERSION, ()
     )
 
 
-def test_the_prompt_carries_the_events_but_not_the_fixed_first_line():
+def test_the_prompt_carries_the_event_summary_but_not_the_heading_or_highlights():
+    """模型實測會把開頭與【重點】整行省掉（數字在事件摘要裡都還有，檢查擋不到），所以這兩行不交給模型。"""
     model = FakeModel(GOOD_BODY)
     rewrite_handover(DEMO, place=PLACE, model=model)
     prompt = model.prompts[0]
-    assert "10:45 1 號廁所停留超過設定時間（久待警報）。" in prompt
-    assert HEAD not in prompt
+    assert caregiver_text(DEMO, place=PLACE) in prompt
+    assert "交班重點如下" not in prompt and "【重點】" not in prompt
 
 
 @pytest.mark.parametrize("reply, reason", [
-    # 漏掉 10:05 那件事：10 和 5 在別處都還有（10:03、5 次），只比數字會放過，要靠時刻檢查
-    (GOOD_BODY.replace("10:05 偵測到長者起身，警報解除。", ""), "漏掉時間 10:05"),
-    # 時段詞說錯（10:03 是上午）與「我們」：2026-10-29 Gemma 4 實際寫出來過
-    (GOOD_BODY.replace("10:03 1 號廁所", "下午 10:03 1 號廁所"), "範本沒有「下午」"),
-    (GOOD_BODY.replace("語音詢問 10 秒", "我們語音詢問了 10 秒"), "範本沒有「我們」"),
+    (GOOD_BODY.replace("在線期間久待警報有 1 次，發生在 10:45。\n", ""), "漏掉時間 10:45"),
+    # 時段詞說錯與「我們」：2026-10-29 Gemma 4 實際寫出來過
+    (GOOD_BODY.replace("是 10:03", "是下午 10:03"), "範本沒有「下午」"),
+    (GOOD_BODY.replace("語音詢問了 10 秒", "我們語音詢問了 10 秒"), "範本沒有「我們」"),
     (GOOD_BODY.replace("這段時間無法判斷是否有跌倒", "這段時間狀況不明"), "漏掉「無法判斷」"),
-    # 次數改掉：5 還在「10:05」、6 也是別的事實（只比數字會放過），要靠「N 次」整組比對
-    (GOOD_BODY.replace("5 次", "6 次"), "漏掉「5 次」"),
+    # 次數、時間長度改掉：數字可能在別處還有（只比數字會放過），要靠「N 次／分鐘／秒」整組比對
+    (GOOD_BODY.replace("使用 5 次", "使用 6 次"), "漏掉「5 次」"),
     (GOOD_BODY.replace("22 分鐘", "20 分鐘"), "範本沒有「20 分鐘」"),
+    (GOOD_BODY.replace("35 秒", "25 秒"), "漏掉「35 秒」"),
 ])
 def test_unfaithful_rewrites_fall_back_to_the_template(reply, reason):
     result = rewrite_handover(DEMO, place=PLACE, model=FakeModel(reply))
