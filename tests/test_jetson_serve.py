@@ -1,0 +1,210 @@
+"""Jetson 內部 Demo 的本機服務（demo/jetson_serve.py，docs/21）。
+
+用假模型開真的 HTTP 服務（127.0.0.1、系統挑的空埠），從外面打 HTTP 請求檢查：
+頁面就是原型頁加上 live 標記、提問的答案和 radar-ask --pick 相同、讀者打的字不進 log、
+別的網頁送不進提問。
+"""
+import importlib.util
+import json
+import threading
+import urllib.error
+import urllib.request
+
+import pytest
+
+from radar_agent.event_ask import pick
+
+
+@pytest.fixture(scope="module")
+def serve_mod(repo):
+    spec = importlib.util.spec_from_file_location("jetson_serve", repo / "demo" / "jetson_serve.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class PickFirst:
+    """假模型：一律回第 1 題（有沒有人跌倒）。"""
+
+    name = "fake-model"
+
+    def __call__(self, prompt: str) -> str:
+        return "1"
+
+
+class Broken:
+    name = "broken-model"
+
+    def __call__(self, prompt: str) -> str:
+        raise TimeoutError
+
+
+@pytest.fixture
+def server(serve_mod):
+    started = []
+
+    def start(model):
+        demo = serve_mod.Demo(model)
+        httpd = serve_mod.serve(demo, 0)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        started.append(httpd)
+        host, port = httpd.server_address[:2]
+        return demo, f"http://{host}:{port}"
+
+    yield start
+    for httpd in started:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def _post(url, body, headers=None):
+    req = urllib.request.Request(url + "/api/ask", data=body, method="POST",
+                                 headers={"Content-Type": "application/json", **(headers or {})})
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+def _ask(url, asked, headers=None):
+    return _post(url, json.dumps({"asked": asked}).encode("utf-8"), headers)
+
+
+def test_only_listens_on_localhost(serve_mod):
+    """實際綁定的位址是 loopback，不是 0.0.0.0 或對外網卡：同網段的電腦連不進來（docs/21「安全」）。"""
+    httpd = serve_mod.serve(serve_mod.Demo(PickFirst()), 0)
+    try:
+        assert httpd.socket.getsockname()[0] == "127.0.0.1"
+    finally:
+        httpd.server_close()
+
+
+def test_page_is_the_prototype_marked_live(server):
+    _, url = server(PickFirst())
+    with urllib.request.urlopen(url + "/") as resp:
+        page = resp.read().decode("utf-8")
+    assert '"live": {' in page and '"model": "fake-model"' in page
+    assert "模擬資料" in page and "DEMO-SIM-01" in page
+
+
+def test_typed_question_gets_the_same_answer_as_picking_it(server):
+    demo, url = server(PickFirst())
+    code, data = _ask(url, "有人跌到嗎")
+    assert code == 200
+    assert data["question"]["id"] == "falls" and data["confirm"] == "您是想問「有沒有人跌倒？」嗎？"
+    assert data["answer"] == pick("falls", demo.summary, place=demo.place).answer
+    assert data["model"] == "fake-model" and data["text_layer"] == "template"
+
+
+def test_model_failure_falls_back_to_the_menu(server):
+    _, url = server(Broken())
+    code, data = _ask(url, "有人跌倒嗎")
+    assert code == 200 and data["question"] is None and data["answer"] is None
+    assert data["rejected"] == ["模型錯誤：TimeoutError"]
+
+
+def test_typed_text_never_reaches_the_log(server, capsys):
+    _, url = server(PickFirst())
+    _ask(url, "王小明今天有跌倒嗎")
+    err = capsys.readouterr().err
+    assert "POST /api/ask 200" in err
+    assert "王小明" not in err
+
+
+def test_other_sites_cannot_send_questions(server):
+    _, url = server(PickFirst())
+    code, _ = _ask(url, "有人跌倒嗎", {"Origin": "http://evil.example"})
+    assert code == 403
+    code, _ = _ask(url, "有人跌倒嗎", {"Origin": url})
+    assert code == 200
+
+
+@pytest.mark.parametrize("body, code", [
+    (b"not json", 400),
+    (b'{"q": "x"}', 400),
+    (b'{"asked": 3}', 400),
+    (b'{"asked": "' + b"x" * 5000 + b'"}', 413),
+])
+def test_bad_requests_are_refused(server, body, code):
+    _, url = server(PickFirst())
+    assert _post(url, body)[0] == code
+
+
+def test_unknown_paths_are_404(server):
+    _, url = server(PickFirst())
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(url + "/data/samples_demo/bathroom_morning.jsonl")
+    assert e.value.code == 404
+    req = urllib.request.Request(url + "/api/other", data=b"{}", method="POST")
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(req)
+    assert e.value.code == 404
+
+
+def test_stats_are_empty_without_tegrastats(server):
+    _, url = server(PickFirst())
+    with urllib.request.urlopen(url + "/api/stats") as resp:
+        assert json.loads(resp.read()) == {"stats": None}
+
+
+def test_parse_tegrastats_jetpack6_line(serve_mod):
+    line = ("10-28-2026 09:00:00 RAM 6234/15656MB (lfb 2x4MB) SWAP 0/7828MB (cached 0MB) "
+            "CPU [12%@1984,5%@1984] GR3D_FREQ 37% cpu@48.5C soc2@45.1C tj@50.25C VDD_IN 9876mW/9876mW")
+    assert serve_mod.parse_tegrastats(line) == {
+        "ram_used_mb": 6234, "ram_total_mb": 15656, "gpu_percent": 37, "temp_c": 50.25,
+    }
+    assert serve_mod.parse_tegrastats("看不懂的一行") is None
+
+
+def test_cli_refuses_chinese_models(serve_mod, capsys):
+    assert serve_mod.main(["--endpoint", "http://127.0.0.1:9/v1", "--model", "qwen2.5-3b"]) == 2
+    assert "docs/adr/0003" in capsys.readouterr().err
+
+
+def test_warm_up_reports_success_and_failure(serve_mod):
+    assert serve_mod.Demo(PickFirst()).warm_up().startswith("暖機完成：")
+    failed = serve_mod.Demo(Broken()).warm_up()
+    assert failed.startswith("暖機失敗") and "模型錯誤：TimeoutError" in failed
+
+
+@pytest.mark.parametrize("endpoint, local", [
+    ("http://127.0.0.1:11434/v1", True),
+    ("http://localhost:11434/v1", True),
+    ("http://LocalHost:11434/v1", True),
+    ("http://[::1]:11434/v1", True),
+    ("http://192.168.1.20:11434/v1", False),
+    ("http://example.com/v1", False),
+    ("http://127.0.0.1@evil.example/v1", False),  # 帳號欄位假裝是本機
+    ("localhost:11434", False),                    # 沒寫協定，取不到主機
+    ("http://[::1", False),                        # 網址寫壞
+])
+def test_endpoint_is_local(serve_mod, endpoint, local):
+    assert serve_mod.endpoint_is_local(endpoint) is local
+
+
+@pytest.mark.parametrize("endpoint", ["http://192.168.1.20:11434/v1", "http://[::1"])
+def test_cli_refuses_endpoints_off_this_machine(serve_mod, capsys, endpoint):
+    assert serve_mod.main(["--endpoint", endpoint, "--model", "gemma4:e4b"]) == 2
+    assert "只能是本機" in capsys.readouterr().err
+
+
+def test_cli_refuses_command_models(serve_mod, capsys):
+    """任意指令可能把提問轉送到別台機器，畫面「在這台 Jetson 上執行」就不成立。"""
+    assert serve_mod.main(["--cmd", "echo 1"]) == 2
+    assert "不接受 --cmd" in capsys.readouterr().err
+
+
+def test_page_does_not_claim_data_never_leaves(server):
+    """「資料不出這台 Jetson」要等確認 Ollama 不記錄 prompt 才能寫（docs/21 待核對）。"""
+    _, url = server(PickFirst())
+    with urllib.request.urlopen(url + "/") as resp:
+        assert "資料不出" not in resp.read().decode("utf-8")
+
+
+def test_query_string_on_ask_is_ignored(server):
+    _, url = server(PickFirst())
+    req = urllib.request.Request(url + "/api/ask?from=menu", data=json.dumps({"asked": "有人跌倒嗎"}).encode("utf-8"),
+                                 method="POST", headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req) as resp:
+        assert json.loads(resp.read())["question"]["id"] == "falls"
