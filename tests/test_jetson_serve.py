@@ -168,10 +168,38 @@ def test_warm_up_reports_success_and_failure(serve_mod):
     assert failed.startswith("暖機失敗") and "模型錯誤：TimeoutError" in failed
 
 
-@pytest.mark.parametrize("endpoint", ["http://192.168.1.20:11434/v1", "http://example.com/v1"])
+@pytest.mark.parametrize("endpoint, local", [
+    ("http://127.0.0.1:11434/v1", True),
+    ("http://localhost:11434/v1", True),
+    ("http://LocalHost:11434/v1", True),
+    ("http://[::1]:11434/v1", True),
+    ("http://192.168.1.20:11434/v1", False),
+    ("http://example.com/v1", False),
+    ("http://127.0.0.1@evil.example/v1", False),  # 帳號欄位假裝是本機
+    ("localhost:11434", False),                    # 沒寫協定，取不到主機
+    ("http://[::1", False),                        # 網址寫壞
+])
+def test_endpoint_is_local(serve_mod, endpoint, local):
+    assert serve_mod.endpoint_is_local(endpoint) is local
+
+
+@pytest.mark.parametrize("endpoint", ["http://192.168.1.20:11434/v1", "http://[::1"])
 def test_cli_refuses_endpoints_off_this_machine(serve_mod, capsys, endpoint):
     assert serve_mod.main(["--endpoint", endpoint, "--model", "gemma4:e4b"]) == 2
     assert "只能是本機" in capsys.readouterr().err
+
+
+def test_cli_refuses_command_models(serve_mod, capsys):
+    """任意指令可能把提問轉送到別台機器，畫面「在這台 Jetson 上執行」就不成立。"""
+    assert serve_mod.main(["--cmd", "echo 1"]) == 2
+    assert "不接受 --cmd" in capsys.readouterr().err
+
+
+def test_page_does_not_claim_data_never_leaves(server):
+    """「資料不出這台 Jetson」要等確認 Ollama 不記錄 prompt 才能寫（docs/21 待核對）。"""
+    _, url = server(PickFirst())
+    with urllib.request.urlopen(url + "/") as resp:
+        assert "資料不出" not in resp.read().decode("utf-8")
 
 
 def test_query_string_on_ask_is_ignored(server):

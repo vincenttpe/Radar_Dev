@@ -8,7 +8,8 @@
     # 再用 Jetson 上的瀏覽器開 http://127.0.0.1:8765/#replay
 
 - 只聽 127.0.0.1，同網段的其他電腦連不進來；不提供改聽其他網卡的參數。
-- --endpoint 只接受本機（127.0.0.1、localhost、::1）：提問不送到區網上的其他機器。
+- 模型只能用 --endpoint 接本機的伺服器（127.0.0.1、localhost、::1），不接受 --cmd：畫面寫「在這台 Jetson 上執行」，
+  任意指令可能把提問轉送到別台機器（2026-10-29 決定）。--echo（不送出任何東西）留給試跑。
 - 讀者打的原文不寫進 log、不存檔：log 只記方法、路徑與狀態碼。
 - 只用模擬資料（data/samples_demo/），不接受實測資料：實測資料走 build.py --events（遮罩、不發布）。
 - 把讀者打的字送進模型，屬於單向門「個人資料的流向」（REVIEW.md 第 2 節）。
@@ -127,6 +128,14 @@ class Demo:
         return f"暖機完成：{seconds:.1f} 秒（{self.model.name}）"
 
 
+def endpoint_is_local(endpoint: str) -> bool:
+    """模型伺服器的網址是不是本機；網址寫壞（例如 http://[::1）也當作不是。"""
+    try:
+        return urllib.parse.urlsplit(endpoint).hostname in LOOPBACK
+    except ValueError:
+        return False
+
+
 def make_handler(demo: Demo, port: int) -> type[BaseHTTPRequestHandler]:
     origins = {f"http://{HOST}:{port}", f"http://localhost:{port}"}
 
@@ -206,7 +215,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-warmup", action="store_true", help="啟動時不先問一題暖機")
     ap.add_argument("--no-stats", action="store_true", help="不讀 tegrastats")
     args = ap.parse_args(sys.argv[1:] if argv is None else argv)
-    if args.endpoint and urllib.parse.urlsplit(args.endpoint).hostname not in LOOPBACK:
+    if args.cmd is not None:
+        print("錯誤：內部 Demo 不接受 --cmd；請用 --endpoint 接這台 Jetson 上的模型伺服器", file=sys.stderr)
+        return 2
+    if args.endpoint and not endpoint_is_local(args.endpoint):
         print(f"錯誤：--endpoint 只能是本機（{'、'.join(sorted(LOOPBACK))}）；內部 Demo 的模型要跑在這台 Jetson 上",
               file=sys.stderr)
         return 2
