@@ -11,7 +11,7 @@ import re
 from datetime import datetime
 from decimal import Decimal
 
-from radar_agent.device_events import Summary, disconnected
+from radar_agent.device_events import Summary, alert_outcomes, disconnected
 from radar_agent.kg_rules import Assessment
 
 FORBIDDEN = {
@@ -43,11 +43,18 @@ def _facts(source: Summary | Assessment, place: str) -> set[Decimal]:
         times = [a.time for a in source.fall_alerts] + source.longstay_alerts + [w for w, _ in source.errors]
         times += [r.time for r in source.resolutions]
         allowed |= {Decimal(a.delay_s) for a in source.fall_alerts if a.delay_s is not None}
-        # 警報到解除隔了多久（事件摘要「3 分 10 秒後偵測到起身」）：每個警報與它之後的解除紀錄都算
-        for alert in source.fall_alerts:
-            for r in source.resolutions:
-                if r.time >= alert.time:
-                    allowed |= {Decimal(n) for n in divmod(int((r.time - alert.time).total_seconds()), 60)}
+        # 警報到解除隔了多久（「3 分 10 秒後」「1 小時 15 分後」）、已解除幾次、幾筆解除沒配到警報：
+        # 只算 alert_outcomes 實際配到的那一組，和報告用同一個配對，不放寬成任意兩筆相減
+        outcomes = alert_outcomes(source)
+        resolved = [(a, r) for a, r in outcomes.pairs if r is not None]
+        for alert, r in resolved:
+            minutes, seconds = divmod(int((r.time - alert.time).total_seconds()), 60)
+            allowed |= {Decimal(minutes), Decimal(seconds), *map(Decimal, divmod(minutes, 60))}
+        allowed |= {Decimal(sum(1 for a, _ in resolved if not a.distress_call)),
+                    Decimal(sum(1 for a, _ in resolved if a.distress_call)), Decimal(len(outcomes.unpaired))}
+        known = ("noNeedHelp", "standUp")
+        allowed |= {Decimal(sum(1 for r in outcomes.unpaired if r.trigger == t)) for t in known}
+        allowed.add(Decimal(sum(1 for r in outcomes.unpaired if r.trigger not in known)))
         times += [p.start for p in source.online] + [p.end for p in source.online]
         if source.ended_offline is not None:
             times.append(source.ended_offline)

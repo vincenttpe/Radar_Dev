@@ -5,7 +5,7 @@
 import json
 from pathlib import Path
 
-from radar_agent.caregiver import caregiver_report, caregiver_text, event_notes
+from radar_agent.caregiver import caregiver_report, caregiver_text, event_notes, report_data
 from radar_agent.device_events import summarize
 from radar_agent.output_check import check_output
 
@@ -90,8 +90,8 @@ def test_interrupted_and_ongoing_visits_are_not_dropped():
     records = (timeline("09:00:00", "09:10:00", [("09:08:00", "09:30:00")])
                + timeline("09:40:00", "09:50:00", [("09:45:00", "10:30:00")]))
     assert caregiver_text(summarize(records), place="1 號廁所") == (
-        "1 號廁所 10/14：沒有偵測到有人使用。\n另有 1 次使用途中裝置斷線，停留時間不明。\n"
-        "資料結束時仍有人在內（09:45 起）。\n"
+        "1 號廁所 10/14：沒有偵測到有人使用。資料結束時仍有人在內（09:45 起）。\n"
+        "另有 1 次使用途中裝置斷線，停留時間不明。\n"
         "在線期間沒有跌倒警報、主動呼救或久待警報。\n"
         "09:10–09:40 裝置斷線，這段時間無法判斷是否有跌倒。"
     )
@@ -559,6 +559,51 @@ def test_a_resolution_without_an_alert_is_still_reported():
     records = [*timeline("09:00:00", "09:30:00"), _resolved("09:05:00", "noNeedHelp"), _resolved("09:06:00", "standUp")]
     text = caregiver_text(summarize(records), place="1 號廁所")
     assert "另有語音回覆沒事 1 次（09:05）。" in text and "另有偵測到起身、警報解除 1 次（09:06）。" in text
+    # 可能是資料開始前的警報：【重點】不能寫「沒有警報」（2026-10-29 決定）
+    assert caregiver_report(summarize(records), place="1 號廁所").startswith("【重點】另有 2 筆解除紀錄找不到對應的警報。")
+
+
+def test_a_second_resolution_after_the_same_alert_is_reported_separately():
+    """配對規則：警報之後、下一次警報之前的第一筆解除；第二筆另外寫，不算這次警報的。"""
+    records = [*timeline("09:00:00", "09:30:00"), _fall("09:02:00", "fusion", "conversation"),
+               _resolved("09:03:00", "noNeedHelp"), _resolved("09:04:00", "standUp")]
+    text = caregiver_text(summarize(records), place="1 號廁所")
+    assert "跌倒警報 1 次：09:02 長者回覆需要協助，1 分鐘後長者回覆沒事，警報解除。" in text
+    assert "另有偵測到起身、警報解除 1 次（09:04）。" in text
+
+
+def test_resolution_with_an_unknown_trigger_is_written_without_guessing_why():
+    records = [*timeline("09:00:00", "09:30:00"), _fall("09:02:00", "radar", "timeout", delaysec=10),
+               _resolved("09:03:00", "absence"), _resolved("09:20:00", "absence")]
+    summary = summarize(records)
+    text = caregiver_text(summary, place="1 號廁所")
+    assert "09:02 語音詢問 10 秒未獲回應，1 分鐘後警報解除。" in text
+    assert "另有警報解除 1 次（09:20）。" in text
+    assert check_output(caregiver_report(summary, place="1 號廁所"), summary, place="1 號廁所") == []
+
+
+def test_highlights_count_only_the_alerts_that_were_resolved():
+    records = [*timeline("10:00:00", "10:40:00"), _fall("10:10:00", "radar", "timeout"), _resolved("10:10:30", "standUp"),
+               _fall("10:20:00", "radar", "timeout"), _resolved("10:20:30", "standUp"), _fall("10:30:00", "radar", "timeout")]
+    data = report_data(summarize(records), place="1 號廁所")
+    assert data["highlights"] == "【重點】10:30 跌倒警報，資料中沒有解除紀錄，請確認是否已有人到場；跌倒警報 2 次都已解除。"
+
+
+def test_an_hour_or_more_is_written_in_hours_and_minutes():
+    records = [*timeline("10:00:00", "11:40:00"), _fall("10:10:00", "radar", "timeout"), _resolved("11:25:07", "standUp")]
+    summary = summarize(records)
+    report = caregiver_report(summary, place="1 號廁所")
+    assert "10:10 語音詢問未獲回應，1 小時 15 分後偵測到起身，警報解除。" in report
+    assert check_output(report, summary, place="1 號廁所") == []
+
+
+def test_check_allows_only_the_elapsed_time_of_the_paired_resolution():
+    """10:10 的警報配到 10:12 的解除；10:27 那筆不屬於它，「17 分鐘後」不能通過。"""
+    records = [*timeline("10:00:00", "10:40:00"), _fall("10:10:00", "radar", "timeout"), _resolved("10:12:00", "standUp"),
+               _fall("10:20:00", "radar", "timeout"), _resolved("10:25:00", "standUp"), _resolved("10:27:00", "standUp")]
+    summary = summarize(records)
+    assert check_output("10:10 跌倒警報，2 分鐘後偵測到起身。", summary, place="1 號廁所") == []
+    assert check_output("10:10 跌倒警報，17 分鐘後偵測到起身。", summary, place="1 號廁所") == ["數字 17 不在事實裡"]
 
 
 def test_highlights_for_ongoing_visit_and_device_problems():
