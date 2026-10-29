@@ -81,7 +81,7 @@ def test_field_data_page_is_labelled_as_field_data_and_has_no_trend(build, tmp_p
     assert data["summary"].startswith("2 號廁所 10/14：")
     assert len(data["events"]) == 8
     assert [q["id"] for q in data["ask"]] == ["falls", "calls", "longstay", "visits", "offline", "alerts"]
-    assert all(q["answer"].startswith("2 號廁所 10/14 ") for q in data["ask"])
+    assert all(q["answer"].startswith("2 號廁所在 10/14 ") for q in data["ask"])
 
 
 def test_field_data_page_refuses_unmasked_or_empty_input(build, tmp_path):

@@ -1,7 +1,7 @@
 """事件提問（radar-ask）：模型只選題號，答案由事件事實套固定句型，答案要通過輸出檢查。
 
 事件用 Demo 模擬資料（data/samples_demo/bathroom_morning.jsonl）與 model_eval 的模擬題組，不含真實資料。
-答案句型於 2026-10-19 確認；用語一改這裡就會失敗。
+題目於 2026-10-19 確認，答案的口語說法於 2026-10-28 確認（docs/21）；用語一改這裡就會失敗。
 """
 import hashlib
 import json
@@ -32,10 +32,10 @@ class Scripted:
 
 def test_falls_answer_states_disconnection_instead_of_claiming_none():
     assert answer("falls", SUMMARY, place="1 號廁所") == (
-        "1 號廁所 10/14 08:00–11:59：在線期間跌倒警報 2 次（08:32、09:16）。\n"
-        "語音回覆沒事 1 次。\n"
-        "11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。\n"
-        "在線期間另有主動呼救 1 次（10:03）。"
+        "1 號廁所在 10/14 08:00–11:59 這段時間，在線期間有 2 次跌倒警報，分別在 08:32、09:16。\n"
+        "長者用語音回覆「沒事」的有 1 次。\n"
+        "11:10–11:25 裝置斷線，這段時間有沒有跌倒，系統無法判斷。\n"
+        "另外在線期間還有主動呼救 1 次（10:03），這個不算在跌倒警報裡。"
     )
 
 
@@ -47,7 +47,7 @@ def test_alerts_answer_lists_the_same_prompts_as_the_report():
 
 def test_no_data_is_never_answered_as_nothing_happened():
     for q in EVENT_QUESTIONS:
-        assert answer(q.id, CASES["E11"], place=PLACE) == f"{PLACE}：沒有收到資料，無法判斷。"
+        assert answer(q.id, CASES["E11"], place=PLACE) == f"{PLACE}這段時間沒有收到任何資料，所以沒辦法判斷。"
 
 
 @pytest.mark.parametrize("case", sorted(CASES))
@@ -58,8 +58,8 @@ def test_every_answer_passes_the_output_check(case):
 
 
 def test_quiet_period_says_so():
-    assert answer("alerts", CASES["E1"], place=PLACE).endswith("這段時間沒有警報。")
-    assert answer("offline", CASES["E1"], place=PLACE).endswith("這段時間裝置都在線。")
+    assert answer("alerts", CASES["E1"], place=PLACE).endswith("這段時間，沒有任何警報。")
+    assert answer("offline", CASES["E1"], place=PLACE).endswith("這段時間，裝置都有連線，沒有斷線。")
 
 
 def test_model_picks_a_number_and_the_answer_comes_from_the_facts():
@@ -67,7 +67,7 @@ def test_model_picks_a_number_and_the_answer_comes_from_the_facts():
     reply = ask_events("有人待很久嗎", SUMMARY, place="1 號廁所", model=model)
     data = reply.data()
     assert data["question"]["id"] == "longstay" and data["confirm"] == "您是想問「有沒有人待太久？久待警報有幾次？」嗎？"
-    assert data["answer"].startswith("1 號廁所 10/14 08:00–11:59：在線期間久待警報 1 次（10:45）。")
+    assert data["answer"].startswith("1 號廁所在 10/14 08:00–11:59 這段時間，在線期間有 1 次久待警報，在 10:45。")
     assert (data["model"], data["prompt_version"], data["rejected"]) == ("scripted", "event-prompt-v1", [])
     assert "有人待很久嗎" not in json.dumps(data, ensure_ascii=False), "不保存讀者打的原文"
 
@@ -101,7 +101,7 @@ def _run(capsys, *argv):
 def test_cli_pick_skips_the_model(capsys):
     code, out, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--pick", "visits")
     assert code == 0
-    assert out == "您是想問「用了幾次？最久待多久？」嗎？\n1 號廁所 10/14 08:00–11:59：有人使用 5 次，最長一次 22 分鐘。\n11:10–11:25 裝置斷線，這段時間無法判斷使用情形。\n"
+    assert out == "您是想問「用了幾次？最久待多久？」嗎？\n1 號廁所在 10/14 08:00–11:59 這段時間，一共有人用了 5 次，最久的一次待了 22 分鐘。\n11:10–11:25 裝置斷線，這段時間的使用情形，系統無法判斷。\n"
 
 
 def test_cli_without_a_model_shows_the_menu(capsys):
@@ -145,19 +145,19 @@ UNREADABLE = summarize(
 @pytest.mark.parametrize("qid", [q.id for q in EVENT_QUESTIONS])
 def test_device_going_offline_before_the_data_ends_is_never_answered_as_nothing(qid):
     text = answer(qid, ENDED_OFFLINE, place=PLACE)
-    assert "都在線" not in text and "這段時間沒有警報" not in text
-    assert "09:00 起裝置斷線" in text
+    assert "都有連線" not in text and "這段時間，沒有任何警報" not in text
+    assert "09:00 之後裝置就斷線了" in text
     assert check_output(text, ENDED_OFFLINE, place=PLACE) == []
 
 
 def test_offline_before_the_end_scopes_counts_to_online_time():
     assert "在線期間久待警報 0 次" in answer("longstay", ENDED_OFFLINE, place=PLACE)
-    assert answer("alerts", ENDED_OFFLINE, place=PLACE).startswith(f"{PLACE} 10/14 09:00：在線期間沒有警報。")
+    assert answer("alerts", ENDED_OFFLINE, place=PLACE).startswith(f"{PLACE}在 10/14 09:00，在線期間沒有任何警報。")
 
 
 @pytest.mark.parametrize("qid", [q.id for q in EVENT_QUESTIONS])
 def test_unreadable_records_are_mentioned_in_every_answer(qid):
-    assert answer(qid, UNREADABLE, place=PLACE).endswith("另有 1 筆紀錄無法判讀，請通知資訊人員。")
+    assert answer(qid, UNREADABLE, place=PLACE).endswith("另外有 1 筆紀錄系統看不懂，請通知資訊人員處理。")
 
 
 def test_check_rejects_zero_longstay_or_all_online_when_the_device_went_offline():
@@ -165,11 +165,12 @@ def test_check_rejects_zero_longstay_or_all_online_when_the_device_went_offline(
         "裝置有斷線，不能寫「久待警報 0 次」而不註明在線期間"
     ]
     assert check_output("這段時間裝置都在線。", ENDED_OFFLINE, place=PLACE) == ["裝置有斷線，不能寫「裝置都在線」"]
+    assert check_output("裝置都有連線，沒有斷線。", ENDED_OFFLINE, place=PLACE) == ["裝置有斷線，不能寫「裝置都有連線」"]
 
 
 def test_falls_answer_mentions_distress_calls_without_counting_them_as_falls():
     text = answer("falls", CASES["E4"], place=PLACE)
-    assert "跌倒警報 0 次" in text and "另有主動呼救 1 次（09:06）" in text
+    assert "跌倒警報 0 次" in text and "還有主動呼救 1 次（09:06），這個不算在跌倒警報裡" in text
 
 
 def test_reply_carries_the_period_it_covers():
@@ -198,14 +199,14 @@ GAP_THEN_OFFLINE = summarize(
 @pytest.mark.parametrize("qid", [q.id for q in EVENT_QUESTIONS])
 def test_offline_at_the_end_is_always_stated(summary, qid):
     text = answer(qid, summary, place=PLACE)
-    assert "09:00 起裝置斷線" in text or "09:10 起裝置斷線" in text, text
-    assert "都在線" not in text and "這段時間沒有警報" not in text
+    assert "09:00 之後裝置就斷線了" in text or "09:10 之後裝置就斷線了" in text, text
+    assert "都有連線" not in text and "這段時間，沒有任何警報" not in text
     assert check_output(text, summary, place=PLACE) == []
 
 
 def test_gap_and_end_offline_are_both_listed():
     text = answer("offline", GAP_THEN_OFFLINE, place=PLACE)
-    assert "09:00–09:10 裝置斷線" in text and "09:10 起裝置斷線，之後無法判斷是否有跌倒。" in text
+    assert "09:00–09:10 裝置斷線" in text and "09:10 之後裝置就斷線了，之後有沒有跌倒，系統無法判斷。" in text
 
 
 def test_repeated_offline_at_the_end_starts_at_the_first_one():
@@ -215,7 +216,7 @@ def test_repeated_offline_at_the_end_starts_at_the_first_one():
     assert summary.ended_offline is not None and f"{summary.ended_offline:%H:%M:%S}" == "08:00:10"
     for q in EVENT_QUESTIONS:
         text = answer(q.id, summary, place=PLACE)
-        assert "08:00 起裝置斷線" in text and "08:05" not in text
+        assert "08:00 之後裝置就斷線了" in text and "08:05" not in text
         assert check_output(text, summary, place=PLACE) == []
 
 
@@ -229,7 +230,7 @@ def test_answer_head_names_the_period_and_crosses_midnight():
                           {"timestamp": "2026-10-15 00:00:05", "topic": T, "resolution": None,
                            "payload": {"mode": "radar", "event": "absence", "trigger": "track", "userReply": False}}])
     text = answer("visits", two_days, place=PLACE)
-    assert text.startswith(f"{PLACE} 10/14 23:58–10/15 00:00：")
+    assert text.startswith(f"{PLACE}在 10/14 23:58–10/15 00:00 這段時間，")
     assert check_output(text, two_days, place=PLACE) == []
 
 
@@ -237,7 +238,7 @@ def test_answer_head_writes_one_time_when_start_and_end_share_a_minute():
     """資料頭尾在同一分鐘時只寫一個時間，不寫「09:00–09:00」（#66）。"""
     for summary in (ENDED_OFFLINE, summarize([_rec("09:00:00", "absence")])):
         text = answer("visits", summary, place=PLACE)
-        assert text.startswith(f"{PLACE} 10/14 09:00：") and "09:00–09:00" not in text
+        assert text.startswith(f"{PLACE}在 10/14 09:00，") and "09:00–09:00" not in text
         assert check_output(text, summary, place=PLACE) == []
 
 
@@ -254,3 +255,66 @@ def test_prompt_version_is_bumped_when_the_prompt_or_menu_changes():
     digest = hashlib.sha256(build_prompt("{提問}", EVENT_QUESTIONS).encode("utf-8")).hexdigest()[:16]
     assert (PROMPT_VERSION, digest) == ("event-prompt-v1", "e8fa8590ffbc5d73"), \
         "EVENT_QUESTIONS 或 ask.build_prompt 改了：升 event_ask.PROMPT_VERSION，再更新這裡的版本與雜湊"
+
+
+# ── 口語說法（2026-10-28 確認，docs/21）──────────────────────────────
+
+@pytest.mark.parametrize("summary, head", [(SUMMARY, "1 號廁所在 10/14 08:00–11:59 這段時間，"),
+                                           (ENDED_OFFLINE, "1 號廁所在 10/14 09:00，")],
+                         ids=["period", "one-minute"])
+def test_answers_never_start_with_yes(summary, head):
+    """「有沒有人跌倒？」回「有」會被讀成真的有人跌倒；系統收到的只是警報（docs/21 原則 2）。
+    頭尾在同一分鐘時開頭沒有「這段時間」（docs/21 C1），兩種開頭都要看。"""
+    for q in EVENT_QUESTIONS:
+        text = answer(q.id, summary, place="1 號廁所")
+        assert text.startswith(head), (q.id, text)
+        assert not text.removeprefix(head).startswith(("有，", "沒有，")), (q.id, text)
+
+
+def test_one_alert_is_written_with_its_time_and_longstay_is_explained():
+    text = answer("longstay", SUMMARY, place="1 號廁所")
+    assert "在線期間有 1 次久待警報，在 10:45。\n久待警報是指有人停留超過裝置設定的時間。" in text
+
+
+def test_longstay_explanation_only_when_there_is_one():
+    assert "久待警報是指" not in answer("longstay", CASES["E1"], place=PLACE)
+
+
+def test_ongoing_visit_is_stated_without_adding_advice():
+    """資料結束時有人在內：照實寫，不加「要去看一下」這類新的處置建議（docs/21 待決 3）。"""
+    summary = summarize([*(_rec(f"09:00:{s:02d}", "absence") for s in range(0, 30, 5)),
+                         _rec("09:00:30", "presence"), _rec("09:00:35", "moving")])
+    text = answer("visits", summary, place=PLACE)
+    assert text.endswith("資料最後一筆的時候還有人在裡面，是 09:00 進去的。")
+    assert "看一下" not in text and "查看" not in text
+
+
+def test_no_visits_while_disconnected_is_scoped_to_online_time():
+    """斷線時不說「都沒有」：斷線那段不知道（docs/21 決定 C）。"""
+    assert answer("visits", ENDED_OFFLINE, place=PLACE).startswith(f"{PLACE}在 10/14 09:00，在線期間沒有偵測到有人使用。")
+    assert "都沒有偵測到有人使用" in answer("visits", summarize([_rec("09:00:00", "absence")]), place=PLACE)
+
+
+def test_visits_never_count_people():
+    """算的是造訪次數，不是人數（CONTEXT.md「造訪」、REVIEW.md 3.3）。"""
+    for summary in (SUMMARY, ENDED_OFFLINE, GAP_THEN_OFFLINE):
+        assert "多少人" not in answer("visits", summary, place=PLACE)
+
+
+def test_alerts_answer_uses_the_glossary_term():
+    assert "警報和處置提示照時間排：" in answer("alerts", SUMMARY, place="1 號廁所")
+
+
+def test_device_errors_are_in_every_answer():
+    summary = summarize([*(_rec(f"09:00:{s:02d}", "absence") for s in range(0, 30, 5)), _rec("09:00:30", "error"),
+                         *(_rec(f"09:00:{s:02d}", "absence") for s in range(35, 60, 5))])
+    assert summary.errors
+    for q in EVENT_QUESTIONS:
+        text = answer(q.id, summary, place=PLACE)
+        assert text.endswith("裝置回報錯誤 1 次（09:00），請通知資訊人員處理。"), (q.id, text)
+        assert check_output(text, summary, place=PLACE) == []
+
+
+def test_visit_cut_off_by_disconnection_is_stated():
+    text = answer("visits", GAP_THEN_OFFLINE, place=PLACE)
+    assert "另外有 1 次是用到一半裝置斷線，不知道待了多久。" in text

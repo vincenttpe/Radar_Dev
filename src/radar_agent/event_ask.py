@@ -3,7 +3,7 @@
 11 月中甲方 Demo 讓在地模型「有感」的功能（docs/11「11 月中甲方 Demo」）：模型跑在 Jetson 本機，
 提問與資料不出場域。流程照 ask.py：模型只回題號 → 先問「您是想問……嗎？」→ 讀者確認後才顯示答案；
 對應不到就列出選單讓讀者自己點。模型不寫答案，答案的數字都要通過輸出檢查。
-題目與答案句型於 2026-10-19 確認（docs/11）；改這裡屬單向門「給讀者的輸出與用語」（REVIEW.md 第 2 節）。
+題目於 2026-10-19 確認（docs/11），答案於 2026-10-28 改成口語說法（docs/21）；改這裡屬單向門「給讀者的輸出與用語」（REVIEW.md 第 2 節）。
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from radar_agent.ask import Match, Question, match_question
-from radar_agent.caregiver import SUMMARY_TOPICS, period_head, topic_sentences
+from radar_agent.caregiver import SUMMARY_TOPICS, ask_head, topic_sentences
 from radar_agent.device_events import Summary, read_records, summarize
 from radar_agent.local_model import add_model_args, model_from_args
 from radar_agent.output_check import check_output
@@ -45,9 +45,9 @@ def answer(question_id: str, summary: Summary, *, place: str) -> str:
     if question_id not in SUMMARY_TOPICS:
         raise KeyError(question_id)
     if not summary.online:
-        return f"{place}：沒有收到資料，無法判斷。"
+        return f"{place}這段時間沒有收到任何資料，所以沒辦法判斷。"
     lines = topic_sentences(question_id, summary, place)
-    return "\n".join([period_head(summary, place, clock=True) + lines[0], *lines[1:]])
+    return "\n".join([f"{ask_head(summary, place)}，{lines[0]}", *lines[1:]])
 
 
 def confirm_text(question: Question) -> str:
