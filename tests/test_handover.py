@@ -133,3 +133,9 @@ def test_known_limit_a_a_count_moved_to_another_event_is_not_caught():
     """已知限制（docs/21）：次數只比「這個數量有沒有出現」，主動呼救 1 次改成 2 次時，2 次在跌倒那行本來就有。"""
     reply = GOOD_BODY.replace("主動呼救有 1 次", "主動呼救有 2 次")
     assert rewrite_handover(DEMO, place=PLACE, model=FakeModel(reply)).layer == "model"
+
+
+def test_known_limit_a_swapped_durations_are_not_caught():
+    """已知限制（docs/21）：兩次警報的時間長度對調，每個時間長度都還在，檢查放過。"""
+    reply = (GOOD_BODY.replace("3 分 10 秒", "<X>").replace("2 分 35 秒", "3 分 10 秒").replace("<X>", "2 分 35 秒"))
+    assert rewrite_handover(DEMO, place=PLACE, model=FakeModel(reply)).layer == "model"
