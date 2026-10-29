@@ -189,6 +189,14 @@ def test_cli_refuses_endpoints_off_this_machine(serve_mod, capsys, endpoint):
     assert "只能是本機" in capsys.readouterr().err
 
 
+def test_help_does_not_offer_cmd(serve_mod, capsys):
+    with pytest.raises(SystemExit):
+        serve_mod.main(["--help"])
+    out = capsys.readouterr().out
+    assert "--endpoint" in out and "--echo" in out
+    assert "--cmd" not in out
+
+
 def test_cli_refuses_command_models(serve_mod, capsys):
     """任意指令可能把提問轉送到別台機器，畫面「在這台 Jetson 上執行」就不成立。"""
     assert serve_mod.main(["--cmd", "echo 1"]) == 2
