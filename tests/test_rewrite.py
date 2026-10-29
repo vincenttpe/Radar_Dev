@@ -12,8 +12,8 @@ from radar_agent.rewrite import PROMPT_VERSION, rewrite
 
 PLACE = "1 號廁所"
 ALL_ONLINE = summarize(timeline("09:00:00", "09:30:00", [("09:05:00", "09:13:00"), ("09:20:00", "09:21:30")]))
-# 範本：1 號廁所 10/14：有人使用 2 次，最長一次 8 分鐘。跌倒警報 0 次。久待警報 0 次。這段時間裝置都在線。
-GOOD = "1 號廁所在 10/14 有人使用 2 次，最久一次待了 8 分鐘；跌倒警報 0 次、久待警報 0 次，裝置一直在線。"
+# 範本：1 號廁所 10/14：有人使用 2 次，最長一次 8 分鐘。\n沒有跌倒警報、主動呼救或久待警報。
+GOOD = "1 號廁所在 10/14 有人使用 2 次，最久一次待了 8 分鐘；沒有跌倒警報、主動呼救，也沒有久待警報。"
 
 
 class FakeModel:
@@ -78,7 +78,7 @@ def test_dropping_the_disconnection_caveat_falls_back():
 def test_leading_zeros_in_times_are_not_counted_as_dropped_numbers():
     records = timeline("09:00:00", "09:10:00", [("09:02:00", "09:03:00")]) + timeline("09:40:00", "09:50:00")
     reply = (
-        "1 號廁所 10/14 有人使用 1 次，最長一次 1 分鐘。在線期間跌倒警報 0 次，在線期間久待警報 0 次。"
+        "1 號廁所 10/14 有人使用 1 次，停留 1 分鐘。在線期間沒有跌倒警報、主動呼救或久待警報。"
         "9:10 到 9:40 裝置斷線，這段時間無法判斷是否有跌倒。"
     )
     assert rewrite(summarize(records), place=PLACE, model=FakeModel(reply)).layer == "model"
@@ -123,3 +123,14 @@ def test_a_template_that_fails_its_own_check_is_not_handed_to_the_model():
     with pytest.raises(ValueError, match="範本沒通過輸出檢查"):
         rewrite(ALL_ONLINE, place="治療室", model=model)
     assert model.prompts == []
+
+
+def test_a_changed_duration_is_caught_even_when_the_new_number_is_another_fact():
+    """「8 分鐘」改成「9 分鐘」：9 是時刻 09:xx 裡的數字，只比數字會放過；次數與時間長度要整段對得上。"""
+    assert "範本沒有「9分」" in _fallback(ALL_ONLINE, GOOD.replace("8 分鐘", "9 分鐘"))
+
+
+def test_writing_none_as_zero_counts_falls_back():
+    """範本寫「沒有跌倒警報」（PR #37），模型改寫成「跌倒警報 0 次」也退回：範本沒有「0 次」，不讓模型自己換算。"""
+    reply = "1 號廁所在 10/14 有人使用 2 次，最久一次待了 8 分鐘；跌倒警報 0 次，沒有主動呼救或久待警報。"
+    assert "範本沒有「0次」" in _fallback(ALL_ONLINE, reply)

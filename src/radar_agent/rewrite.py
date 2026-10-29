@@ -81,6 +81,23 @@ def _kept_facts(template: str, text: str, source: Summary | Assessment) -> list[
     return problems
 
 
+# 「5 次」「22 分鐘」「3 分 10 秒」「1 筆」要整組對得上：numbers() 只比數字有沒有出現過，
+# 「5 次」改成「6 次」時，5 還在「10:05」裡、6 也可能是別的事實，會被放過（2026-10-29 交班重點的測試發現；rewrite() 也一起用）
+# 時間長度整段比：「3 分 10 秒」「1 小時 15 分」只比「10 秒」或「15 分」時，改掉前面的分、時會被放過
+# （2026-10-29 審查實測：「3 分 10 秒」改成「2 分 10 秒」被採用）。「分鐘」與「分」視為相同
+_QUANTITY = re.compile(r"(?<![\d:.])\d+(?:\.\d+)? ?(?:小時|分鐘|分|秒|次|筆)(?: ?\d+ ?(?:分鐘|分|秒))*")
+
+
+def _quantities(text: str) -> set[str]:
+    return {q.replace(" ", "").replace("分鐘", "分") for q in _QUANTITY.findall(text)}
+
+
+def _kept_quantities(template: str, text: str) -> list[str]:
+    before, after = _quantities(template), _quantities(text)
+    return ([f"漏掉「{q}」" for q in sorted(before - after)]
+            + [f"範本沒有「{q}」" for q in sorted(after - before)])
+
+
 def rewrite(
     source: Summary | Assessment, *, profile: Profile = "居服員", place: str = "", model: Model | None = None
 ) -> Rewritten:
@@ -103,7 +120,7 @@ def rewrite(
     return checked_rewrite(
         template, source, place=place, profile=profile, model=model,
         prompt=build_prompt(template), prompt_version=PROMPT_VERSION,
-        kept=lambda text: _kept_facts(template, text, source),
+        kept=lambda text: _kept_facts(template, text, source) + _kept_quantities(template, text),
     )
 
 
@@ -139,9 +156,8 @@ def checked_rewrite(
 
 
 # ── 交班重點的口語改寫（草案，2026-10-29；Jetson 內部 Demo 的實驗功能，docs/21）──────────
-# 原句由 caregiver.handover_text 產生（【重點】＋【事件摘要】）；模型只改寫事件摘要的說法。檢查比 rewrite() 多三項：
-# 每個時刻都要出現；次數與時間長度（「5 次」「1 筆」「3 分 10 秒」「1 小時 15 分」）整段對得上；
-# 不能加上範本沒有的時段詞與「我們」。numbers() 以集合比較，漏掉一個事件或改掉一個次數時，數字可能剛好在別處出現。
+# 原句由 caregiver.handover_text 產生（【重點】＋【事件摘要】）；模型只改寫事件摘要的說法。
+# 檢查和 rewrite() 同一道（含次數與時間長度整段比對），另加兩項：每個時刻都要出現；不能加上範本沒有的時段詞與「我們」。numbers() 以集合比較，漏掉一個事件或改掉一個次數時，數字可能剛好在別處出現。
 # 已知限制（docs/21）：數量只比「有沒有出現」、不比屬於哪個事件；「沒有……」改成「有……」也擋不到。
 # 所以頁面一定把原句和模型版並排顯示（測試版，2026-10-29 決定）。
 HANDOVER_PROMPT_VERSION = "handover-v0"
@@ -176,23 +192,6 @@ def _clock_times(text: str) -> set[tuple[int, int]]:
 
 def _kept_times(template: str, text: str) -> list[str]:
     return [f"漏掉時間 {h:02d}:{m:02d}" for h, m in sorted(_clock_times(template) - _clock_times(text))]
-
-
-# 「5 次」「22 分鐘」「3 分 10 秒」「1 筆」要整組對得上：numbers() 只比數字有沒有出現過，
-# 「5 次」改成「6 次」時，5 還在「10:05」裡、6 也可能是別的事實，會被放過（2026-10-29 測試發現）
-# 時間長度整段比：「3 分 10 秒」「1 小時 15 分」只比「10 秒」或「15 分」時，改掉前面的分、時會被放過
-# （2026-10-29 審查實測：「3 分 10 秒」改成「2 分 10 秒」被採用）。「分鐘」與「分」視為相同
-_QUANTITY = re.compile(r"(?<![\d:.])\d+(?:\.\d+)? ?(?:小時|分鐘|分|秒|次|筆)(?: ?\d+ ?(?:分鐘|分|秒))*")
-
-
-def _quantities(text: str) -> set[str]:
-    return {q.replace(" ", "").replace("分鐘", "分") for q in _QUANTITY.findall(text)}
-
-
-def _kept_quantities(template: str, text: str) -> list[str]:
-    before, after = _quantities(template), _quantities(text)
-    return ([f"漏掉「{q}」" for q in sorted(before - after)]
-            + [f"範本沒有「{q}」" for q in sorted(after - before)])
 
 
 def _added_words(template: str, text: str) -> list[str]:
