@@ -34,7 +34,8 @@ def test_page_text_is_the_radar_caregiver_output(repo, data, capsys):
     out = capsys.readouterr().out.splitlines()
     prompts = out[out.index("【處置提示】") + 1:out.index("【照護紀錄草稿】") - 1]
     records = out[out.index("【照護紀錄草稿】") + 1:]
-    assert data["summary"] == out[1]
+    assert data["highlights"] == out[0]
+    assert data["summary"] == "\n".join(out[out.index("【事件摘要】") + 1:out.index("【處置提示】") - 1])
     assert [f"{e['label']} {e['prompt']}" for e in data["events"]] == prompts
     assert [e["record"] for e in data["events"]] == records
 

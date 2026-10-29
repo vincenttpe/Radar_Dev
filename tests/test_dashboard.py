@@ -37,7 +37,8 @@ def test_caregiver_view_uses_the_radar_caregiver_and_radar_ask_output(repo, data
     assert caregiver_main([events, "--place", place]) == 0
     out = capsys.readouterr().out.splitlines()
     cg = data["caregiver"]
-    assert cg["summary"] == out[1]
+    assert cg["highlights"] == out[0]
+    assert cg["summary"] == "\n".join(out[out.index("【事件摘要】") + 1:out.index("【處置提示】") - 1])
     prompts = out[out.index("【處置提示】") + 1:out.index("【照護紀錄草稿】") - 1]
     assert [f"{e['label']} {e['prompt']}" for e in cg["events"]] == prompts
     assert [e["record"] for e in cg["events"]] == out[out.index("【照護紀錄草稿】") + 1:]
@@ -120,7 +121,8 @@ def test_calm_morning_has_no_alerts_and_every_device_online(data):
     assert set(calm) == {"caregiver", "family", "devices", "devices_ref"}, "維修紀錄與後台不隨情境變"
     cg = calm["caregiver"]
     assert cg["incidents"] == [] and cg["events"] == [] and cg["orphans"] == [] and cg["offline"] == []
-    assert cg["summary"] == "1 號廁所 10/14：有人使用 5 次，最長一次 22 分鐘。跌倒警報 0 次。主動呼救 0 次。久待警報 0 次。這段時間裝置都在線。"
+    assert cg["highlights"] == "【重點】這段時間沒有警報，裝置都在線。"
+    assert cg["summary"] == "1 號廁所 10/14：有人使用 5 次，最長一次 22 分鐘。\n沒有跌倒警報、主動呼救或久待警報。"
     assert len(cg["visits"]) == len(data["caregiver"]["visits"]), "進出次數和事情多的上午一樣"
     assert cg["trend"] == data["caregiver"]["trend"]
     assert calm["family"]["incidents"] == [] and calm["family"]["source"] == "sim"

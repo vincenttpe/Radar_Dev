@@ -32,8 +32,9 @@ class Scripted:
 
 def test_falls_answer_states_disconnection_instead_of_claiming_none():
     assert answer("falls", SUMMARY, place="1 號廁所") == (
-        "1 號廁所 10/14 08:00–11:59：在線期間跌倒警報 2 次（08:32、09:16）。\n"
-        "語音回覆沒事 1 次。\n"
+        "1 號廁所 10/14 08:00–11:59：在線期間跌倒警報 2 次：\n"
+        "　08:32 語音詢問 10 秒未獲回應，30 秒後長者回覆沒事，警報解除；\n"
+        "　09:16 長者回覆需要協助，3 分 10 秒後偵測到起身，警報解除。\n"
         "11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。\n"
         "在線期間另有主動呼救 1 次（10:03）。"
     )
@@ -151,7 +152,7 @@ def test_device_going_offline_before_the_data_ends_is_never_answered_as_nothing(
 
 
 def test_offline_before_the_end_scopes_counts_to_online_time():
-    assert "在線期間久待警報 0 次" in answer("longstay", ENDED_OFFLINE, place=PLACE)
+    assert "在線期間沒有久待警報" in answer("longstay", ENDED_OFFLINE, place=PLACE)
     assert answer("alerts", ENDED_OFFLINE, place=PLACE).startswith(f"{PLACE} 10/14 09:00：在線期間沒有警報。")
 
 
@@ -164,12 +165,15 @@ def test_check_rejects_zero_longstay_or_all_online_when_the_device_went_offline(
     assert check_output("久待警報 0 次。", ENDED_OFFLINE, place=PLACE) == [
         "裝置有斷線，不能寫「久待警報 0 次」而不註明在線期間"
     ]
+    assert check_output("沒有久待警報。", ENDED_OFFLINE, place=PLACE) == [
+        "裝置有斷線，不能寫「沒有跌倒警報／主動呼救／久待警報」這類句子而不註明在線期間"
+    ]
     assert check_output("這段時間裝置都在線。", ENDED_OFFLINE, place=PLACE) == ["裝置有斷線，不能寫「裝置都在線」"]
 
 
 def test_falls_answer_mentions_distress_calls_without_counting_them_as_falls():
     text = answer("falls", CASES["E4"], place=PLACE)
-    assert "跌倒警報 0 次" in text and "另有主動呼救 1 次（09:06）" in text
+    assert "沒有跌倒警報" in text and "另有主動呼救 1 次（09:06）" in text
 
 
 def test_reply_carries_the_period_it_covers():

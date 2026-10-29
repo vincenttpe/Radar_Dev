@@ -111,7 +111,8 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .records li:last-child { border-bottom: 0; }
 .records li.latest { color: var(--accent); }
 .copied { font-size: 13px; color: var(--ok); min-height: 1.2em; }
-.summary { font-size: 16px; line-height: 1.8; max-width: 68ch; margin: 0; }
+.summary { font-size: 16px; line-height: 1.8; max-width: 68ch; margin: 0; white-space: pre-line; }
+.summary.key { font-weight: 600; margin-bottom: 8px; }
 .summary.wait { color: var(--muted); }
 
 
@@ -232,7 +233,7 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
   <section aria-labelledby="h-sum">
     <h2 id="h-sum">事件摘要<button type="button" class="gap-badge" data-gap="7" aria-label="Gap 7">7</button></h2>
-    <div class="panel"><p class="summary" id="summary"></p></div>
+    <div class="panel"><p class="summary key" id="highlights" hidden></p><p class="summary" id="summary"></p></div>
   </section>
 
   <section aria-labelledby="h-ask">
@@ -283,7 +284,8 @@ const DATA = {
  "day": "2026-10-14",
  "from": "2026-10-14 08:00:00",
  "to": "2026-10-14 11:59:55",
- "summary": "1 號廁所 10/14：有人使用 5 次，最長一次 22 分鐘。在線期間跌倒警報 2 次（08:32、09:16）。在線期間主動呼救 1 次（10:03）。語音回覆沒事 1 次。在線期間久待警報 1 次（10:45）。11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。",
+ "highlights": "【重點】跌倒警報 2 次、主動呼救 1 次都已解除；10:45 有 1 次久待警報；11:10–11:25 裝置斷線，期間狀況不明，請通知資訊人員。",
+ "summary": "1 號廁所 10/14：有人使用 5 次，最長一次 22 分鐘。\n在線期間跌倒警報 2 次：\n　08:32 語音詢問 10 秒未獲回應，30 秒後長者回覆沒事，警報解除；\n　09:16 長者回覆需要協助，3 分 10 秒後偵測到起身，警報解除。\n在線期間主動呼救 1 次：10:03，2 分 35 秒後偵測到起身，警報解除。\n在線期間久待警報 1 次（10:45）。\n11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。",
  "visits": [
   [
    "2026-10-14 08:05:00",
@@ -382,12 +384,12 @@ const DATA = {
   {
    "id": "falls",
    "text": "有沒有人跌倒？",
-   "answer": "1 號廁所 10/14 08:00–11:59：在線期間跌倒警報 2 次（08:32、09:16）。\n語音回覆沒事 1 次。\n11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。\n在線期間另有主動呼救 1 次（10:03）。"
+   "answer": "1 號廁所 10/14 08:00–11:59：在線期間跌倒警報 2 次：\n　08:32 語音詢問 10 秒未獲回應，30 秒後長者回覆沒事，警報解除；\n　09:16 長者回覆需要協助，3 分 10 秒後偵測到起身，警報解除。\n11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。\n在線期間另有主動呼救 1 次（10:03）。"
   },
   {
    "id": "calls",
    "text": "有沒有人主動呼救？",
-   "answer": "1 號廁所 10/14 08:00–11:59：在線期間主動呼救 1 次（10:03）。\n11:10–11:25 裝置斷線，這段時間無法判斷是否有人呼救。"
+   "answer": "1 號廁所 10/14 08:00–11:59：在線期間主動呼救 1 次：10:03，2 分 35 秒後偵測到起身，警報解除。\n11:10–11:25 裝置斷線，這段時間無法判斷是否有人呼救。"
   },
   {
    "id": "longstay",
@@ -578,6 +580,7 @@ function render() {
   const done = shown === events.length;
   const sum = $("summary"); sum.className = "summary" + (done ? "" : " wait");
   sum.textContent = done ? DATA.summary : "重播中。播完全部事件後顯示這段時間的摘要。";
+  $("highlights").hidden = !done; $("highlights").textContent = DATA.highlights;
   $("btn-prev").disabled = shown === 0; $("btn-next").disabled = done; $("btn-all").disabled = done;
   renderAsk(done);
 }
