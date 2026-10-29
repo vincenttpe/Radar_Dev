@@ -2,6 +2,7 @@
 
 模型以假模型、本機 HTTP 伺服器與子行程代替；題組、範本、檢查都用真的。
 """
+import hashlib
 import json
 import sys
 import threading
@@ -11,6 +12,8 @@ from typing import ClassVar
 
 import pytest
 
+from radar_agent.ask import PROMPT_VERSION as ASK_PROMPT_VERSION
+from radar_agent.ask import build_prompt
 from radar_agent.caregiver import caregiver_text, event_notes
 from radar_agent.device_events import Summary
 from radar_agent.model_eval import (
@@ -230,10 +233,17 @@ def test_wrong_question_is_counted_separately_from_no_match():
     assert "[對錯題]" in text
 
 
+def test_ask_prompt_version_is_bumped_when_the_prompt_or_menu_changes():
+    """紀錄只記 prompt_version；知識圖譜提問的選單或提示詞改了卻沒升版，就分不出模型當時看到哪一版。"""
+    digest = hashlib.sha256(build_prompt("{提問}", ASK_MENU).encode("utf-8")).hexdigest()[:16]
+    assert (ASK_PROMPT_VERSION, digest) == ("ask-v0", "cedf9111e4a66162"), \
+        "ASK_MENU 或 ask.build_prompt 改了：升 ask.PROMPT_VERSION，再更新這裡的版本與雜湊"
+
+
 def test_cli_questions(capsys):
     assert main(["--echo", "--questions"]) == 0
     out = capsys.readouterr().out
-    assert out.startswith(f"模型：echo　題數：{len(ASK_CASES)}　正確 ")
+    assert out.startswith(f"提示詞版本：ask-v0\n模型：echo　題數：{len(ASK_CASES)}　正確 ")
     assert "模型回答不是單一編號" in out
 
 
@@ -289,7 +299,7 @@ def test_cli_refuses_chinese_models_before_calling_them(argv, capsys):
 def test_cli_event_questions(capsys):
     assert main(["--echo", "--event-questions"]) == 0
     out = capsys.readouterr().out
-    assert out.startswith(f"模型：echo　題數：{len(EVENT_ASK_CASES)}　正確 ")
+    assert out.startswith(f"提示詞版本：event-prompt-v1\n模型：echo　題數：{len(EVENT_ASK_CASES)}　正確 ")
 
 
 def test_empty_command_counts_as_model_errors_instead_of_crashing(capsys):
