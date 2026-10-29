@@ -326,3 +326,27 @@ def test_event_summary_without_data_is_not_sent_to_the_model(server):
     code, data = _compare(url, kind="summary")
     assert code == 200 and (data["layer"], data["rejected"], data["no_reply"]) == ("template", [], False)
     assert data["text"] == "1 號廁所：沒有收到資料，無法判斷。"
+
+
+class Replies:
+    """假模型：回固定文字。"""
+
+    def __init__(self, reply: str) -> None:
+        self.name, self.reply = "replies", reply
+
+    def __call__(self, prompt: str) -> str:
+        return self.reply
+
+
+@pytest.mark.parametrize("reply", ["", "   \n "])
+def test_empty_model_output_counts_as_no_reply(server, reply):
+    _, url = server(Replies(reply))
+    code, data = _compare(url)
+    assert code == 200 and (data["layer"], data["candidate"], data["no_reply"]) == ("template", None, True)
+    assert data["rejected"] == ["模型沒有輸出"]
+
+
+def test_adopted_rewrite_is_not_no_reply(server):
+    _, url = server(Echoing())
+    code, data = _compare(url, kind="summary")
+    assert code == 200 and (data["layer"], data["no_reply"]) == ("model", False)
