@@ -159,16 +159,17 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .chat .meta { font: 12.5px var(--f-mono); color: var(--muted); }
 .chat .yesno { display: flex; gap: 8px; margin-top: 4px; }
 .jetson-stats { font-family: var(--f-mono); }
-.handover { display: grid; gap: 10px; margin-top: 14px; }
-.handover-text p { margin: 0; font-size: 16px; line-height: 1.8; }
-.handover-text.wait p { color: var(--muted); }
-.handover .meta { font: 12.5px var(--f-mono); color: var(--muted); }
-.handover .row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
-.handover-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 16px; }
-.handover-cols > div { display: grid; gap: 6px; align-content: start; border-top: 1px solid var(--line); padding-top: 8px; }
-.handover-cols h3 { margin: 0; font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: .04em; }
-.handover-text.unused p { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
-.handover .tag { font: 600 12px var(--f-body); color: var(--check); }
+.compare { display: grid; gap: 10px; margin-top: 14px; }
+.compare-text p { margin: 0; font-size: 16px; line-height: 1.8; }
+.compare-text.wait p { color: var(--muted); }
+.compare .meta { font: 12.5px var(--f-mono); color: var(--muted); }
+.compare .row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.compare-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 16px; }
+.compare-cols > div { display: grid; gap: 6px; align-content: start; border-top: 1px solid var(--line); padding-top: 8px; }
+.compare-cols h3 { margin: 0; font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: .04em; }
+.compare-text.unused p { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
+.compare .tag { font: 600 12px var(--f-body); color: var(--check); }
+.compare-live { display: grid; gap: 6px; }
 </style>
 
 <div class="sim"><div class="wrap">
@@ -245,14 +246,14 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   <section aria-labelledby="h-sum">
     <h2 id="h-sum">事件摘要<button type="button" class="gap-badge" data-gap="7" aria-label="Gap 7">7</button></h2>
     <div class="panel"><p class="summary key" id="highlights" hidden></p><p class="summary" id="summary"></p>
-      <div class="handover" id="handover" hidden>
-        <div class="row"><button type="button" id="btn-cmp-summary" data-kind="summary">比對：事件摘要</button><button type="button" id="btn-handover" data-kind="handover">比對：交班重點</button><span class="meta">測試版：左邊沒用模型（規則產生），右邊用在地模型改寫；沒通過檢查的模型輸出也列出並標「未採用」</span></div>
-        <div class="handover-text" id="handover-head"></div>
-        <div class="handover-cols" id="handover-cols" hidden>
-          <div><h3>沒用模型（規則產生）</h3><div class="handover-text" id="handover-orig"></div></div>
-          <div><h3>用在地模型改寫</h3><span class="tag" id="handover-tag" hidden>未採用（沒通過檢查，讀者看到的是左邊的原句）</span><div class="handover-text" id="handover-model" aria-live="polite"></div></div>
+      <div class="compare" id="compare" hidden>
+        <div class="row"><button type="button" id="btn-cmp-summary" data-kind="summary" aria-pressed="false">比對：事件摘要</button><button type="button" id="btn-cmp-handover" data-kind="handover" aria-pressed="false">比對：交班重點</button><span class="meta">測試版：左邊沒用模型（規則產生），右邊用在地模型改寫；沒通過檢查的模型輸出也列出並標「未採用」</span></div>
+        <div class="compare-text" id="compare-head"></div>
+        <div class="compare-cols" id="compare-cols" hidden>
+          <div><h3>沒用模型（規則產生）</h3><div class="compare-text" id="compare-orig"></div></div>
+          <div><h3>用在地模型改寫</h3><div class="compare-live" aria-live="polite"><span class="tag" id="compare-tag" hidden>未採用（沒通過檢查，讀者看到的是左邊的原句）</span><div class="compare-text" id="compare-model"></div></div></div>
         </div>
-        <span class="meta" id="handover-meta" aria-live="polite"></span>
+        <span class="meta" id="compare-meta" aria-live="polite"></span>
       </div>
     </div>
   </section>
@@ -608,7 +609,7 @@ function render() {
   $("highlights").hidden = !done; $("highlights").textContent = DATA.highlights;
   $("btn-prev").disabled = shown === 0; $("btn-next").disabled = done; $("btn-all").disabled = done;
   renderAsk(done);
-  if (LIVE) renderHandover(done);
+  if (LIVE) renderCompare(done);
 }
 
 // 提問：答案和 radar-ask --pick 相同（不經模型）。重播中和事件摘要一樣先不給答案；不保留打的原文（可能有姓名）
@@ -711,66 +712,73 @@ if (LIVE) {
     } catch (e) { /* 讀不到就不顯示 */ }
   };
   if (LIVE.stats) { poll(); setInterval(poll, 2000); }
-  $("handover").hidden = false;
-  for (const b of [$("btn-cmp-summary"), $("btn-handover")]) b.onclick = () => liveCompare(b.dataset.kind);
+  $("compare").hidden = false;
+  for (const b of [$("btn-cmp-summary"), $("btn-cmp-handover")]) b.onclick = () => liveCompare(b.dataset.kind);
 }
 
 // 沒用模型／用模型的比對（測試版，2026-10-29）：左邊規則產生的原句，右邊在地模型改寫，讓人逐句對照。
 // 交班重點的前兩行（地點與時段、【重點】）固定在上；事件摘要整段都比。沒通過檢查的模型輸出也列出並標「未採用」：
 // 讀者正式看到的仍是左邊的原句。檢查擋不到所有意思上的偏移（docs/21「已知限制」），所以模型版一定和原句一起顯示
-let handover = null;  // 服務回的比對結果；null 表示還沒按或改寫中
+let cmp = null;  // 服務回的比對結果；null 表示還沒按或改寫中
 let cmpKind = null;   // 正在比對哪一段：summary 或 handover
-let handoverRun = 0;  // 每按一次或重播一次加一：舊的請求晚回來就丟掉，不畫到重播中的畫面上
+let compareRun = 0;  // 每按一次或重播一次加一：舊的請求晚回來就丟掉，不畫到重播中的畫面上
 const paras = (box, text) => box.replaceChildren(...(text ? text.split("\n").map(line => el("p", null, line)) : []));
 const splitHead = text => {
   if (cmpKind !== "handover") return ["", text];
   const parts = text.split("\n");
   return [parts.slice(0, 2).join("\n"), parts.slice(2).join("\n")];
 };
-function clearHandover(meta) {
-  paras($("handover-head"), ""); paras($("handover-orig"), ""); paras($("handover-model"), "");
-  $("handover-cols").hidden = true; $("handover-tag").hidden = true; $("handover-meta").textContent = meta;
+function clearCompare(meta) {
+  paras($("compare-head"), ""); paras($("compare-orig"), ""); paras($("compare-model"), "");
+  $("compare-cols").hidden = true; $("compare-tag").hidden = true; $("compare-meta").textContent = meta;
 }
-function paintHandover(pending) {
-  if (handover && handover.fatal) { clearHandover(handover.error); return; }  // 原句本身沒過檢查：什麼都不顯示
+function paintCompare(pending) {
+  if (cmp && cmp.fatal) { clearCompare(cmp.error); return; }  // 原句本身沒過檢查：什麼都不顯示
   const [head, body] = splitHead(LIVE.compare[cmpKind]);
-  paras($("handover-head"), head); paras($("handover-orig"), body);
-  $("handover-cols").hidden = !body;  // 沒有收到資料時只有前兩行，沒有可以對照的內容
-  const model = $("handover-model"), meta = $("handover-meta"), tag = $("handover-tag");
-  model.classList.toggle("wait", pending || !handover || handover.layer !== "model");
+  paras($("compare-head"), head); paras($("compare-orig"), body);
+  $("compare-cols").hidden = !body;  // 沒有收到資料時只有前兩行，沒有可以對照的內容
+  const model = $("compare-model"), meta = $("compare-meta"), tag = $("compare-tag");
+  model.classList.toggle("wait", pending || !cmp || cmp.layer !== "model");
   model.classList.remove("unused"); tag.hidden = true;
   if (pending) { paras(model, "在地模型改寫中…"); meta.textContent = body ? "" : "整理中…"; return; }
-  if (!handover) { paras(model, ""); meta.textContent = ""; return; }
-  const took = handover.seconds != null ? ` · ${handover.seconds.toFixed(1)} 秒` : "";
-  if (handover.layer === "model") {
-    paras(model, splitHead(handover.text)[1]);
-    meta.textContent = `在地模型改寫 · ${handover.model}${took} · 已比對數字與時刻；意思請對照原句`;
-  } else if (handover.layer === "error") {
-    paras(model, "沒有改寫結果。"); meta.textContent = handover.error;
+  if (!cmp) { paras(model, ""); meta.textContent = ""; return; }
+  const took = cmp.seconds != null ? ` · ${cmp.seconds.toFixed(1)} 秒` : "";
+  if (cmp.layer === "model") {
+    paras(model, splitHead(cmp.text)[1]);
+    meta.textContent = `在地模型改寫 · ${cmp.model}${took} · 已比對數字與時刻；意思請對照原句`;
+  } else if (cmp.layer === "error") {
+    paras(model, "沒有改寫結果。"); meta.textContent = cmp.error;
   } else {
-    const why = (handover.rejected || []).join("、");
-    if (handover.candidate) {
+    const why = (cmp.rejected || []).join("、");
+    const noReply = (cmp.rejected || []).length > 0 && cmp.rejected.every(r => r.startsWith("模型錯誤") || r === "模型沒有輸出");
+    if (noReply) {  // 逾時、當掉、沒有輸出：不是檢查擋下的，分開寫
+      paras(model, "沒有改寫結果。");
+      meta.textContent = `${cmp.model || "在地模型"}${took} · 在地模型沒有回應（${why}）；讀者看到的是左邊的原句`;
+      return;
+    }
+    if (cmp.candidate) {
       model.classList.remove("wait"); model.classList.add("unused"); tag.hidden = false;
-      paras(model, handover.candidate);
+      paras(model, cmp.candidate);
     } else {
       paras(model, why ? "沒有改寫結果。" : "不改寫。");
     }
-    meta.textContent = why ? `${handover.model || "在地模型"}${took} · 沒通過檢查：${why}` : "";
+    meta.textContent = why ? `${cmp.model || "在地模型"}${took} · 沒通過檢查：${why}` : "";
   }
 }
-function renderHandover(done) {
-  for (const b of [$("btn-cmp-summary"), $("btn-handover")]) b.disabled = !done;
+function renderCompare(done) {
+  for (const b of [$("btn-cmp-summary"), $("btn-cmp-handover")]) b.disabled = !done;
   if (done) {
-    if (!handover && $("handover-cols").hidden) $("handover-meta").textContent = "";
+    if (!cmp && $("compare-cols").hidden) $("compare-meta").textContent = "";
     return;
   }
-  handoverRun++;
-  handover = null;  // 重播時清掉上一輪的比對
-  clearHandover("重播中。播完全部事件後再比對。");
+  compareRun++;
+  cmp = null;  // 重播時清掉上一輪的比對
+  for (const b of [$("btn-cmp-summary"), $("btn-cmp-handover")]) b.setAttribute("aria-pressed", "false");
+  clearCompare("重播中。播完全部事件後再比對。");
 }
 async function liveCompare(kind) {
-  const buttons = [$("btn-cmp-summary"), $("btn-handover")], run = ++handoverRun;
-  cmpKind = kind; handover = null; paintHandover(true);
+  const buttons = [$("btn-cmp-summary"), $("btn-cmp-handover")], run = ++compareRun;
+  cmpKind = kind; cmp = null; paintCompare(true);
   for (const b of buttons) { b.disabled = true; b.setAttribute("aria-pressed", String(b.dataset.kind === kind)); }
   let result;
   try {
@@ -782,10 +790,10 @@ async function liveCompare(kind) {
   } catch (e) {
     result = { layer: "error", error: "連不上這台 Jetson 上的服務" };
   }
-  if (run !== handoverRun) return;  // 等待中按了重播或又按了一次：這個結果不用了
-  handover = result;
+  if (run !== compareRun) return;  // 等待中按了重播或又按了一次：這個結果不用了
+  cmp = result;
   for (const b of buttons) b.disabled = shown !== events.length;
-  paintHandover(false);
+  paintCompare(false);
 }
 
 const go = n => { shown = Math.max(0, Math.min(events.length, n)); render(); };

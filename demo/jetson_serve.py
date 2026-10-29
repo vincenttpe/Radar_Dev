@@ -143,7 +143,8 @@ class Demo:
 
     def _rewrite(self, kind: str, model: Model | None) -> Rewritten:
         if kind == "summary":
-            return rewrite(self.summary, place=self.place, model=model)
+            # 沒有收到資料時只有「無法判斷」一句，和交班重點一樣不交給模型
+            return rewrite(self.summary, place=self.place, model=model if self.summary.online else None)
         return rewrite_handover(self.summary, place=self.place, model=model)
 
     def compare(self, kind: str) -> dict[str, Any]:
@@ -214,7 +215,7 @@ def make_handler(demo: Demo, port: int) -> type[BaseHTTPRequestHandler]:
 
         def do_POST(self) -> None:
             path = self.path.split("?", 1)[0]
-            kind = path.removeprefix("/api/compare/")
+            kind = path.removeprefix("/api/compare/") if path.startswith("/api/compare/") else None
             if path != "/api/ask" and kind not in COMPARE_KINDS:
                 self._json(404, {"error": "找不到這個網址"})
                 return

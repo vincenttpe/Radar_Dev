@@ -218,7 +218,7 @@ def test_query_string_on_ask_is_ignored(server):
         assert json.loads(resp.read())["question"]["id"] == "falls"
 
 
-def _handover(url, headers=None, kind="handover"):
+def _compare(url, headers=None, kind="handover"):
     req = urllib.request.Request(url + f"/api/compare/{kind}", data=b"", method="POST", headers=headers or {})
     try:
         with urllib.request.urlopen(req) as resp:
@@ -227,7 +227,7 @@ def _handover(url, headers=None, kind="handover"):
         return e.code, json.loads(e.read())
 
 
-def test_page_carries_the_handover_template_to_show_before_the_model_finishes(server):
+def test_page_carries_both_templates_to_show_before_the_model_finishes(server):
     from radar_agent.caregiver import caregiver_text, handover_text
 
     demo, url = server(PickFirst())
@@ -241,7 +241,7 @@ def test_handover_that_fails_the_check_keeps_the_template_and_says_why(server):
     from radar_agent.caregiver import handover_text
 
     demo, url = server(PickFirst())  # 回「1」：數字、時間都漏掉
-    code, data = _handover(url)
+    code, data = _compare(url)
     assert code == 200 and data["layer"] == "template"
     assert data["text"] == handover_text(demo.summary, place=demo.place)
     assert data["model"] == "fake-model" and "漏掉時間 08:32" in data["rejected"]
@@ -250,20 +250,20 @@ def test_handover_that_fails_the_check_keeps_the_template_and_says_why(server):
 
 def test_handover_model_errors_keep_the_template(server):
     _, url = server(Broken())
-    code, data = _handover(url)
+    code, data = _compare(url)
     assert code == 200 and data["layer"] == "template" and data["rejected"] == ["模型錯誤：TimeoutError"]
     assert data["candidate"] is None  # 模型出錯：沒有輸出可以列
 
 
 def test_other_sites_cannot_trigger_a_handover(server):
     _, url = server(PickFirst())
-    assert _handover(url, {"Origin": "http://evil.example"})[0] == 403
+    assert _compare(url, {"Origin": "http://evil.example"})[0] == 403
 
 
 def test_handover_whose_template_fails_its_check_answers_500_with_the_reason(server):
     demo, url = server(PickFirst())
     demo.place = "治療室"  # 「治療」是不能出現的用語：原句沒通過輸出檢查，不交出任何文字
-    code, data = _handover(url)
+    code, data = _compare(url)
     assert code == 500 and "範本沒通過輸出檢查" in data["error"]
 
 
@@ -286,11 +286,34 @@ def test_event_summary_can_be_compared_too(server):
     from radar_agent.caregiver import caregiver_text
 
     demo, url = server(Echoing())
-    code, data = _handover(url, kind="summary")
+    code, data = _compare(url, kind="summary")
     assert code == 200 and (data["kind"], data["layer"]) == ("summary", "model")
     assert data["text"] == caregiver_text(demo.summary, place=demo.place) and data["candidate"] is None
 
 
 def test_unknown_comparison_is_404(server):
     _, url = server(PickFirst())
-    assert _handover(url, kind="kg")[0] == 404
+    assert _compare(url, kind="kg")[0] == 404
+
+
+
+def test_rejected_event_summary_rewrite_is_returned_as_candidate(server):
+    from radar_agent.caregiver import caregiver_text
+
+    demo, url = server(PickFirst())  # 回「1」：數字都漏掉
+    code, data = _compare(url, kind="summary")
+    assert code == 200 and (data["layer"], data["candidate"]) == ("template", "1")
+    assert data["text"] == caregiver_text(demo.summary, place=demo.place)
+
+
+def test_other_sites_cannot_trigger_a_summary_comparison(server):
+    _, url = server(PickFirst())
+    assert _compare(url, {"Origin": "http://evil.example"}, kind="summary")[0] == 403
+
+
+def test_comparison_paths_need_the_compare_prefix(server):
+    _, url = server(PickFirst())
+    req = urllib.request.Request(url + "/summary", data=b"", method="POST")
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(req)
+    assert e.value.code == 404
