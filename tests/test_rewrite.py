@@ -2,6 +2,11 @@
 
 模型以「prompt → 文字」的假模型代替（外部服務的邊界，REVIEW.md 3.5）；範本、檢查都用真的。
 """
+import ast
+import hashlib
+import inspect
+import textwrap
+
 import pytest
 from test_caregiver import timeline
 
@@ -134,3 +139,29 @@ def test_writing_none_as_zero_counts_falls_back():
     """範本寫「沒有跌倒警報」（PR #37），模型改寫成「跌倒警報 0 次」也退回：範本沒有「0 次」，不讓模型自己換算。"""
     reply = "1 號廁所在 10/14 有人使用 2 次，最久一次待了 8 分鐘；跌倒警報 0 次，沒有主動呼救或久待警報。"
     assert "範本沒有「0次」" in _fallback(ALL_ONLINE, reply)
+
+
+def rule_digest(*parts: object) -> str:
+    """prompt 與採用檢查的指紋：字串照原樣，函式取語法樹（不含註解、docstring 與排版），改了說法才會變。"""
+    texts = []
+    for part in parts:
+        if callable(part):
+            tree = ast.parse(textwrap.dedent(inspect.getsource(part)))
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.FunctionDef) and node.body and isinstance(node.body[0], ast.Expr)
+                        and isinstance(node.body[0].value, ast.Constant) and isinstance(node.body[0].value.value, str)):
+                    node.body = node.body[1:] or [ast.Pass()]
+            texts.append(ast.dump(tree))
+        else:
+            texts.append(repr(part))
+    return hashlib.sha256("\n".join(texts).encode("utf-8")).hexdigest()[:16]
+
+
+def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
+    """紀錄只記 prompt_version；prompt 或採用的檢查改了卻沒升版，就分不出一筆退回是哪一套規則（原則 3，PR #41）。"""
+    from radar_agent import rewrite as r
+
+    digest = rule_digest(r.build_prompt("{範本}"), r.rewrite, r._kept_facts, r._quantities, r._kept_quantities,
+                         r._QUANTITY.pattern, r.REQUIRED_PHRASES, r.MAX_LENGTH_RATIO)
+    assert (PROMPT_VERSION, digest) == ("caregiver-v1", "6fd95126e04ca1f9"), \
+        "rewrite.build_prompt 或採用的檢查改了：升 rewrite.PROMPT_VERSION，再更新這裡的版本與雜湊"
