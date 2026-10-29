@@ -303,3 +303,18 @@ def test_visits_never_count_people():
 
 def test_alerts_answer_uses_the_glossary_term():
     assert "警報和處置提示照時間排：" in answer("alerts", SUMMARY, place="1 號廁所")
+
+
+def test_device_errors_are_in_every_answer():
+    summary = summarize([*(_rec(f"09:00:{s:02d}", "absence") for s in range(0, 30, 5)), _rec("09:00:30", "error"),
+                         *(_rec(f"09:00:{s:02d}", "absence") for s in range(35, 60, 5))])
+    assert summary.errors
+    for q in EVENT_QUESTIONS:
+        text = answer(q.id, summary, place=PLACE)
+        assert text.endswith("裝置回報錯誤 1 次（09:00），請通知資訊人員處理。"), (q.id, text)
+        assert check_output(text, summary, place=PLACE) == []
+
+
+def test_visit_cut_off_by_disconnection_is_stated():
+    text = answer("visits", GAP_THEN_OFFLINE, place=PLACE)
+    assert "另外有 1 次是用到一半裝置斷線，不知道待了多久。" in text
