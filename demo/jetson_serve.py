@@ -2,8 +2,9 @@
 
 頁面和 demo/build.py 產生的原型頁相同（模擬資料、句子都來自 radar-caregiver 與 radar-ask），
 只多了兩件事：輸入框接上 event_ask.ask_events()（模型只選題號，答案仍是固定句型並通過輸出檢查），
-頁面角落的 Jetson 狀態（tegrastats 讀得到時才顯示），以及「整理交班重點」（實驗；rewrite.rewrite_handover：
-規則產生的交班重點由在地模型改寫成口語，沒通過檢查就維持原句）。
+頁面角落的 Jetson 狀態（tegrastats 讀得到時才顯示），以及「沒用模型／用模型」的比對（測試版，2026-10-29 決定）：
+事件摘要（rewrite.rewrite）與交班重點（rewrite.rewrite_handover）各自並排「規則產生的原句」與「在地模型改寫」；
+沒通過檢查的模型輸出也列出並標「未採用」，方便評比模型實際寫了什麼、為什麼被擋。
 
     python demo/jetson_serve.py --endpoint http://127.0.0.1:11434/v1 --model gemma4:e4b --reasoning-effort none
     # 再用 Jetson 上的瀏覽器開 http://127.0.0.1:8765/#replay
@@ -36,7 +37,7 @@ import demo_page  # demo/ 底下的共用外殼；直接執行或測試時 demo/
 from radar_agent.device_events import Summary, read_records, summarize
 from radar_agent.event_ask import ask_events
 from radar_agent.local_model import add_model_args, model_from_args
-from radar_agent.rewrite import Model, rewrite_handover
+from radar_agent.rewrite import Model, Rewritten, rewrite, rewrite_handover
 
 HERE = Path(__file__).resolve().parent
 
@@ -57,6 +58,7 @@ PORT = 8765
 # 提問本身限 100 字（ask.MAX_ASKED）；這裡只擋明顯不是提問的大量資料，避免把記憶體吃光
 MAX_BODY = 4096
 WARMUP_ASKED = "有人跌倒嗎"
+COMPARE_KINDS = ("summary", "handover")  # 事件摘要、交班重點
 # 畫面寫「在這台 Jetson 上執行」，所以模型伺服器只能在本機（local_model 本身允許區網）
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 
@@ -104,6 +106,22 @@ class Stats:
             self.latest = parse_tegrastats(line) or self.latest
 
 
+class Recorder:
+    """包住模型，記下它最後一次的原始輸出：測試版要把沒通過檢查的輸出也列出來（標「未採用」）。
+
+    每次比對各包一個，多個請求同時進來也不會互相蓋掉。只記在記憶體、回給同一個請求，不寫進 log 或檔案。
+    """
+
+    def __init__(self, model: Model) -> None:
+        self.model, self.name = model, model.name
+        self.last: str | None = None
+
+    def __call__(self, prompt: str) -> str:
+        self.last = None
+        self.last = self.model(prompt)
+        return self.last
+
+
 class Demo:
     """頁面與提問共用的狀態：模擬資料的摘要、模型、Jetson 狀態。"""
 
@@ -115,22 +133,30 @@ class Demo:
         data = build.demo_data()
         data["live"] = {
             "model": model.name, "stats": self.stats.proc is not None,
-            # 交班重點的原句先顯示，模型改寫好再換上去，讀者不必乾等
-            "handover": rewrite_handover(self.summary, place=self.place).text,
+            # 比對用的原句先顯示，模型改寫好再補上右邊那欄，讀者不必乾等
+            "compare": {kind: self._rewrite(kind, None).text for kind in COMPARE_KINDS},
         }
         self.page = demo_page.page(build.HERE / "template.html", build.PLACEHOLDER, data).encode("utf-8")
 
     def ask(self, asked: str) -> dict[str, Any]:
         return ask_events(asked, self.summary, place=self.place, model=self.model).data()
 
-    def handover(self) -> dict[str, Any]:
-        """交班重點：在地模型改寫成口語；沒通過檢查時 layer 是 template、text 是原句，rejected 寫原因。"""
+    def _rewrite(self, kind: str, model: Model | None) -> Rewritten:
+        if kind == "summary":
+            return rewrite(self.summary, place=self.place, model=model)
+        return rewrite_handover(self.summary, place=self.place, model=model)
+
+    def compare(self, kind: str) -> dict[str, Any]:
+        """沒用模型與用模型的比對。沒通過檢查時 layer 是 template、text 是原句，rejected 寫原因，
+        candidate 是模型實際寫的（測試版才給，頁面標「未採用」）；模型出錯或沒有呼叫模型時 candidate 是 None。"""
+        recorder = Recorder(self.model)
         started = time.perf_counter()
-        result = rewrite_handover(self.summary, place=self.place, model=self.model)
+        result = self._rewrite(kind, recorder)
+        rejected_output = recorder.last.strip() if result.layer == "template" and recorder.last else None
         return {
-            "text": result.text, "layer": result.layer, "model": result.model,
+            "kind": kind, "text": result.text, "layer": result.layer, "model": result.model,
             "prompt_version": result.prompt_version, "seconds": round(time.perf_counter() - started, 2),
-            "rejected": list(result.rejected),
+            "rejected": list(result.rejected), "candidate": rejected_output,
         }
 
     def warm_up(self) -> str:
@@ -188,7 +214,8 @@ def make_handler(demo: Demo, port: int) -> type[BaseHTTPRequestHandler]:
 
         def do_POST(self) -> None:
             path = self.path.split("?", 1)[0]
-            if path not in ("/api/ask", "/api/handover"):
+            kind = path.removeprefix("/api/compare/")
+            if path != "/api/ask" and kind not in COMPARE_KINDS:
                 self._json(404, {"error": "找不到這個網址"})
                 return
             # 別的網頁（同一台機器的瀏覽器開著的其他網站）不能借這個服務送提問或叫模型改寫
@@ -197,9 +224,9 @@ def make_handler(demo: Demo, port: int) -> type[BaseHTTPRequestHandler]:
                 what = "提問" if path == "/api/ask" else "請求"
                 self._json(403, {"error": f"只接受這個頁面送出的{what}"})
                 return
-            if path == "/api/handover":  # 只用模擬資料的摘要，不讀請求內容
+            if kind in COMPARE_KINDS:  # 只用模擬資料的摘要，不讀請求內容
                 try:
-                    self._json(200, demo.handover())
+                    self._json(200, demo.compare(kind))
                 except ValueError as e:  # 原句沒通過輸出檢查：不交出任何文字，告訴頁面原因
                     self._json(500, {"error": str(e)})
                 return

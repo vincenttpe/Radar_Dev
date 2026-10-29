@@ -218,8 +218,8 @@ def test_query_string_on_ask_is_ignored(server):
         assert json.loads(resp.read())["question"]["id"] == "falls"
 
 
-def _handover(url, headers=None):
-    req = urllib.request.Request(url + "/api/handover", data=b"", method="POST", headers=headers or {})
+def _handover(url, headers=None, kind="handover"):
+    req = urllib.request.Request(url + f"/api/compare/{kind}", data=b"", method="POST", headers=headers or {})
     try:
         with urllib.request.urlopen(req) as resp:
             return resp.status, json.loads(resp.read())
@@ -228,12 +228,13 @@ def _handover(url, headers=None):
 
 
 def test_page_carries_the_handover_template_to_show_before_the_model_finishes(server):
-    from radar_agent.caregiver import handover_text
+    from radar_agent.caregiver import caregiver_text, handover_text
 
     demo, url = server(PickFirst())
     with urllib.request.urlopen(url + "/") as resp:
         page = resp.read().decode("utf-8")
     assert json.dumps(handover_text(demo.summary, place=demo.place), ensure_ascii=False) in page
+    assert json.dumps(caregiver_text(demo.summary, place=demo.place), ensure_ascii=False) in page
 
 
 def test_handover_that_fails_the_check_keeps_the_template_and_says_why(server):
@@ -244,12 +245,14 @@ def test_handover_that_fails_the_check_keeps_the_template_and_says_why(server):
     assert code == 200 and data["layer"] == "template"
     assert data["text"] == handover_text(demo.summary, place=demo.place)
     assert data["model"] == "fake-model" and "漏掉時間 08:32" in data["rejected"]
+    assert data["candidate"] == "1"  # 測試版：模型實際寫的也回給頁面，標「未採用」
 
 
 def test_handover_model_errors_keep_the_template(server):
     _, url = server(Broken())
     code, data = _handover(url)
     assert code == 200 and data["layer"] == "template" and data["rejected"] == ["模型錯誤：TimeoutError"]
+    assert data["candidate"] is None  # 模型出錯：沒有輸出可以列
 
 
 def test_other_sites_cannot_trigger_a_handover(server):
@@ -268,3 +271,26 @@ def test_refused_ask_still_says_question(server):
     _, url = server(PickFirst())
     code, data = _ask(url, "有人跌倒嗎", {"Origin": "http://evil.example"})
     assert code == 403 and data["error"] == "只接受這個頁面送出的提問"
+
+
+class Echoing:
+    """假模型：照抄 prompt 裡「原文：」後面的文字（一定通過檢查）。"""
+
+    name = "echoing"
+
+    def __call__(self, prompt: str) -> str:
+        return prompt.rsplit("原文：\n", 1)[-1]
+
+
+def test_event_summary_can_be_compared_too(server):
+    from radar_agent.caregiver import caregiver_text
+
+    demo, url = server(Echoing())
+    code, data = _handover(url, kind="summary")
+    assert code == 200 and (data["kind"], data["layer"]) == ("summary", "model")
+    assert data["text"] == caregiver_text(demo.summary, place=demo.place) and data["candidate"] is None
+
+
+def test_unknown_comparison_is_404(server):
+    _, url = server(PickFirst())
+    assert _handover(url, kind="kg")[0] == 404
