@@ -166,7 +166,27 @@ def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
     from radar_agent import rewrite as r
 
     digest = rule_digest(r.build_prompt("{範本}"), r.rewrite, r.checked_rewrite, r._kept_facts, r._quantities,
-                         r._kept_quantities,
-                         r._QUANTITY.pattern, r.REQUIRED_PHRASES, r.MAX_LENGTH_RATIO)
-    assert (PROMPT_VERSION, digest) == ("caregiver-v1", "392b66214ae1eb8e"), \
+                         r._kept_quantities, r._added_words,
+                         r._QUANTITY.pattern, r.REQUIRED_PHRASES, r.MAX_LENGTH_RATIO, r.ADDED_WORDS, r._NOT_PRONOUNS)
+    assert (PROMPT_VERSION, digest) == ("caregiver-v2", "eeb831052b5ed2ac"), \
         "rewrite.build_prompt 或採用的檢查改了：升 rewrite.PROMPT_VERSION，再更新這裡的版本與雜湊"
+
+
+@pytest.mark.parametrize("added, reason", [
+    # 2026-10-29 PR #43 的比對畫面裡，Gemma 4 被採用的改寫實際寫過這些（#35 也回報過）
+    ("我們有語音問一下。", "範本沒有「我們」"),
+    ("偵測到他自己起來了。", "範本沒有「他」"),
+    ("她沒事。", "範本沒有「她」"),
+    ("設備一直開著。", "範本沒有「設備」"),
+    ("早上一切正常。", "範本沒有「早上」"),
+    ("他們都沒事。", "範本沒有「他」"),
+    ("傍晚一切正常。", "範本沒有「傍晚」"),
+])
+def test_words_the_template_never_uses_fall_back(added, reason):
+    assert reason in _fallback(ALL_ONLINE, GOOD + added)
+
+
+def test_qi_ta_is_not_a_pronoun():
+    """「其他」不算「他」：沒有其他警報這種寫法照樣採用。"""
+    reply = GOOD.replace("也沒有久待警報。", "也沒有久待或其他警報。")
+    assert rewrite(ALL_ONLINE, place=PLACE, model=FakeModel(reply)).layer == "model"

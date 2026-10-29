@@ -147,6 +147,12 @@ def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
 
     digest = rule_digest(r.build_handover_prompt("{原句}"), r.rewrite_handover, r.checked_rewrite, r._kept_facts, r._quantities,
                          r._kept_quantities, r._clock_times, r._kept_times, r._added_words, r._QUANTITY.pattern,
-                         r._CLOCK.pattern, r.REQUIRED_PHRASES, r.MAX_LENGTH_RATIO, r.HANDOVER_ADDED_WORDS)
-    assert (HANDOVER_PROMPT_VERSION, digest) == ("handover-v0", "1a8a0d11eb38d6ae"), \
+                         r._CLOCK.pattern, r.REQUIRED_PHRASES, r.MAX_LENGTH_RATIO, r.ADDED_WORDS, r._NOT_PRONOUNS)
+    assert (HANDOVER_PROMPT_VERSION, digest) == ("handover-v1", "b4fa10736dcc09d7"), \
         "rewrite.build_handover_prompt 或採用的檢查改了：升 rewrite.HANDOVER_PROMPT_VERSION，再更新這裡的版本與雜湊"
+
+
+def test_handover_rejects_pronouns_and_shebei_too():
+    """handover-v1：和 rewrite() 共用 ADDED_WORDS。"""
+    result = rewrite_handover(DEMO, place=PLACE, model=FakeModel(GOOD_BODY.replace("偵測到起身", "偵測到他起身", 1)))
+    assert result.layer == "template" and "範本沒有「他」" in result.rejected
