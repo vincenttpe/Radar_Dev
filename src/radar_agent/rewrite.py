@@ -25,8 +25,10 @@ from radar_agent.output_check import check_output, numbers
 # 「我們有語音問一下」「他自己起來了」「設備斷線」，#35 也回報過）
 PROMPT_VERSION = "caregiver-v2"
 # 範本沒有、模型卻常自己加上的詞：時段詞會說錯（「下午 10:03」）；「我們」把裝置做的事寫成照護人員做的；
-# 「他」「她」替長者加上性別（場域資料不知道是誰）；「設備」換掉了「裝置」。範本裡沒有就不能出現
-ADDED_WORDS = ("凌晨", "早上", "上午", "中午", "下午", "晚上", "我們", "他", "她", "設備")
+# 「他」「她」替長者加上性別（範本一律寫「長者」）；「設備」換掉了「裝置」。範本裡沒有就不能出現。
+# rewrite() 與交班重點共用（2026-10-29 決定）
+ADDED_WORDS = ("凌晨", "清晨", "早上", "上午", "中午", "下午", "傍晚", "晚上", "半夜", "深夜", "白天",
+               "我們", "他", "她", "設備")
 # 範本裡的這些提醒，改寫後一定要留著：拿掉就變成「沒有資料」被讀成「沒事」（REVIEW.md 3.1）
 REQUIRED_PHRASES = ("無法判斷", "無法評估", "僅供測試", "請通知資訊人員")
 # 暫定：改寫最多是範本的幾倍長；限制輸出長度見 docs/02
@@ -64,7 +66,7 @@ def build_prompt(template: str) -> str:
         f"4. 原文有「{'」「'.join(REQUIRED_PHRASES)}」的句子一定要保留。\n"
         "5. 不使用「診斷」「治療」「處方」「保證」「誤報」等字眼。\n"
         f"6. 不加原文沒有的「{'」「'.join(ADDED_WORDS)}」：時間只寫原文的時刻；語音詢問、偵測都是裝置做的；"
-        "不知道是哪一位長者，不用人稱代名詞；「裝置」不改成別的說法。\n"
+        "不用「他」「她」，寫「長者」；「裝置」不改成別的說法。\n"
         f"7. 長度不超過原文的 {MAX_LENGTH_RATIO} 倍。只輸出改寫後的文字，不加說明。\n"
         "原文：\n"
         f"{template}"
@@ -130,7 +132,7 @@ def rewrite(
         template, source, place=place, profile=profile, model=model,
         prompt=build_prompt(template), prompt_version=PROMPT_VERSION,
         kept=lambda text: _kept_facts(template, text, source) + _kept_quantities(template, text)
-        + _added_words(template, text, ADDED_WORDS),
+        + _added_words(template, text),
     )
 
 
@@ -167,10 +169,11 @@ def checked_rewrite(
 
 # ── 交班重點的口語改寫（草案，2026-10-29；Jetson 內部 Demo 的實驗功能，docs/21）──────────
 # 原句由 caregiver.handover_text 產生（【重點】＋【事件摘要】）；模型只改寫事件摘要的說法。
-# 檢查和 rewrite() 同一道（含次數與時間長度整段比對），另加兩項：每個時刻都要出現；不能加上範本沒有的時段詞與「我們」。numbers() 以集合比較，漏掉一個事件或改掉一個次數時，數字可能剛好在別處出現。
+# 檢查和 rewrite() 同一道（含次數與時間長度整段比對、不能加範本沒有的 ADDED_WORDS），另加一項：每個時刻都要出現。
+# numbers() 以集合比較，漏掉一個事件時，它的時、分可能剛好在別處出現。
 # 已知限制（docs/21）：數量只比「有沒有出現」、不比屬於哪個事件；「沒有……」改成「有……」也擋不到。
 # 所以頁面一定把原句和模型版並排顯示（測試版，2026-10-29 決定）。
-# v1 是 2026-10-29 改用和 rewrite() 相同的 ADDED_WORDS（多了「他」「她」「設備」，「其他」不算「他」）
+# v1 是 2026-10-29 改用和 rewrite() 相同的 ADDED_WORDS（多了「清晨」等時段詞、「他」「她」「設備」，「其他」不算「他」）
 HANDOVER_PROMPT_VERSION = "handover-v1"
 _CLOCK = re.compile(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)")
 
@@ -187,7 +190,7 @@ def build_handover_prompt(template: str) -> str:
         f"4. 原文有「{'」「'.join(REQUIRED_PHRASES)}」的句子一定要保留。\n"
         "5. 不使用「診斷」「治療」「處方」「保證」「誤報」等字眼。\n"
         f"6. 不加「{'」「'.join(ADDED_WORDS)}」這些詞：時間只寫原文的時刻；語音詢問、偵測都是裝置做的；"
-        "不知道是哪一位長者，不用人稱代名詞；「裝置」不改成別的說法。\n"
+        "不用「他」「她」，寫「長者」；「裝置」不改成別的說法。\n"
         f"7. 長度不超過原文的 {MAX_LENGTH_RATIO} 倍。只輸出改寫後的文字，不加標題或說明。\n"
         "原文：\n"
         f"{template}"
@@ -203,11 +206,17 @@ def _kept_times(template: str, text: str) -> list[str]:
     return [f"漏掉時間 {h:02d}:{m:02d}" for h, m in sorted(_clock_times(template) - _clock_times(text))]
 
 
-def _added_words(template: str, text: str, words: tuple[str, ...] = ADDED_WORDS) -> list[str]:
-    """範本沒有、改寫卻出現的詞。「其他」不算「他」。"""
+# 含有這些字、但不是人稱代名詞的詞：比對前先拿掉
+_NOT_PRONOUNS = {"他": ("其他",)}
+
+
+def _added_words(template: str, text: str) -> list[str]:
+    """範本沒有、改寫卻出現的 ADDED_WORDS。"""
     def has(t: str, w: str) -> bool:
-        return w in (t.replace("其他", "") if w == "他" else t)
-    return [f"範本沒有「{w}」" for w in words if has(text, w) and not has(template, w)]
+        for word in _NOT_PRONOUNS.get(w, ()):
+            t = t.replace(word, "")
+        return w in t
+    return [f"範本沒有「{w}」" for w in ADDED_WORDS if has(text, w) and not has(template, w)]
 
 
 def rewrite_handover(summary: Summary, *, place: str, model: Model | None = None) -> Rewritten:

@@ -147,8 +147,8 @@ def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
 
     digest = rule_digest(r.build_handover_prompt("{原句}"), r.rewrite_handover, r.checked_rewrite, r._kept_facts, r._quantities,
                          r._kept_quantities, r._clock_times, r._kept_times, r._added_words, r._QUANTITY.pattern,
-                         r._CLOCK.pattern, r.REQUIRED_PHRASES, r.MAX_LENGTH_RATIO, r.ADDED_WORDS)
-    assert (HANDOVER_PROMPT_VERSION, digest) == ("handover-v1", "55ce76eaecb9cb5c"), \
+                         r._CLOCK.pattern, r.REQUIRED_PHRASES, r.MAX_LENGTH_RATIO, r.ADDED_WORDS, r._NOT_PRONOUNS)
+    assert (HANDOVER_PROMPT_VERSION, digest) == ("handover-v1", "b4fa10736dcc09d7"), \
         "rewrite.build_handover_prompt 或採用的檢查改了：升 rewrite.HANDOVER_PROMPT_VERSION，再更新這裡的版本與雜湊"
 
 

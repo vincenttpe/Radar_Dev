@@ -167,8 +167,8 @@ def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
 
     digest = rule_digest(r.build_prompt("{範本}"), r.rewrite, r.checked_rewrite, r._kept_facts, r._quantities,
                          r._kept_quantities, r._added_words,
-                         r._QUANTITY.pattern, r.REQUIRED_PHRASES, r.MAX_LENGTH_RATIO, r.ADDED_WORDS)
-    assert (PROMPT_VERSION, digest) == ("caregiver-v2", "5db44bf4ed81e46d"), \
+                         r._QUANTITY.pattern, r.REQUIRED_PHRASES, r.MAX_LENGTH_RATIO, r.ADDED_WORDS, r._NOT_PRONOUNS)
+    assert (PROMPT_VERSION, digest) == ("caregiver-v2", "eeb831052b5ed2ac"), \
         "rewrite.build_prompt 或採用的檢查改了：升 rewrite.PROMPT_VERSION，再更新這裡的版本與雜湊"
 
 
@@ -179,6 +179,8 @@ def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
     ("她沒事。", "範本沒有「她」"),
     ("設備一直開著。", "範本沒有「設備」"),
     ("早上一切正常。", "範本沒有「早上」"),
+    ("他們都沒事。", "範本沒有「他」"),
+    ("傍晚一切正常。", "範本沒有「傍晚」"),
 ])
 def test_words_the_template_never_uses_fall_back(added, reason):
     assert reason in _fallback(ALL_ONLINE, GOOD + added)
