@@ -45,7 +45,7 @@ def timeline(start: str, end: str, visits: list[tuple[str, str]] = (), step: int
 def test_site_summary_all_online():
     summary = summarize(timeline("09:00:00", "09:30:00", [("09:05:00", "09:13:00"), ("09:20:00", "09:21:30")]))
     assert caregiver_text(summary, place="1 號廁所") == (
-        "1 號廁所 10/14：有人使用 2 次，最長一次 8 分鐘。跌倒警報 0 次。主動呼救 0 次。久待警報 0 次。這段時間裝置都在線。"
+        "1 號廁所 10/14：有人使用 2 次，最長一次 8 分鐘。\n沒有跌倒警報、主動呼救或久待警報。"
     )
 
 
@@ -53,7 +53,7 @@ def test_disconnection_is_stated_and_zero_falls_is_limited_to_online_time():
     """斷線期間不能寫成 0 次跌倒（REVIEW.md 3.1 沒有資料不等於 0）。"""
     records = timeline("09:00:00", "09:10:00", [("09:02:00", "09:03:00")]) + timeline("09:40:00", "09:50:00")
     assert caregiver_text(summarize(records), place="1 號廁所") == (
-        "1 號廁所 10/14：有人使用 1 次，最長一次 1 分鐘。在線期間跌倒警報 0 次。在線期間主動呼救 0 次。在線期間久待警報 0 次。"
+        "1 號廁所 10/14：有人使用 1 次，停留 1 分鐘。\n在線期間沒有跌倒警報、主動呼救或久待警報。\n"
         "09:10–09:40 裝置斷線，這段時間無法判斷是否有跌倒。"
     )
 
@@ -64,12 +64,13 @@ def test_no_data_at_all_says_cannot_judge():
 
 def test_online_without_visits_says_no_use_detected():
     assert caregiver_text(summarize(timeline("09:00:00", "09:10:00")), place="1 號廁所") == (
-        "1 號廁所 10/14：沒有偵測到有人使用。跌倒警報 0 次。主動呼救 0 次。久待警報 0 次。這段時間裝置都在線。"
+        "1 號廁所 10/14：沒有偵測到有人使用。\n沒有跌倒警報、主動呼救或久待警報。"
     )
 
 
-def test_alerts_list_their_times_and_no_need_help_is_separate():
-    """C2：跌倒警報、主動呼救（DistressCall）、語音回覆沒事分開列；主動呼救不算進跌倒（2026-10-16 第四次書面回覆）。"""
+def test_alerts_are_followed_by_their_outcome_and_calls_are_counted_apart():
+    """C2：主動呼救（DistressCall）不算進跌倒（2026-10-16 第四次書面回覆）；
+    每個警報後面接它的解除（2026-10-29 確認，A＋B）；沒有解除紀錄就照實寫，不說成仍未處理。"""
     records = timeline("09:00:00", "09:50:00", [("09:04:00", "09:08:00"), ("09:19:00", "09:46:00")])
     records += [
         rec("09:05:00", "fall", trigger="timeout", userReply=False, confidence=100),
@@ -78,9 +79,10 @@ def test_alerts_list_their_times_and_no_need_help_is_separate():
         rec("09:45:00", "longstay", trigger="timeout", delaysec=600, confidence=100),
     ]
     assert caregiver_text(summarize(records), place="1 號廁所") == (
-        "1 號廁所 10/14：有人使用 2 次，最長一次 27 分鐘。"
-        "跌倒警報 1 次（09:05）。主動呼救 1 次（09:20）。語音回覆沒事 1 次。"
-        "久待警報 1 次（09:45）。這段時間裝置都在線。"
+        "1 號廁所 10/14：有人使用 2 次，最長一次 27 分鐘。\n"
+        "跌倒警報 1 次：09:05 語音詢問未獲回應，20 秒後長者回覆沒事，警報解除。\n"
+        "主動呼救 1 次：09:20，資料中沒有解除紀錄。\n"
+        "久待警報 1 次（09:45）。"
     )
 
 
@@ -88,9 +90,9 @@ def test_interrupted_and_ongoing_visits_are_not_dropped():
     records = (timeline("09:00:00", "09:10:00", [("09:08:00", "09:30:00")])
                + timeline("09:40:00", "09:50:00", [("09:45:00", "10:30:00")]))
     assert caregiver_text(summarize(records), place="1 號廁所") == (
-        "1 號廁所 10/14：沒有偵測到有人使用。另有 1 次使用途中裝置斷線，停留時間不明。"
-        "資料結束時仍有人在內（09:45 起）。"
-        "在線期間跌倒警報 0 次。在線期間主動呼救 0 次。在線期間久待警報 0 次。"
+        "1 號廁所 10/14：沒有偵測到有人使用。\n另有 1 次使用途中裝置斷線，停留時間不明。\n"
+        "資料結束時仍有人在內（09:45 起）。\n"
+        "在線期間沒有跌倒警報、主動呼救或久待警報。\n"
         "09:10–09:40 裝置斷線，這段時間無法判斷是否有跌倒。"
     )
 
@@ -103,7 +105,7 @@ def test_errors_and_unreadable_records_ask_for_it_staff():
         {"timestamp": "壞掉的時間", "topic": TOPIC, "resolution": None, "payload": {"event": "absence"}},
     ]
     text = caregiver_text(summarize(records), place="1 號廁所")
-    assert text.endswith("裝置回報錯誤 1 次（09:05），請通知資訊人員。另有 1 筆紀錄無法判讀，請通知資訊人員。")
+    assert text.endswith("裝置回報錯誤 1 次（09:05），請通知資訊人員。\n另有 1 筆紀錄無法判讀，請通知資訊人員。")
 
 
 def test_personal_assessment_quotes_kg_text_verbatim():
@@ -142,7 +144,7 @@ def test_check_flags_a_number_that_is_not_in_the_facts():
 def test_check_flags_zero_distress_calls_when_device_was_offline():
     records = timeline("09:00:00", "09:10:00") + timeline("09:40:00", "09:50:00")
     summary = summarize(records)
-    text = caregiver_text(summary, place="1 號廁所").replace("在線期間主動呼救 0 次", "主動呼救 0 次")
+    text = caregiver_text(summary, place="1 號廁所") + "\n主動呼救 0 次。"
     assert check_output(text, summary, place="1 號廁所") == ["裝置有斷線，不能寫「主動呼救 0 次」而不註明在線期間"]
 
 
@@ -157,8 +159,10 @@ def test_check_flags_medical_wording_and_false_alarm():
 def test_check_flags_zero_falls_when_device_was_offline():
     """REVIEW.md 3.1：沒有資料不等於 0。"""
     summary = summarize(timeline("09:00:00", "09:10:00") + timeline("09:40:00", "09:50:00"))
-    text = caregiver_text(summary, place="1 號廁所").replace("在線期間跌倒警報", "跌倒警報")
-    assert check_output(text, summary, place="1 號廁所") == ["裝置有斷線，不能寫「跌倒警報 0 次」而不註明在線期間"]
+    text = caregiver_text(summary, place="1 號廁所").replace("在線期間沒有", "沒有")
+    assert check_output(text, summary, place="1 號廁所") == [
+        "裝置有斷線，不能寫「沒有跌倒警報／主動呼救／久待警報」而不註明在線期間"
+    ]
 
 
 def _scenarios():
@@ -209,10 +213,10 @@ def test_medical_word_inside_quoted_kg_text_is_allowed_but_not_when_added():
 
 
 def test_duration_wording_for_seconds_and_minutes_with_seconds():
-    longest_90s = summarize(timeline("09:00:00", "09:10:00", [("09:01:00", "09:02:30")]))
-    assert "最長一次 1 分 30 秒。" in caregiver_text(longest_90s, place="1 號廁所")
-    longest_45s = summarize(timeline("09:00:00", "09:10:00", [("09:01:00", "09:01:45")]))
-    assert "最長一次 45 秒。" in caregiver_text(longest_45s, place="1 號廁所")
+    once_90s = summarize(timeline("09:00:00", "09:10:00", [("09:01:00", "09:02:30")]))
+    assert "有人使用 1 次，停留 1 分 30 秒。" in caregiver_text(once_90s, place="1 號廁所")
+    twice = summarize(timeline("09:00:00", "09:10:00", [("09:01:00", "09:01:45"), ("09:03:00", "09:03:30")]))
+    assert "有人使用 2 次，最長一次 45 秒。" in caregiver_text(twice, place="1 號廁所")
 
 
 def test_data_spanning_two_days_shows_the_date_range():
@@ -233,7 +237,8 @@ def _run(capsys, *argv) -> tuple[int, str, str]:
 
 VISITS = [("09:05:00", "09:13:00"), ("09:20:00", "09:21:30")]
 # 沒有任何事件：只有摘要，不另寫「沒有事件」
-EXPECTED = "【事件摘要】\n1 號廁所 10/14：有人使用 2 次，最長一次 8 分鐘。跌倒警報 0 次。主動呼救 0 次。久待警報 0 次。這段時間裝置都在線。\n"
+EXPECTED = ("【重點】這段時間沒有警報，裝置都在線。\n\n【事件摘要】\n"
+            "1 號廁所 10/14：有人使用 2 次，最長一次 8 分鐘。\n沒有跌倒警報、主動呼救或久待警報。\n")
 
 
 def test_cli_reads_a_json_array_and_prints_the_checked_text(tmp_path, capsys):
@@ -368,7 +373,8 @@ def test_full_report_has_summary_prompts_and_record_draft_in_time_order():
     summary = summarize(records)
     report = caregiver_report(summary, place="1 號廁所")
     assert report == (
-        "【事件摘要】\n"
+        "【重點】跌倒警報 1 次已解除；09:45 有 1 次久待警報；09:10–09:40 裝置斷線，期間狀況不明，請通知資訊人員。\n"
+        "\n【事件摘要】\n"
         + caregiver_text(summary, place="1 號廁所") + "\n"
         "\n【處置提示】\n"
         "09:02 請立即到場確認。\n"
@@ -460,7 +466,8 @@ def test_report_says_when_the_device_went_offline_before_the_data_ended():
                rec("09:00:30", "presence"), rec("09:00:35", "moving"), rec("09:00:40", "offline")]
     summary = summarize(records)
     text = caregiver_report(summary, place="1 號廁所")
-    assert "在線期間跌倒警報 0 次" in text and "09:00 起裝置斷線，之後無法判斷是否有跌倒。" in text
+    assert "在線期間沒有跌倒警報" in text and "09:00 起裝置斷線，之後無法判斷是否有跌倒。" in text
+    assert "【重點】09:00 起裝置斷線，之後狀況不明，請通知資訊人員。" in text
     assert "都在線" not in text and check_output(text, summary, place="1 號廁所") == []
 
 
@@ -468,7 +475,8 @@ def test_report_says_the_device_went_offline_even_when_nobody_was_inside():
     """最後一筆是 offline、當時沒人：以前寫「裝置都在線」而且檢查放行（2026-10-19 審查）。"""
     summary = summarize([*timeline("09:00:00", "09:00:35"), rec("09:00:40", "offline")])
     text = caregiver_report(summary, place="1 號廁所")
-    assert "在線期間跌倒警報 0 次" in text and "09:00 起裝置斷線，之後無法判斷是否有跌倒。" in text
+    assert "在線期間沒有跌倒警報" in text and "09:00 起裝置斷線，之後無法判斷是否有跌倒。" in text
+    assert "【重點】09:00 起裝置斷線，之後狀況不明，請通知資訊人員。" in text
     assert "都在線" not in text and check_output(text, summary, place="1 號廁所") == []
 
 
@@ -499,7 +507,7 @@ def test_cli_range_without_records_says_cannot_judge(tmp_path, capsys):
     path = tmp_path / "events.json"
     path.write_text(json.dumps(timeline("09:00:00", "09:30:00", VISITS)), encoding="utf-8")
     code, out, _ = _run(capsys, path, "--place", "1 號廁所", "--from", "2026-10-14 13:00", "--to", "2026-10-14 15:00")
-    assert (code, out) == (0, "【事件摘要】\n1 號廁所：沒有收到資料，無法判斷。\n")
+    assert (code, out) == (0, "【重點】沒有收到資料，無法判斷，請通知資訊人員。\n\n【事件摘要】\n1 號廁所：沒有收到資料，無法判斷。\n")
 
 
 def test_cli_range_keeps_records_whose_time_cannot_be_read(tmp_path, capsys):
@@ -521,3 +529,49 @@ def test_cli_range_rejects_unreadable_or_reversed_times(tmp_path, capsys):
     code, out, err = _run(capsys, path, "--place", "1 號廁所", "--from", "2026-10-14 10:00", "--to", "2026-10-14 09:00")
     assert (code, out) == (2, "")
     assert "要早於結束時間" in err
+
+
+# ── 【重點】與警報的後續（2026-10-29 確認，A＋B）────────────────
+
+def test_highlights_put_alerts_without_resolution_first():
+    """資料中沒有解除紀錄的警報放最前面；不說成「仍未解除」，系統只知道資料裡沒看到。"""
+    records = [*timeline("09:00:00", "09:30:00"), _fall("09:02:00", "fusion", "conversation", userReply=True),
+               _fall("09:10:00", "radar", "timeout", delaysec=10), _resolved("09:10:40", "noNeedHelp")]
+    report = caregiver_report(summarize(records), place="1 號廁所")
+    assert report.startswith("【重點】09:02 跌倒警報，資料中沒有解除紀錄，請確認是否已有人到場；跌倒警報 1 次已解除。\n")
+    assert ("跌倒警報 2 次：\n"
+            "　09:02 長者回覆需要協助，資料中沒有解除紀錄；\n"
+            "　09:10 語音詢問 10 秒未獲回應，40 秒後長者回覆沒事，警報解除。") in report
+    assert check_output(report, summarize(records), place="1 號廁所") == []
+
+
+def test_a_resolution_belongs_to_the_last_alert_before_it():
+    """配對規則（依 docs/05 A26 推定，待雷達負責人確認）：警報之後、下一個警報之前的第一筆解除。"""
+    records = [*timeline("09:00:00", "09:30:00"), _fall("09:02:00", "radar", "timeout"),
+               _fall("09:05:00", "speech", "conversation", userReply=True), _resolved("09:07:30", "standUp")]
+    text = caregiver_text(summarize(records), place="1 號廁所")
+    assert "跌倒警報 1 次：09:02 語音詢問未獲回應，資料中沒有解除紀錄。" in text
+    assert "主動呼救 1 次：09:05，2 分 30 秒後偵測到起身，警報解除。" in text
+
+
+def test_a_resolution_without_an_alert_is_still_reported():
+    """沒配到警報的解除紀錄不能因為改了寫法就漏掉（REVIEW.md 3.1）。"""
+    records = [*timeline("09:00:00", "09:30:00"), _resolved("09:05:00", "noNeedHelp"), _resolved("09:06:00", "standUp")]
+    text = caregiver_text(summarize(records), place="1 號廁所")
+    assert "另有語音回覆沒事 1 次（09:05）。" in text and "另有偵測到起身、警報解除 1 次（09:06）。" in text
+
+
+def test_highlights_for_ongoing_visit_and_device_problems():
+    records = [*timeline("09:00:00", "09:10:00", [("09:08:00", "09:30:00")]),
+               {"timestamp": "2026-10-14 09:05:00", "topic": TOPIC, "resolution": None,
+                "payload": {"event": "error", "message": "radar is not running"}}]
+    report = caregiver_report(summarize(records), place="1 號廁所")
+    assert report.startswith("【重點】資料結束時仍有人在內（09:08 起），請確認現況；裝置回報錯誤 1 次，請通知資訊人員。")
+
+
+def test_check_flags_an_elapsed_time_that_is_not_in_the_facts():
+    records = [*timeline("09:00:00", "09:30:00"), _fall("09:02:00", "radar", "timeout"), _resolved("09:05:00", "standUp")]
+    summary = summarize(records)
+    text = caregiver_text(summary, place="1 號廁所")
+    assert "3 分鐘後偵測到起身" in text and check_output(text, summary, place="1 號廁所") == []
+    assert check_output(text.replace("3 分鐘後", "7 分鐘後"), summary, place="1 號廁所") == ["數字 7 不在事實裡"]

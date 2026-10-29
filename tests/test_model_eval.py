@@ -70,7 +70,7 @@ class Padding:
     name = "padding-0.1"
 
     def __call__(self, prompt: str) -> str:
-        return EchoModel()(prompt) + "另外提醒：每 3 小時巡視一次。"
+        return EchoModel()(prompt) + "另外提醒：每 97 分鐘巡視一次。"
 
 
 def test_rejections_are_listed_and_counted_and_throughput_is_estimated():

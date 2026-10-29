@@ -649,6 +649,7 @@ def scenario_data(build: Any, morning: list[dict[str, Any]], devices: list[tuple
         "period": _period(family_full),
         "from": family_full["from"],
         "to": family_full["to"],
+        "highlights": family_full["highlights"],
         "summary": family_full["summary"],
         "visits": family_full["visits"],
         "offline": family_full["offline"],

@@ -43,6 +43,11 @@ def _facts(source: Summary | Assessment, place: str) -> set[Decimal]:
         times = [a.time for a in source.fall_alerts] + source.longstay_alerts + [w for w, _ in source.errors]
         times += [r.time for r in source.resolutions]
         allowed |= {Decimal(a.delay_s) for a in source.fall_alerts if a.delay_s is not None}
+        # 警報到解除隔了多久（事件摘要「3 分 10 秒後偵測到起身」）：每個警報與它之後的解除紀錄都算
+        for alert in source.fall_alerts:
+            for r in source.resolutions:
+                if r.time >= alert.time:
+                    allowed |= {Decimal(n) for n in divmod(int((r.time - alert.time).total_seconds()), 60)}
         times += [p.start for p in source.online] + [p.end for p in source.online]
         if source.ended_offline is not None:
             times.append(source.ended_offline)
@@ -87,6 +92,8 @@ def check_output(text: str, source: Summary | Assessment, *, place: str = "") ->
         for label in ("跌倒警報", "主動呼救", "久待警報"):
             if re.search(rf"(?<!在線期間){label} 0 次", text):
                 problems.append(f"裝置有斷線，不能寫「{label} 0 次」而不註明在線期間")
+        if re.search(r"(?<!在線期間)沒有(?:跌倒警報|主動呼救|久待警報)", text):
+            problems.append("裝置有斷線，不能寫「沒有跌倒警報／主動呼救／久待警報」而不註明在線期間")
         if "裝置都在線" in text:
             problems.append("裝置有斷線，不能寫「裝置都在線」")
     return problems
