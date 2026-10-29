@@ -139,9 +139,11 @@ def checked_rewrite(
 
 
 # ── 交班重點的口語改寫（草案，2026-10-29；Jetson 內部 Demo 的實驗功能，docs/21）──────────
-# 原句由 caregiver.handover_text 產生（【重點】＋【事件摘要】）；模型只改寫事件摘要的說法。檢查比 rewrite() 多三項：每個時刻都要出現、
-# 「N 次／分鐘／秒」要整組對得上、不能加上範本沒有的時段詞與「我們」。numbers() 以集合比較，
-# 漏掉一個事件或改掉一個次數時，數字可能剛好在別處出現而沒被發現。
+# 原句由 caregiver.handover_text 產生（【重點】＋【事件摘要】）；模型只改寫事件摘要的說法。檢查比 rewrite() 多三項：
+# 每個時刻都要出現；次數與時間長度（「5 次」「1 筆」「3 分 10 秒」「1 小時 15 分」）整段對得上；
+# 不能加上範本沒有的時段詞與「我們」。numbers() 以集合比較，漏掉一個事件或改掉一個次數時，數字可能剛好在別處出現。
+# 已知限制（docs/21）：數量只比「有沒有出現」、不比屬於哪個事件；「沒有……」改成「有……」也擋不到。
+# 所以頁面一定把原句和模型版並排顯示（測試版，2026-10-29 決定）。
 HANDOVER_PROMPT_VERSION = "handover-v0"
 # 範本沒有、模型卻常自己加上的詞（2026-10-29 實測）：時段詞會說錯（「下午 10:03」），
 # 「我們」會把裝置做的事寫成照護人員做的（「我們語音詢問」）。範本裡沒有就不能出現
@@ -198,7 +200,7 @@ def _added_words(template: str, text: str) -> list[str]:
 
 
 def rewrite_handover(summary: Summary, *, place: str, model: Model | None = None) -> Rewritten:
-    """居服員看的交班重點。沒有模型就用範本；模型出錯或沒通過檢查也退回範本（和 rewrite() 同一道檢查，另加時刻）。"""
+    """居服員看的交班重點。沒有模型或沒有資料就用原句；模型出錯或沒通過檢查也退回原句（檢查見上方說明）。"""
     # 居服員可以看場域事件摘要（audience.ALLOWED），不另做權限檢查
     template = handover_text(summary, place=place)
     problems = check_output(template, summary, place=place)

@@ -103,3 +103,33 @@ def test_a_template_that_fails_its_own_check_is_not_handed_to_the_model():
     with pytest.raises(ValueError, match="範本沒通過輸出檢查"):
         rewrite_handover(DEMO, place="治療室", model=model)
     assert model.prompts == []
+
+
+def _with_unreadable():
+    """有人待 75 分鐘、另有 1 筆讀不懂的紀錄。"""
+    records = timeline("09:00:00", "10:30:00", [("09:05:00", "10:20:00")])
+    records[10] = {**records[10], "payload": "壞掉"}
+    return summarize(records)
+
+
+def test_dropping_the_unreadable_record_line_falls_back():
+    """「另有 1 筆紀錄無法判讀」整行刪掉：【重點】還寫著，但事件摘要不能少（「1 筆」整組比對）。"""
+    summary = _with_unreadable()
+    body = handover_text(summary, place=PLACE).split("\n", 2)[2]
+    reply = body.replace("\n另有 1 筆紀錄無法判讀，請通知資訊人員。", "")
+    result = rewrite_handover(summary, place=PLACE, model=FakeModel(reply))
+    assert result.layer == "template" and "漏掉「1筆」" in result.rejected
+
+
+def test_known_limit_b_none_sentence_turned_positive_is_not_caught():
+    """已知限制（docs/21，2026-10-29 決定靠並排對照找出）：「沒有……」改成「有……」沒有數字可比，檢查放過。"""
+    summary = _with_unreadable()
+    body = handover_text(summary, place=PLACE).split("\n", 2)[2]
+    reply = body.replace("沒有跌倒警報", "有跌倒警報")
+    assert rewrite_handover(summary, place=PLACE, model=FakeModel(reply)).layer == "model"
+
+
+def test_known_limit_a_a_count_moved_to_another_event_is_not_caught():
+    """已知限制（docs/21）：次數只比「這個數量有沒有出現」，主動呼救 1 次改成 2 次時，2 次在跌倒那行本來就有。"""
+    reply = GOOD_BODY.replace("主動呼救有 1 次", "主動呼救有 2 次")
+    assert rewrite_handover(DEMO, place=PLACE, model=FakeModel(reply)).layer == "model"
