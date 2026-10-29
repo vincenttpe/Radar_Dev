@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 from test_caregiver import timeline
-from test_rewrite import FakeModel
+from test_rewrite import FakeModel, rule_digest
 
 from radar_agent.caregiver import caregiver_text, handover_text, highlights
 from radar_agent.device_events import read_records, summarize
@@ -139,3 +139,14 @@ def test_known_limit_a_swapped_durations_are_not_caught():
     """已知限制（docs/21）：兩次警報的時間長度對調，每個時間長度都還在，檢查放過。"""
     reply = (GOOD_BODY.replace("3 分 10 秒", "<X>").replace("2 分 35 秒", "3 分 10 秒").replace("<X>", "2 分 35 秒"))
     assert rewrite_handover(DEMO, place=PLACE, model=FakeModel(reply)).layer == "model"
+
+
+def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
+    """紀錄只記 prompt_version；交班的 prompt 或採用的檢查改了卻沒升版，就分不出一筆退回是哪一套規則（原則 3）。"""
+    from radar_agent import rewrite as r
+
+    digest = rule_digest(r.build_handover_prompt("{原句}"), r.rewrite_handover, r.checked_rewrite, r._kept_facts, r._quantities,
+                         r._kept_quantities, r._clock_times, r._kept_times, r._added_words, r._QUANTITY.pattern,
+                         r._CLOCK.pattern, r.REQUIRED_PHRASES, r.MAX_LENGTH_RATIO, r.HANDOVER_ADDED_WORDS)
+    assert (HANDOVER_PROMPT_VERSION, digest) == ("handover-v0", "1a8a0d11eb38d6ae"), \
+        "rewrite.build_handover_prompt 或採用的檢查改了：升 rewrite.HANDOVER_PROMPT_VERSION，再更新這裡的版本與雜湊"
