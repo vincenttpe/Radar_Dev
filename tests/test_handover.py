@@ -38,10 +38,12 @@ def test_template_without_alerts_still_has_highlights():
     assert "【重點】這段時間沒有警報，裝置都在線。" in handover_text(quiet, place=PLACE).splitlines()
 
 
-def test_template_without_data_cannot_tell_and_is_never_sent_to_the_model():
+def test_template_without_data_cannot_tell_keeps_highlights_and_is_never_sent_to_the_model():
     model = FakeModel(GOOD_BODY)
     result = rewrite_handover(summarize([]), place=PLACE, model=model)
-    assert (result.text, result.layer) == (f"{PLACE}：沒有收到資料，無法判斷。", "template")
+    assert (result.text, result.layer) == (
+        f"{PLACE}：沒有收到資料，無法判斷。\n【重點】沒有收到資料，無法判斷，請通知資訊人員。", "template"
+    )
     assert model.prompts == []
 
 
@@ -73,14 +75,22 @@ def test_the_prompt_carries_the_event_summary_but_not_the_heading_or_highlights(
     (GOOD_BODY.replace("語音詢問了 10 秒", "我們語音詢問了 10 秒"), "範本沒有「我們」"),
     (GOOD_BODY.replace("這段時間無法判斷是否有跌倒", "這段時間狀況不明"), "漏掉「無法判斷」"),
     # 次數、時間長度改掉：數字可能在別處還有（只比數字會放過），要靠「N 次／分鐘／秒」整組比對
-    (GOOD_BODY.replace("使用 5 次", "使用 6 次"), "漏掉「5 次」"),
-    (GOOD_BODY.replace("22 分鐘", "20 分鐘"), "範本沒有「20 分鐘」"),
-    (GOOD_BODY.replace("35 秒", "25 秒"), "漏掉「35 秒」"),
+    (GOOD_BODY.replace("使用 5 次", "使用 6 次"), "漏掉「5次」"),
+    (GOOD_BODY.replace("22 分鐘", "20 分鐘"), "範本沒有「20分」"),
+    (GOOD_BODY.replace("35 秒", "25 秒"), "漏掉「2分35秒」"),
+    # 時間長度的「分」改掉：2、3 在別處都還有，「10 秒」也還在，要整段比（2026-10-29 審查實測）
+    (GOOD_BODY.replace("3 分 10 秒", "2 分 10 秒"), "漏掉「3分10秒」"),
+    (GOOD_BODY.replace("2 分 35 秒", "3 分 35 秒"), "範本沒有「3分35秒」"),
 ])
 def test_unfaithful_rewrites_fall_back_to_the_template(reply, reason):
     result = rewrite_handover(DEMO, place=PLACE, model=FakeModel(reply))
     assert result.layer == "template" and result.text == handover_text(DEMO, place=PLACE)
     assert reason in result.rejected
+
+
+def test_minutes_written_with_or_without_zhong_count_as_the_same_duration():
+    result = rewrite_handover(DEMO, place=PLACE, model=FakeModel(GOOD_BODY.replace("22 分鐘", "22 分")))
+    assert result.layer == "model"
 
 
 def test_model_errors_fall_back_to_the_template():

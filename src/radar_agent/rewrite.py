@@ -176,19 +176,21 @@ def _kept_times(template: str, text: str) -> list[str]:
     return [f"漏掉時間 {h:02d}:{m:02d}" for h, m in sorted(_clock_times(template) - _clock_times(text))]
 
 
-# 「5 次」「22 分鐘」「10 秒」要整組對得上：numbers() 只比數字有沒有出現過，
+# 「5 次」「22 分鐘」「3 分 10 秒」「1 筆」要整組對得上：numbers() 只比數字有沒有出現過，
 # 「5 次」改成「6 次」時，5 還在「10:05」裡、6 也可能是別的事實，會被放過（2026-10-29 測試發現）
-_QUANTITY = re.compile(r"(?<![\d:])(\d+(?:\.\d+)?) ?(次|分鐘|秒|小時)")
+# 時間長度整段比：「3 分 10 秒」「1 小時 15 分」只比「10 秒」或「15 分」時，改掉前面的分、時會被放過
+# （2026-10-29 審查實測：「3 分 10 秒」改成「2 分 10 秒」被採用）。「分鐘」與「分」視為相同
+_QUANTITY = re.compile(r"(?<![\d:.])\d+(?:\.\d+)? ?(?:小時|分鐘|分|秒|次|筆)(?: ?\d+ ?(?:分鐘|分|秒))*")
 
 
-def _quantities(text: str) -> set[tuple[str, str]]:
-    return set(_QUANTITY.findall(text))
+def _quantities(text: str) -> set[str]:
+    return {q.replace(" ", "").replace("分鐘", "分") for q in _QUANTITY.findall(text)}
 
 
 def _kept_quantities(template: str, text: str) -> list[str]:
     before, after = _quantities(template), _quantities(text)
-    return ([f"漏掉「{n} {unit}」" for n, unit in sorted(before - after)]
-            + [f"範本沒有「{n} {unit}」" for n, unit in sorted(after - before)])
+    return ([f"漏掉「{q}」" for q in sorted(before - after)]
+            + [f"範本沒有「{q}」" for q in sorted(after - before)])
 
 
 def _added_words(template: str, text: str) -> list[str]:
@@ -202,7 +204,7 @@ def rewrite_handover(summary: Summary, *, place: str, model: Model | None = None
     problems = check_output(template, summary, place=place)
     if problems:
         raise ValueError("範本沒通過輸出檢查：" + "；".join(problems))
-    if model is None or "\n" not in template:  # 沒有收到資料時只有一句，不必改寫
+    if model is None or not summary.online:  # 沒有收到資料時只有「無法判斷」，不必改寫
         return Rewritten(template, "template", "居服員")
     # 前兩行（地點與時段、【重點】）由程式固定顯示，模型只改寫下面的事件摘要：
     # 實測模型常把開頭與【重點】整行省掉，而那兩行的數字在事件摘要裡都還有，檢查擋不到（2026-10-29）

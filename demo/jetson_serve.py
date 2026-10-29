@@ -194,10 +194,14 @@ def make_handler(demo: Demo, port: int) -> type[BaseHTTPRequestHandler]:
             # 別的網頁（同一台機器的瀏覽器開著的其他網站）不能借這個服務送提問或叫模型改寫
             origin = self.headers.get("Origin")
             if origin is not None and origin not in origins:
-                self._json(403, {"error": "只接受這個頁面送出的請求"})
+                what = "提問" if path == "/api/ask" else "請求"
+                self._json(403, {"error": f"只接受這個頁面送出的{what}"})
                 return
             if path == "/api/handover":  # 只用模擬資料的摘要，不讀請求內容
-                self._json(200, demo.handover())
+                try:
+                    self._json(200, demo.handover())
+                except ValueError as e:  # 原句沒通過輸出檢查：不交出任何文字，告訴頁面原因
+                    self._json(500, {"error": str(e)})
                 return
             try:
                 length = int(self.headers.get("Content-Length", ""))

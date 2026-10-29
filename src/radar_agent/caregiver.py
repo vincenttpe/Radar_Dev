@@ -333,9 +333,9 @@ def event_notes(summary: Summary, place: str) -> list[EventNote]:
 # 第一行由程式固定加上，標出地點與時段。改這裡屬單向門「給讀者的輸出與用語」。
 
 def handover_text(summary: Summary, *, place: str) -> str:
-    """給下一班照護人員的交班重點（原句）。沒有收到資料時只有一句「沒有收到資料，無法判斷」。"""
+    """給下一班照護人員的交班重點（原句）。沒有收到資料時是「沒有收到資料，無法判斷」加上【重點】（請通知資訊人員）。"""
     if not summary.online:
-        return f"{place}：沒有收到資料，無法判斷。"
+        return f"{place}：沒有收到資料，無法判斷。\n{highlights(summary)}"
     head = period_head(summary, place, clock=True) + "交班重點如下。"
     return "\n".join([head, highlights(summary), _site_text(summary, place)])
 

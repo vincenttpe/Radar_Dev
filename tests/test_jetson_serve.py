@@ -255,3 +255,16 @@ def test_handover_model_errors_keep_the_template(server):
 def test_other_sites_cannot_trigger_a_handover(server):
     _, url = server(PickFirst())
     assert _handover(url, {"Origin": "http://evil.example"})[0] == 403
+
+
+def test_handover_whose_template_fails_its_check_answers_500_with_the_reason(server):
+    demo, url = server(PickFirst())
+    demo.place = "治療室"  # 「治療」是不能出現的用語：原句沒通過輸出檢查，不交出任何文字
+    code, data = _handover(url)
+    assert code == 500 and "範本沒通過輸出檢查" in data["error"]
+
+
+def test_refused_ask_still_says_question(server):
+    _, url = server(PickFirst())
+    code, data = _ask(url, "有人跌倒嗎", {"Origin": "http://evil.example"})
+    assert code == 403 and data["error"] == "只接受這個頁面送出的提問"
