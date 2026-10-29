@@ -142,7 +142,11 @@ def test_writing_none_as_zero_counts_falls_back():
 
 
 def rule_digest(*parts: object) -> str:
-    """prompt 與採用檢查的指紋：字串照原樣，函式取語法樹（不含註解、docstring 與排版），改了說法才會變。"""
+    """prompt 與採用檢查的指紋：字串照原樣，函式取語法樹還原的程式碼（不含註解、docstring 與排版）。
+
+    用 ast.unparse 而不是 ast.dump：ast.dump 的輸出在 3.11、3.12、3.13 之間不同（CI 跑 3.11 與 3.12）。
+    output_check 的 check_output、wording_problems 不在指紋裡：報告與提問也共用，改了不代表改寫規則變了。
+    """
     texts = []
     for part in parts:
         if callable(part):
@@ -151,7 +155,7 @@ def rule_digest(*parts: object) -> str:
                 if (isinstance(node, ast.FunctionDef) and node.body and isinstance(node.body[0], ast.Expr)
                         and isinstance(node.body[0].value, ast.Constant) and isinstance(node.body[0].value.value, str)):
                     node.body = node.body[1:] or [ast.Pass()]
-            texts.append(ast.dump(tree))
+            texts.append(ast.unparse(tree))
         else:
             texts.append(repr(part))
     return hashlib.sha256("\n".join(texts).encode("utf-8")).hexdigest()[:16]
@@ -161,7 +165,8 @@ def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
     """紀錄只記 prompt_version；prompt 或採用的檢查改了卻沒升版，就分不出一筆退回是哪一套規則（原則 3，PR #41）。"""
     from radar_agent import rewrite as r
 
-    digest = rule_digest(r.build_prompt("{範本}"), r.rewrite, r._kept_facts, r._quantities, r._kept_quantities,
+    digest = rule_digest(r.build_prompt("{範本}"), r.rewrite, r.checked_rewrite, r._kept_facts, r._quantities,
+                         r._kept_quantities,
                          r._QUANTITY.pattern, r.REQUIRED_PHRASES, r.MAX_LENGTH_RATIO)
-    assert (PROMPT_VERSION, digest) == ("caregiver-v1", "6fd95126e04ca1f9"), \
+    assert (PROMPT_VERSION, digest) == ("caregiver-v1", "392b66214ae1eb8e"), \
         "rewrite.build_prompt 或採用的檢查改了：升 rewrite.PROMPT_VERSION，再更新這裡的版本與雜湊"
