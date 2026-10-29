@@ -69,7 +69,7 @@ def test_dropping_the_disconnection_caveat_falls_back():
     """模型把斷線那句刪掉，讀者會以為整段時間都沒事（REVIEW.md 3.1）。"""
     records = timeline("09:00:00", "09:10:00", [("09:02:00", "09:03:00")]) + timeline("09:40:00", "09:50:00")
     summary = summarize(records)
-    reply = "1 號廁所 10/14 有人使用 1 次，最長一次 1 分鐘。在線期間跌倒警報 0 次，在線期間久待警報 0 次。"
+    reply = "1 號廁所 10/14 有人使用 1 次，停留 1 分鐘。在線期間沒有跌倒警報、主動呼救或久待警報。"
     rejected = _fallback(summary, reply)
     assert "漏掉「無法判斷」" in rejected
     assert "漏掉範本裡的數字 40" in rejected
