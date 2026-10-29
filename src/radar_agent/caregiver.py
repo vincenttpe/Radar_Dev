@@ -199,6 +199,28 @@ def event_notes(summary: Summary, place: str) -> list[EventNote]:
     return sorted(notes, key=lambda n: n.time)
 
 
+# ── 交班重點（草案，2026-10-29；Jetson 內部 Demo 的實驗功能，docs/21）─────────
+# 規則把事件依時間列出（照護紀錄草稿的句子），再寫使用情形與無法判斷的時段；在地模型只把它改寫成口語
+# （rewrite.rewrite_handover）。句型待審核人確認（單向門「給讀者的輸出與用語」）。
+HANDOVER_DEVICE_PROMPT = "這段時間無法判斷是否有跌倒，請通知資訊人員。"  # 斷線的處置提示：改用下方的斷線句子
+
+
+def handover_text(summary: Summary, *, place: str) -> str:
+    """給下一班照護人員的交班重點（範本）。summary.online 是空的時只寫「沒有收到資料，無法判斷」。"""
+    if not summary.online:
+        return f"{place}：沒有收到資料，無法判斷。"
+    notes = [n for n in event_notes(summary, place) if n.prompt != HANDOVER_DEVICE_PROMPT]
+    lines = [period_head(summary, place, clock=True) + "交班重點如下。"]
+    if notes:
+        lines += ["事件（依時間）：", *(n.record for n in notes)]
+    else:
+        lines.append("在線期間沒有警報。" if disconnected(summary) else "這段時間沒有警報。")
+    lines.append("使用情形：" + "".join(usage_sentences(summary)))
+    lines += offline_sentences(summary)
+    lines += device_problem_sentences(summary)
+    return "\n".join(lines)
+
+
 def caregiver_report(summary: Summary, *, place: str) -> str:
     """事件摘要＋處置提示＋照護紀錄草稿。沒有事件時只有摘要，不另寫「沒有事件」。"""
     parts = ["【事件摘要】", _site_text(summary, place)]

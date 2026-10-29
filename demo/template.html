@@ -153,6 +153,11 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .chat .meta { font: 12.5px var(--f-mono); color: var(--muted); }
 .chat .yesno { display: flex; gap: 8px; margin-top: 4px; }
 .jetson-stats { font-family: var(--f-mono); }
+.handover { display: grid; gap: 8px; margin-top: 14px; }
+.handover-text p { margin: 0; font-size: 16px; line-height: 1.8; max-width: 68ch; }
+.handover-text.wait p { color: var(--muted); }
+.handover .meta { font: 12.5px var(--f-mono); color: var(--muted); }
+.handover .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 </style>
 
 <div class="sim"><div class="wrap">
@@ -228,7 +233,13 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
   <section aria-labelledby="h-sum">
     <h2 id="h-sum">事件摘要<button type="button" class="gap-badge" data-gap="7" aria-label="Gap 7">7</button></h2>
-    <div class="panel"><p class="summary" id="summary"></p></div>
+    <div class="panel"><p class="summary" id="summary"></p>
+      <div class="handover" id="handover" hidden>
+        <div class="row"><button type="button" id="btn-handover">整理交班重點（實驗）</button><button type="button" id="btn-handover-toggle" hidden>看原句</button></div>
+        <div class="handover-text" id="handover-text" aria-live="polite"></div>
+        <span class="meta" id="handover-meta"></span>
+      </div>
+    </div>
   </section>
 
   <section aria-labelledby="h-ask">
@@ -348,6 +359,7 @@ function render() {
   sum.textContent = done ? DATA.summary : "重播中。播完全部事件後顯示這段時間的摘要。";
   $("btn-prev").disabled = shown === 0; $("btn-next").disabled = done; $("btn-all").disabled = done;
   renderAsk(done);
+  if (LIVE) renderHandover(done);
 }
 
 // 提問：答案和 radar-ask --pick 相同（不經模型）。重播中和事件摘要一樣先不給答案；不保留打的原文（可能有姓名）
@@ -448,6 +460,51 @@ if (LIVE) {
     } catch (e) { /* 讀不到就不顯示 */ }
   };
   if (LIVE.stats) { poll(); setInterval(poll, 2000); }
+  $("handover").hidden = false;
+  $("btn-handover").onclick = liveHandover;
+}
+
+// 交班重點（實驗）：原句（規則產生）先顯示，在地模型改寫好再換上去；沒通過檢查就維持原句並寫出原因
+let handover = null;  // 服務回的結果；showOriginal 切換看原句
+let showOriginal = false;
+function paintHandover() {
+  const box = $("handover-text"), meta = $("handover-meta"), toggle = $("btn-handover-toggle");
+  const text = handover && handover.layer === "model" && !showOriginal ? handover.text : LIVE.handover;
+  box.replaceChildren(...text.split("\n").map(line => el("p", null, line)));
+  toggle.hidden = !(handover && handover.layer === "model");
+  toggle.textContent = showOriginal ? "看口語版" : "看原句";
+  if (!handover) { meta.textContent = "原句（規則產生）"; return; }
+  if (handover.layer === "model") {
+    meta.textContent = showOriginal ? "原句（規則產生）"
+      : `在地模型改寫 · ${handover.model} · ${handover.seconds.toFixed(1)} 秒 · 數字與時間已核對`;
+  } else {
+    meta.textContent = `沒通過檢查，維持原句：${handover.rejected.join("、")}`;
+  }
+}
+function renderHandover(done) {
+  $("btn-handover").disabled = !done;
+  if (done) return;
+  handover = null;  // 重播時清掉上一輪的交班重點
+  $("handover-text").replaceChildren(); $("btn-handover-toggle").hidden = true;
+  $("handover-meta").textContent = "重播中。播完全部事件後再整理。";
+}
+async function liveHandover() {
+  const btn = $("btn-handover");
+  handover = null; showOriginal = false; paintHandover();
+  btn.disabled = true; $("handover-text").classList.add("wait");
+  $("handover-meta").textContent = "原句（規則產生）· 在地模型改寫中…";
+  try {
+    const res = await fetch("/api/handover", { method: "POST" });
+    if (!res.ok) throw new Error(String(res.status));
+    handover = await res.json();
+  } catch (e) {
+    handover = { layer: "template", rejected: ["連不上這台 Jetson 上的服務"] };
+  }
+  $("handover-text").classList.remove("wait"); btn.disabled = false;
+  paintHandover();
+}
+if (LIVE) {
+  $("btn-handover-toggle").onclick = () => { showOriginal = !showOriginal; paintHandover(); };
 }
 
 const go = n => { shown = Math.max(0, Math.min(events.length, n)); render(); };

@@ -8,12 +8,13 @@ docs/02「在地模型負載與分流」：範本是主要路徑；模型只改�
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal, Protocol
 
 from radar_agent.audience import Profile, check_audience
-from radar_agent.caregiver import caregiver_text
+from radar_agent.caregiver import caregiver_text, handover_text
 from radar_agent.device_events import Summary
 from radar_agent.kg_rules import Assessment
 from radar_agent.output_check import check_output, numbers
@@ -135,3 +136,80 @@ def checked_rewrite(
     if problems:
         return fallback(*problems)
     return Rewritten(text, "model", profile, model.name, prompt_version)
+
+
+# ── 交班重點的口語改寫（草案，2026-10-29；Jetson 內部 Demo 的實驗功能，docs/21）──────────
+# 範本由 caregiver.handover_text 產生；模型只改說法。檢查比 rewrite() 多三項：每個時刻都要出現、
+# 「N 次／分鐘／秒」要整組對得上、不能加上範本沒有的時段詞與「我們」。numbers() 以集合比較，
+# 漏掉一個事件或改掉一個次數時，數字可能剛好在別處出現而沒被發現。
+HANDOVER_PROMPT_VERSION = "handover-v0"
+# 範本沒有、模型卻常自己加上的詞（2026-10-29 實測）：時段詞會說錯（「下午 10:03」），
+# 「我們」會把裝置做的事寫成照護人員做的（「我們語音詢問」）。範本裡沒有就不能出現
+HANDOVER_ADDED_WORDS = ("凌晨", "早上", "上午", "中午", "下午", "晚上", "我們")
+_CLOCK = re.compile(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)")
+
+
+def build_handover_prompt(template: str) -> str:
+    """交班口語化的 prompt：只放範本文字。"""
+    return (
+        "你是長照機構的交班助手。下面是一個地點一段時間的事件紀錄（地點與時段另外標示，不用重寫），請改寫成一段口語的交班說明，"
+        "像跟下一班同事口頭交代一樣，讀起來順、好懂。\n"
+        "規則：\n"
+        "1. 只改說法，不新增、不刪除任何事實；不推測原因，不推測是哪一位長者，不加建議。\n"
+        "2. 依時間順序講，每一個時間都要寫出來，不合併、不省略；最後講使用情形和無法判斷的時段。\n"
+        "3. 數字、日期、時間照原樣寫，不換算、不四捨五入。\n"
+        f"4. 原文有「{'」「'.join(REQUIRED_PHRASES)}」的句子一定要保留。\n"
+        "5. 不使用「診斷」「治療」「處方」「保證」「誤報」等字眼。\n"
+        f"6. 不加「{'」「'.join(HANDOVER_ADDED_WORDS)}」這些詞：時間只寫原文的時刻；語音詢問、偵測都是裝置做的。\n"
+        f"7. 長度不超過原文的 {MAX_LENGTH_RATIO} 倍。只輸出改寫後的文字，不加標題或說明。\n"
+        "原文：\n"
+        f"{template}"
+    )
+
+
+def _clock_times(text: str) -> set[tuple[int, int]]:
+    """文字裡的時刻（時, 分）；09:10 和 9:10 視為同一個。"""
+    return {(int(h), int(m)) for h, m in _CLOCK.findall(text)}
+
+
+def _kept_times(template: str, text: str) -> list[str]:
+    return [f"漏掉時間 {h:02d}:{m:02d}" for h, m in sorted(_clock_times(template) - _clock_times(text))]
+
+
+# 「5 次」「22 分鐘」「10 秒」要整組對得上：numbers() 只比數字有沒有出現過，
+# 「5 次」改成「6 次」時，5 還在「10:05」裡、6 也可能是別的事實，會被放過（2026-10-29 測試發現）
+_QUANTITY = re.compile(r"(?<![\d:])(\d+(?:\.\d+)?) ?(次|分鐘|秒|小時)")
+
+
+def _quantities(text: str) -> set[tuple[str, str]]:
+    return set(_QUANTITY.findall(text))
+
+
+def _kept_quantities(template: str, text: str) -> list[str]:
+    before, after = _quantities(template), _quantities(text)
+    return ([f"漏掉「{n} {unit}」" for n, unit in sorted(before - after)]
+            + [f"範本沒有「{n} {unit}」" for n, unit in sorted(after - before)])
+
+
+def _added_words(template: str, text: str) -> list[str]:
+    return [f"範本沒有「{w}」" for w in HANDOVER_ADDED_WORDS if w in text and w not in template]
+
+
+def rewrite_handover(summary: Summary, *, place: str, model: Model | None = None) -> Rewritten:
+    """居服員看的交班重點。沒有模型就用範本；模型出錯或沒通過檢查也退回範本（和 rewrite() 同一道檢查，另加時刻）。"""
+    # 居服員可以看場域事件摘要（audience.ALLOWED），不另做權限檢查
+    template = handover_text(summary, place=place)
+    problems = check_output(template, summary, place=place)
+    if problems:
+        raise ValueError("範本沒通過輸出檢查：" + "；".join(problems))
+    if model is None or "\n" not in template:  # 沒有收到資料時只有一句，不必改寫
+        return Rewritten(template, "template", "居服員")
+    # 第一行（地點、時段）由程式固定加上，模型只改寫下面的內容：模型常把開頭省掉（2026-10-29 實測）
+    head, body = template.split("\n", 1)
+    result = checked_rewrite(
+        body, summary, place=place, profile="居服員", model=model,
+        prompt=build_handover_prompt(body), prompt_version=HANDOVER_PROMPT_VERSION,
+        kept=lambda text: (_kept_facts(body, text, summary) + _kept_times(body, text)
+                           + _kept_quantities(body, text) + _added_words(body, text)),
+    )
+    return replace(result, text=f"{head}\n{result.text}")
