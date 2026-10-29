@@ -211,6 +211,8 @@ def serve(demo: Demo, port: int = PORT) -> ThreadingHTTPServer:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     add_model_args(ap, required=True)
+    # 共用的 add_model_args 會加上 --cmd；本服務不接受（main 會拒絕），--help 也不列出來，免得看了才用、用了才被拒
+    ap._option_string_actions["--cmd"].help = argparse.SUPPRESS
     ap.add_argument("--port", type=int, default=PORT, help=f"本機埠號，預設 {PORT}；只聽 {HOST}")
     ap.add_argument("--no-warmup", action="store_true", help="啟動時不先問一題暖機")
     ap.add_argument("--no-stats", action="store_true", help="不讀 tegrastats")
