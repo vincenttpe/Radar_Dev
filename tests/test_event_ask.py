@@ -166,7 +166,7 @@ def test_check_rejects_zero_longstay_or_all_online_when_the_device_went_offline(
         "裝置有斷線，不能寫「久待警報 0 次」而不註明在線期間"
     ]
     assert check_output("沒有久待警報。", ENDED_OFFLINE, place=PLACE) == [
-        "裝置有斷線，不能寫「沒有跌倒警報／主動呼救／久待警報」而不註明在線期間"
+        "裝置有斷線，不能寫「沒有跌倒警報／主動呼救／久待警報」這類句子而不註明在線期間"
     ]
     assert check_output("這段時間裝置都在線。", ENDED_OFFLINE, place=PLACE) == ["裝置有斷線，不能寫「裝置都在線」"]
 

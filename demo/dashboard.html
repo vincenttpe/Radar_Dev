@@ -364,7 +364,7 @@ body { font-size: 16px; }
     </section>
     <section aria-labelledby="h-fm-sum">
       <h2 id="h-fm-sum">事件摘要</h2>
-      <div class="panel"><p class="summary key" id="fm-highlights"></p><p class="summary" id="fm-summary"></p></div>
+      <div class="panel"><p class="summary" id="fm-summary"></p></div>
     </section>
     <section aria-labelledby="h-fm-tl">
       <h2 id="h-fm-tl">時間軸</h2>
@@ -792,7 +792,6 @@ const RAW = {
   },
   "from": "2026-10-14 08:00:00",
   "to": "2026-10-14 11:59:55",
-  "highlights": "【重點】跌倒警報 2 次、主動呼救 1 次都已解除；10:45 有 1 次久待警報；11:10–11:25 裝置斷線，期間狀況不明，請通知資訊人員。",
   "summary": "DEMO-ELDER-01 房間的浴廁 10/14：有人使用 5 次，最長一次 22 分鐘。\n在線期間跌倒警報 2 次：\n　08:32 語音詢問 10 秒未獲回應，30 秒後長者回覆沒事，警報解除；\n　09:16 長者回覆需要協助，3 分 10 秒後偵測到起身，警報解除。\n在線期間主動呼救 1 次：10:03，2 分 35 秒後偵測到起身，警報解除。\n在線期間久待警報 1 次（10:45）。\n11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。",
   "visits": [
    [
@@ -1365,7 +1364,6 @@ const RAW = {
    },
    "from": "2026-10-14 08:00:00",
    "to": "2026-10-14 11:59:55",
-   "highlights": "【重點】這段時間沒有警報，裝置都在線。",
    "summary": "DEMO-ELDER-01 房間的浴廁 10/14：有人使用 5 次，最長一次 22 分鐘。\n沒有跌倒警報、主動呼救或久待警報。",
    "visits": [
     [
@@ -2824,7 +2822,6 @@ function renderFamilyCards() {
   period($("fm-period"), F.period);
   $("fm-note").textContent = F.incidents.length ? say("family_note") : "";
   $("fm-offline").textContent = F.offline_sentences.join("");
-  $("fm-highlights").textContent = F.highlights;
   $("fm-summary").textContent = F.summary;
   const tl = timeline($("fm-track"), $("fm-ticks"), F.from, F.to);
   F.visits.forEach(([a, b]) => tl.band("visit", a, b));

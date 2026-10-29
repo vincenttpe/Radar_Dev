@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from radar_agent.device_events import (
-    AlertOutcomes, FallAlert, Resolution, Summary, alert_outcomes, disconnected, read_records, summarize, summarize_days,
+    RESOLUTION_REASONS, AlertOutcomes, FallAlert, Resolution, Summary, alert_outcomes, disconnected, read_records,
+    summarize, summarize_days,
 )
 from radar_agent.kg_rules import Assessment
 from radar_agent.output_check import check_output, numbers, wording_problems
@@ -78,10 +79,11 @@ def usage_sentences(summary: Summary) -> list[str]:
         lines = [f"有人使用 {len(summary.visits)} 次，最長一次 {duration_text(longest)}。"]
     else:
         lines = ["沒有偵測到有人使用。"]
+    if summary.ongoing_visit is not None:
+        # 接在使用情形同一行（照 2026-10-29 草稿）
+        lines[0] += f"資料結束時仍有人在內（{summary.ongoing_visit.start:%H:%M} 起）。"
     if summary.interrupted_visits:
         lines.append(f"另有 {len(summary.interrupted_visits)} 次使用途中裝置斷線，停留時間不明。")
-    if summary.ongoing_visit is not None:
-        lines.append(f"資料結束時仍有人在內（{summary.ongoing_visit.start:%H:%M} 起）。")
     return lines
 
 
@@ -164,7 +166,7 @@ def unpaired_resolution_sentences(unpaired: list[Resolution]) -> list[str]:
         times = [r.time for r in unpaired if r.trigger == trigger]
         if times:
             lines.append(f"另有{said} {len(times)} 次（{'、'.join(f'{t:%H:%M}' for t in times)}）。")
-    others = [r.time for r in unpaired if r.trigger not in ("noNeedHelp", "standUp")]
+    others = [r.time for r in unpaired if r.trigger not in RESOLUTION_REASONS]
     if others:
         lines.append(f"另有警報解除 {len(others)} 次（{'、'.join(f'{t:%H:%M}' for t in others)}）。")
     return lines
@@ -244,10 +246,8 @@ def _site_text(summary: Summary, place: str) -> str:
     if not summary.online:
         return f"{place}：沒有收到資料，無法判斷。"
     outcomes = alert_outcomes(summary)
-    usage = usage_sentences(summary)
-    # 第一行：時段開頭與使用情形；「資料結束時仍有人在內」接在同一行（照 2026-10-29 草稿）
-    ongoing = usage.pop() if summary.ongoing_visit is not None else None
-    lines = [period_head(summary, place) + usage[0] + (ongoing or ""), *usage[1:]]
+    lines = usage_sentences(summary)
+    lines[0] = period_head(summary, place) + lines[0]
     lines += _event_lines(summary, *falls_and_calls_with_outcomes(outcomes))
     lines += unpaired_resolution_sentences(outcomes.unpaired)
     lines += offline_sentences(summary)

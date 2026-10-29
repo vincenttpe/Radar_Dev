@@ -5,6 +5,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from radar_agent.caregiver import caregiver_report, caregiver_text, event_notes, report_data
 from radar_agent.device_events import summarize
 from radar_agent.output_check import check_output
@@ -161,7 +163,7 @@ def test_check_flags_zero_falls_when_device_was_offline():
     summary = summarize(timeline("09:00:00", "09:10:00") + timeline("09:40:00", "09:50:00"))
     text = caregiver_text(summary, place="1 號廁所").replace("在線期間沒有", "沒有")
     assert check_output(text, summary, place="1 號廁所") == [
-        "裝置有斷線，不能寫「沒有跌倒警報／主動呼救／久待警報」而不註明在線期間"
+        "裝置有斷線，不能寫「沒有跌倒警報／主動呼救／久待警報」這類句子而不註明在線期間"
     ]
 
 
@@ -620,3 +622,38 @@ def test_check_flags_an_elapsed_time_that_is_not_in_the_facts():
     text = caregiver_text(summary, place="1 號廁所")
     assert "3 分鐘後偵測到起身" in text and check_output(text, summary, place="1 號廁所") == []
     assert check_output(text.replace("3 分鐘後", "7 分鐘後"), summary, place="1 號廁所") == ["數字 7 不在事實裡"]
+
+
+def test_an_alert_is_not_paired_with_a_resolution_after_an_offline_gap():
+    """斷線期間狀況不明：不寫出跨過斷線的經過時間，警報寫「沒有解除紀錄」，解除另外寫（2026-10-29 決定）。"""
+    records = [*timeline("08:00:00", "08:10:00"), *timeline("09:30:00", "09:40:00"),
+               _fall("08:05:00", "radar", "timeout"), _resolved("09:31:00", "standUp")]
+    summary = summarize(records)
+    report = caregiver_report(summary, place="1 號廁所")
+    assert "08:05 語音詢問未獲回應，資料中沒有解除紀錄。" in report
+    assert "另有偵測到起身、警報解除 1 次（09:31）。" in report
+    assert "1 小時" not in report
+    assert check_output(report, summary, place="1 號廁所") == []
+
+
+def test_highlights_for_an_unresolved_distress_call_and_whole_hours():
+    records = [*timeline("08:00:00", "10:30:00"), _fall("08:05:00", "radar", "timeout"), _resolved("10:05:00", "standUp"),
+               _fall("10:10:00", "speech", "conversation")]
+    summary = summarize(records)
+    report = caregiver_report(summary, place="1 號廁所")
+    assert report.startswith("【重點】10:10 主動呼救，資料中沒有解除紀錄，請確認是否已有人到場；跌倒警報 1 次已解除。")
+    assert "08:05 語音詢問未獲回應，2 小時後偵測到起身，警報解除。" in report
+    assert check_output(report, summary, place="1 號廁所") == []
+
+
+def test_a_resolution_at_the_same_second_is_written_as_immediately():
+    records = [*timeline("09:00:00", "09:30:00"), _fall("09:02:00", "fusion", "conversation"), _resolved("09:02:00", "standUp")]
+    assert "09:02 長者回覆需要協助，隨即偵測到起身，警報解除。" in caregiver_text(summarize(records), place="1 號廁所")
+
+
+@pytest.mark.parametrize("text", ["這段時間沒有警報。", "未有跌倒警報。", "沒有發生跌倒。", "未發生跌倒警報。"])
+def test_check_rejects_other_ways_of_saying_none_when_the_device_went_offline(text):
+    records = [*timeline("08:00:00", "08:10:00"), *timeline("09:30:00", "09:40:00")]
+    assert check_output(text, summarize(records), place="1 號廁所") == [
+        "裝置有斷線，不能寫「沒有跌倒警報／主動呼救／久待警報」這類句子而不註明在線期間"
+    ]

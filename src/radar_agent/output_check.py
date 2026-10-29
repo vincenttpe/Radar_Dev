@@ -11,7 +11,7 @@ import re
 from datetime import datetime
 from decimal import Decimal
 
-from radar_agent.device_events import Summary, alert_outcomes, disconnected
+from radar_agent.device_events import RESOLUTION_REASONS, Summary, alert_outcomes, disconnected
 from radar_agent.kg_rules import Assessment
 
 FORBIDDEN = {
@@ -52,7 +52,7 @@ def _facts(source: Summary | Assessment, place: str) -> set[Decimal]:
             allowed |= {Decimal(minutes), Decimal(seconds), *map(Decimal, divmod(minutes, 60))}
         allowed |= {Decimal(sum(1 for a, _ in resolved if not a.distress_call)),
                     Decimal(sum(1 for a, _ in resolved if a.distress_call)), Decimal(len(outcomes.unpaired))}
-        known = ("noNeedHelp", "standUp")
+        known = RESOLUTION_REASONS
         allowed |= {Decimal(sum(1 for r in outcomes.unpaired if r.trigger == t)) for t in known}
         allowed.add(Decimal(sum(1 for r in outcomes.unpaired if r.trigger not in known)))
         times += [p.start for p in source.online] + [p.end for p in source.online]
@@ -99,8 +99,9 @@ def check_output(text: str, source: Summary | Assessment, *, place: str = "") ->
         for label in ("跌倒警報", "主動呼救", "久待警報"):
             if re.search(rf"(?<!在線期間){label} 0 次", text):
                 problems.append(f"裝置有斷線，不能寫「{label} 0 次」而不註明在線期間")
-        if re.search(r"(?<!在線期間)沒有(?:跌倒警報|主動呼救|久待警報)", text):
-            problems.append("裝置有斷線，不能寫「沒有跌倒警報／主動呼救／久待警報」而不註明在線期間")
+        # 「這段時間沒有警報」「未有跌倒警報」「沒有發生跌倒」這類換句話說也算（2026-10-29 決定）
+        if re.search(r"(?<!在線期間)(?:沒有|未有|未發生)[^。；，、\n]{0,4}?(?:跌倒|呼救|久待|警報)", text):
+            problems.append("裝置有斷線，不能寫「沒有跌倒警報／主動呼救／久待警報」這類句子而不註明在線期間")
         if "裝置都在線" in text:
             problems.append("裝置有斷線，不能寫「裝置都在線」")
     return problems

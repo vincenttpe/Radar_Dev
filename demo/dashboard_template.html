@@ -360,7 +360,7 @@ body { font-size: 16px; }
     </section>
     <section aria-labelledby="h-fm-sum">
       <h2 id="h-fm-sum">事件摘要</h2>
-      <div class="panel"><p class="summary key" id="fm-highlights"></p><p class="summary" id="fm-summary"></p></div>
+      <div class="panel"><p class="summary" id="fm-summary"></p></div>
     </section>
     <section aria-labelledby="h-fm-tl">
       <h2 id="h-fm-tl">時間軸</h2>
@@ -847,7 +847,6 @@ function renderFamilyCards() {
   period($("fm-period"), F.period);
   $("fm-note").textContent = F.incidents.length ? say("family_note") : "";
   $("fm-offline").textContent = F.offline_sentences.join("");
-  $("fm-highlights").textContent = F.highlights;
   $("fm-summary").textContent = F.summary;
   const tl = timeline($("fm-track"), $("fm-ticks"), F.from, F.to);
   F.visits.forEach(([a, b]) => tl.band("visit", a, b));
