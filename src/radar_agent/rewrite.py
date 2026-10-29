@@ -8,12 +8,13 @@ docs/02「在地模型負載與分流」：範本是主要路徑；模型只改�
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal, Protocol
 
 from radar_agent.audience import Profile, check_audience
-from radar_agent.caregiver import caregiver_text
+from radar_agent.caregiver import caregiver_text, handover_text
 from radar_agent.device_events import Summary
 from radar_agent.kg_rules import Assessment
 from radar_agent.output_check import check_output, numbers
@@ -135,3 +136,86 @@ def checked_rewrite(
     if problems:
         return fallback(*problems)
     return Rewritten(text, "model", profile, model.name, prompt_version)
+
+
+# ── 交班重點的口語改寫（草案，2026-10-29；Jetson 內部 Demo 的實驗功能，docs/21）──────────
+# 原句由 caregiver.handover_text 產生（【重點】＋【事件摘要】）；模型只改寫事件摘要的說法。檢查比 rewrite() 多三項：
+# 每個時刻都要出現；次數與時間長度（「5 次」「1 筆」「3 分 10 秒」「1 小時 15 分」）整段對得上；
+# 不能加上範本沒有的時段詞與「我們」。numbers() 以集合比較，漏掉一個事件或改掉一個次數時，數字可能剛好在別處出現。
+# 已知限制（docs/21）：數量只比「有沒有出現」、不比屬於哪個事件；「沒有……」改成「有……」也擋不到。
+# 所以頁面一定把原句和模型版並排顯示（測試版，2026-10-29 決定）。
+HANDOVER_PROMPT_VERSION = "handover-v0"
+# 範本沒有、模型卻常自己加上的詞（2026-10-29 實測）：時段詞會說錯（「下午 10:03」），
+# 「我們」會把裝置做的事寫成照護人員做的（「我們語音詢問」）。範本裡沒有就不能出現
+HANDOVER_ADDED_WORDS = ("凌晨", "早上", "上午", "中午", "下午", "晚上", "我們")
+_CLOCK = re.compile(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)")
+
+
+def build_handover_prompt(template: str) -> str:
+    """交班口語化的 prompt：只放範本文字。"""
+    return (
+        "你是長照機構的交班助手。下面是一個地點一段時間的事件摘要（地點、時段與重點另外標示，不用重寫），請改寫成一段口語的交班說明，"
+        "像跟下一班同事口頭交代一樣，讀起來順、好懂。\n"
+        "規則：\n"
+        "1. 只改說法，不新增、不刪除任何事實；不推測原因，不推測是哪一位長者，不加建議。\n"
+        "2. 依時間順序講，每一個時間都要寫出來，不合併、不省略；最後講使用情形和無法判斷的時段。\n"
+        "3. 數字、日期、時間照原樣寫，不換算、不四捨五入。\n"
+        f"4. 原文有「{'」「'.join(REQUIRED_PHRASES)}」的句子一定要保留。\n"
+        "5. 不使用「診斷」「治療」「處方」「保證」「誤報」等字眼。\n"
+        f"6. 不加「{'」「'.join(HANDOVER_ADDED_WORDS)}」這些詞：時間只寫原文的時刻；語音詢問、偵測都是裝置做的。\n"
+        f"7. 長度不超過原文的 {MAX_LENGTH_RATIO} 倍。只輸出改寫後的文字，不加標題或說明。\n"
+        "原文：\n"
+        f"{template}"
+    )
+
+
+def _clock_times(text: str) -> set[tuple[int, int]]:
+    """文字裡的時刻（時, 分）；09:10 和 9:10 視為同一個。"""
+    return {(int(h), int(m)) for h, m in _CLOCK.findall(text)}
+
+
+def _kept_times(template: str, text: str) -> list[str]:
+    return [f"漏掉時間 {h:02d}:{m:02d}" for h, m in sorted(_clock_times(template) - _clock_times(text))]
+
+
+# 「5 次」「22 分鐘」「3 分 10 秒」「1 筆」要整組對得上：numbers() 只比數字有沒有出現過，
+# 「5 次」改成「6 次」時，5 還在「10:05」裡、6 也可能是別的事實，會被放過（2026-10-29 測試發現）
+# 時間長度整段比：「3 分 10 秒」「1 小時 15 分」只比「10 秒」或「15 分」時，改掉前面的分、時會被放過
+# （2026-10-29 審查實測：「3 分 10 秒」改成「2 分 10 秒」被採用）。「分鐘」與「分」視為相同
+_QUANTITY = re.compile(r"(?<![\d:.])\d+(?:\.\d+)? ?(?:小時|分鐘|分|秒|次|筆)(?: ?\d+ ?(?:分鐘|分|秒))*")
+
+
+def _quantities(text: str) -> set[str]:
+    return {q.replace(" ", "").replace("分鐘", "分") for q in _QUANTITY.findall(text)}
+
+
+def _kept_quantities(template: str, text: str) -> list[str]:
+    before, after = _quantities(template), _quantities(text)
+    return ([f"漏掉「{q}」" for q in sorted(before - after)]
+            + [f"範本沒有「{q}」" for q in sorted(after - before)])
+
+
+def _added_words(template: str, text: str) -> list[str]:
+    return [f"範本沒有「{w}」" for w in HANDOVER_ADDED_WORDS if w in text and w not in template]
+
+
+def rewrite_handover(summary: Summary, *, place: str, model: Model | None = None) -> Rewritten:
+    """居服員看的交班重點。沒有模型或沒有資料就用原句；模型出錯或沒通過檢查也退回原句（檢查見上方說明）。"""
+    # 居服員可以看場域事件摘要（audience.ALLOWED），不另做權限檢查
+    template = handover_text(summary, place=place)
+    problems = check_output(template, summary, place=place)
+    if problems:
+        raise ValueError("範本沒通過輸出檢查：" + "；".join(problems))
+    if model is None or not summary.online:  # 沒有收到資料時只有「無法判斷」，不必改寫
+        return Rewritten(template, "template", "居服員")
+    # 前兩行（地點與時段、【重點】）由程式固定顯示，模型只改寫下面的事件摘要：
+    # 實測模型常把開頭與【重點】整行省掉，而那兩行的數字在事件摘要裡都還有，檢查擋不到（2026-10-29）
+    first, highlight, body = template.split("\n", 2)
+    head = f"{first}\n{highlight}"
+    result = checked_rewrite(
+        body, summary, place=place, profile="居服員", model=model,
+        prompt=build_handover_prompt(body), prompt_version=HANDOVER_PROMPT_VERSION,
+        kept=lambda text: (_kept_facts(body, text, summary) + _kept_times(body, text)
+                           + _kept_quantities(body, text) + _added_words(body, text)),
+    )
+    return replace(result, text=f"{head}\n{result.text}")

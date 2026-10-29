@@ -216,3 +216,55 @@ def test_query_string_on_ask_is_ignored(server):
                                  method="POST", headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req) as resp:
         assert json.loads(resp.read())["question"]["id"] == "falls"
+
+
+def _handover(url, headers=None):
+    req = urllib.request.Request(url + "/api/handover", data=b"", method="POST", headers=headers or {})
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+def test_page_carries_the_handover_template_to_show_before_the_model_finishes(server):
+    from radar_agent.caregiver import handover_text
+
+    demo, url = server(PickFirst())
+    with urllib.request.urlopen(url + "/") as resp:
+        page = resp.read().decode("utf-8")
+    assert json.dumps(handover_text(demo.summary, place=demo.place), ensure_ascii=False) in page
+
+
+def test_handover_that_fails_the_check_keeps_the_template_and_says_why(server):
+    from radar_agent.caregiver import handover_text
+
+    demo, url = server(PickFirst())  # 回「1」：數字、時間都漏掉
+    code, data = _handover(url)
+    assert code == 200 and data["layer"] == "template"
+    assert data["text"] == handover_text(demo.summary, place=demo.place)
+    assert data["model"] == "fake-model" and "漏掉時間 08:32" in data["rejected"]
+
+
+def test_handover_model_errors_keep_the_template(server):
+    _, url = server(Broken())
+    code, data = _handover(url)
+    assert code == 200 and data["layer"] == "template" and data["rejected"] == ["模型錯誤：TimeoutError"]
+
+
+def test_other_sites_cannot_trigger_a_handover(server):
+    _, url = server(PickFirst())
+    assert _handover(url, {"Origin": "http://evil.example"})[0] == 403
+
+
+def test_handover_whose_template_fails_its_check_answers_500_with_the_reason(server):
+    demo, url = server(PickFirst())
+    demo.place = "治療室"  # 「治療」是不能出現的用語：原句沒通過輸出檢查，不交出任何文字
+    code, data = _handover(url)
+    assert code == 500 and "範本沒通過輸出檢查" in data["error"]
+
+
+def test_refused_ask_still_says_question(server):
+    _, url = server(PickFirst())
+    code, data = _ask(url, "有人跌倒嗎", {"Origin": "http://evil.example"})
+    assert code == 403 and data["error"] == "只接受這個頁面送出的提問"

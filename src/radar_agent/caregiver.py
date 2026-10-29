@@ -328,6 +328,18 @@ def event_notes(summary: Summary, place: str) -> list[EventNote]:
     return sorted(notes, key=lambda n: n.time)
 
 
+# ── 交班重點（草案，2026-10-29；Jetson 內部 Demo 的實驗功能，docs/21）─────────
+# 原句就是【重點】加【事件摘要】（規則產生，不另寫句型）；在地模型只把它改寫成口語（rewrite.rewrite_handover）。
+# 第一行由程式固定加上，標出地點與時段。改這裡屬單向門「給讀者的輸出與用語」。
+
+def handover_text(summary: Summary, *, place: str) -> str:
+    """給下一班照護人員的交班重點（原句）。沒有收到資料時是「沒有收到資料，無法判斷」加上【重點】（請通知資訊人員）。"""
+    if not summary.online:
+        return f"{place}：沒有收到資料，無法判斷。\n{highlights(summary)}"
+    head = period_head(summary, place, clock=True) + "交班重點如下。"
+    return "\n".join([head, highlights(summary), _site_text(summary, place)])
+
+
 def caregiver_report(summary: Summary, *, place: str) -> str:
     """事件摘要＋處置提示＋照護紀錄草稿。沒有事件時只有摘要，不另寫「沒有事件」。"""
     parts = [highlights(summary), "", "【事件摘要】", _site_text(summary, place)]

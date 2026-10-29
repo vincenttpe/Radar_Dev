@@ -2,7 +2,8 @@
 
 頁面和 demo/build.py 產生的原型頁相同（模擬資料、句子都來自 radar-caregiver 與 radar-ask），
 只多了兩件事：輸入框接上 event_ask.ask_events()（模型只選題號，答案仍是固定句型並通過輸出檢查），
-以及頁面角落的 Jetson 狀態（tegrastats 讀得到時才顯示）。
+頁面角落的 Jetson 狀態（tegrastats 讀得到時才顯示），以及「整理交班重點」（實驗；rewrite.rewrite_handover：
+規則產生的交班重點由在地模型改寫成口語，沒通過檢查就維持原句）。
 
     python demo/jetson_serve.py --endpoint http://127.0.0.1:11434/v1 --model gemma4:e4b --reasoning-effort none
     # 再用 Jetson 上的瀏覽器開 http://127.0.0.1:8765/#replay
@@ -35,7 +36,7 @@ import demo_page  # demo/ 底下的共用外殼；直接執行或測試時 demo/
 from radar_agent.device_events import Summary, read_records, summarize
 from radar_agent.event_ask import ask_events
 from radar_agent.local_model import add_model_args, model_from_args
-from radar_agent.rewrite import Model
+from radar_agent.rewrite import Model, rewrite_handover
 
 HERE = Path(__file__).resolve().parent
 
@@ -112,11 +113,25 @@ class Demo:
         self.summary: Summary = summarize(read_records(build.REPO / "data" / "samples_demo" / "bathroom_morning.jsonl"))
         self.stats = stats or Stats()
         data = build.demo_data()
-        data["live"] = {"model": model.name, "stats": self.stats.proc is not None}
+        data["live"] = {
+            "model": model.name, "stats": self.stats.proc is not None,
+            # 交班重點的原句先顯示，模型改寫好再換上去，讀者不必乾等
+            "handover": rewrite_handover(self.summary, place=self.place).text,
+        }
         self.page = demo_page.page(build.HERE / "template.html", build.PLACEHOLDER, data).encode("utf-8")
 
     def ask(self, asked: str) -> dict[str, Any]:
         return ask_events(asked, self.summary, place=self.place, model=self.model).data()
+
+    def handover(self) -> dict[str, Any]:
+        """交班重點：在地模型改寫成口語；沒通過檢查時 layer 是 template、text 是原句，rejected 寫原因。"""
+        started = time.perf_counter()
+        result = rewrite_handover(self.summary, place=self.place, model=self.model)
+        return {
+            "text": result.text, "layer": result.layer, "model": result.model,
+            "prompt_version": result.prompt_version, "seconds": round(time.perf_counter() - started, 2),
+            "rejected": list(result.rejected),
+        }
 
     def warm_up(self) -> str:
         """先問一題，讓模型載入記憶體；現場的第一題才不會多等十幾秒。回傳給終端機看的一行結果。"""
@@ -172,13 +187,21 @@ def make_handler(demo: Demo, port: int) -> type[BaseHTTPRequestHandler]:
                 self._json(404, {"error": "找不到這個網址"})
 
         def do_POST(self) -> None:
-            if self.path.split("?", 1)[0] != "/api/ask":
+            path = self.path.split("?", 1)[0]
+            if path not in ("/api/ask", "/api/handover"):
                 self._json(404, {"error": "找不到這個網址"})
                 return
-            # 別的網頁（同一台機器的瀏覽器開著的其他網站）不能借這個服務送提問
+            # 別的網頁（同一台機器的瀏覽器開著的其他網站）不能借這個服務送提問或叫模型改寫
             origin = self.headers.get("Origin")
             if origin is not None and origin not in origins:
-                self._json(403, {"error": "只接受這個頁面送出的提問"})
+                what = "提問" if path == "/api/ask" else "請求"
+                self._json(403, {"error": f"只接受這個頁面送出的{what}"})
+                return
+            if path == "/api/handover":  # 只用模擬資料的摘要，不讀請求內容
+                try:
+                    self._json(200, demo.handover())
+                except ValueError as e:  # 原句沒通過輸出檢查：不交出任何文字，告訴頁面原因
+                    self._json(500, {"error": str(e)})
                 return
             try:
                 length = int(self.headers.get("Content-Length", ""))

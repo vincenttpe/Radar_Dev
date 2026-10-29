@@ -159,6 +159,14 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .chat .meta { font: 12.5px var(--f-mono); color: var(--muted); }
 .chat .yesno { display: flex; gap: 8px; margin-top: 4px; }
 .jetson-stats { font-family: var(--f-mono); }
+.handover { display: grid; gap: 10px; margin-top: 14px; }
+.handover-text p { margin: 0; font-size: 16px; line-height: 1.8; }
+.handover-text.wait p { color: var(--muted); }
+.handover .meta { font: 12.5px var(--f-mono); color: var(--muted); }
+.handover .row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.handover-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 16px; }
+.handover-cols > div { display: grid; gap: 6px; align-content: start; border-top: 1px solid var(--line); padding-top: 8px; }
+.handover-cols h3 { margin: 0; font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: .04em; }
 </style>
 
 <div class="sim"><div class="wrap">
@@ -234,7 +242,17 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
   <section aria-labelledby="h-sum">
     <h2 id="h-sum">事件摘要<button type="button" class="gap-badge" data-gap="7" aria-label="Gap 7">7</button></h2>
-    <div class="panel"><p class="summary key" id="highlights" hidden></p><p class="summary" id="summary"></p></div>
+    <div class="panel"><p class="summary key" id="highlights" hidden></p><p class="summary" id="summary"></p>
+      <div class="handover" id="handover" hidden>
+        <div class="row"><button type="button" id="btn-handover">整理交班重點（測試版）</button><span class="meta">原句與在地模型改寫並排，請逐句對照</span></div>
+        <div class="handover-text" id="handover-head"></div>
+        <div class="handover-cols" id="handover-cols" hidden>
+          <div><h3>原句（規則產生）</h3><div class="handover-text" id="handover-orig"></div></div>
+          <div><h3>在地模型改寫</h3><div class="handover-text" id="handover-model" aria-live="polite"></div></div>
+        </div>
+        <span class="meta" id="handover-meta" aria-live="polite"></span>
+      </div>
+    </div>
   </section>
 
   <section aria-labelledby="h-ask">
@@ -588,6 +606,7 @@ function render() {
   $("highlights").hidden = !done; $("highlights").textContent = DATA.highlights;
   $("btn-prev").disabled = shown === 0; $("btn-next").disabled = done; $("btn-all").disabled = done;
   renderAsk(done);
+  if (LIVE) renderHandover(done);
 }
 
 // 提問：答案和 radar-ask --pick 相同（不經模型）。重播中和事件摘要一樣先不給答案；不保留打的原文（可能有姓名）
@@ -690,6 +709,66 @@ if (LIVE) {
     } catch (e) { /* 讀不到就不顯示 */ }
   };
   if (LIVE.stats) { poll(); setInterval(poll, 2000); }
+  $("handover").hidden = false;
+  $("btn-handover").onclick = liveHandover;
+}
+
+// 交班重點（測試版）：前兩行（地點與時段、【重點】）固定，下面原句與在地模型改寫並排，讓人逐句對照。
+// 檢查擋不到所有意思上的偏移（docs/21「已知限制」），所以模型版一定和原句一起顯示
+let handover = null;  // 服務回的結果；null 表示還沒按或改寫中
+let handoverRun = 0;  // 每按一次或重播一次加一：舊的請求晚回來就丟掉，不畫到重播中的畫面上
+const paras = (box, text) => box.replaceChildren(...(text ? text.split("\n").map(line => el("p", null, line)) : []));
+const splitHead = text => { const parts = text.split("\n"); return [parts.slice(0, 2).join("\n"), parts.slice(2).join("\n")]; };
+function clearHandover(meta) {
+  paras($("handover-head"), ""); paras($("handover-orig"), ""); paras($("handover-model"), "");
+  $("handover-cols").hidden = true; $("handover-meta").textContent = meta;
+}
+function paintHandover(pending) {
+  if (handover && handover.fatal) { clearHandover(handover.error); return; }  // 原句本身沒過檢查：什麼都不顯示
+  const [head, body] = splitHead(LIVE.handover);
+  paras($("handover-head"), head); paras($("handover-orig"), body);
+  $("handover-cols").hidden = !body;  // 沒有收到資料時只有前兩行，沒有可以對照的內容
+  const model = $("handover-model"), meta = $("handover-meta");
+  model.classList.toggle("wait", pending || !handover || handover.layer !== "model");
+  if (pending) { paras(model, "在地模型改寫中…"); meta.textContent = body ? "" : "整理中…"; return; }
+  if (!handover) { paras(model, ""); meta.textContent = ""; return; }
+  if (handover.layer === "model") {
+    paras(model, splitHead(handover.text)[1]);
+    meta.textContent = `在地模型改寫 · ${handover.model} · ${handover.seconds.toFixed(1)} 秒 · 已比對數字與時刻；意思請對照原句`;
+  } else if (handover.layer === "error") {
+    paras(model, "沒有改寫結果。"); meta.textContent = handover.error;
+  } else {
+    const why = (handover.rejected || []).join("、");
+    paras(model, why ? "沒通過檢查，未採用。" : "不改寫。");
+    meta.textContent = why ? `沒通過檢查：${why}` : "";
+  }
+}
+function renderHandover(done) {
+  $("btn-handover").disabled = !done;
+  if (done) {
+    if (!handover && $("handover-cols").hidden) $("handover-meta").textContent = "";
+    return;
+  }
+  handoverRun++;
+  handover = null;  // 重播時清掉上一輪的交班重點
+  clearHandover("重播中。播完全部事件後再整理。");
+}
+async function liveHandover() {
+  const btn = $("btn-handover"), run = ++handoverRun;
+  handover = null; paintHandover(true); btn.disabled = true;
+  let result;
+  try {
+    const res = await fetch("/api/handover", { method: "POST" });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) result = body;
+    else if (res.status === 500) result = { layer: "error", fatal: true, error: `原句沒通過輸出檢查，不顯示：${body.error || ""}` };
+    else result = { layer: "error", error: body.error || `服務回應錯誤（${res.status}）` };
+  } catch (e) {
+    result = { layer: "error", error: "連不上這台 Jetson 上的服務" };
+  }
+  if (run !== handoverRun) return;  // 等待中按了重播或又按了一次：這個結果不用了
+  handover = result; btn.disabled = shown !== events.length;
+  paintHandover(false);
 }
 
 const go = n => { shown = Math.max(0, Math.min(events.length, n)); render(); };
