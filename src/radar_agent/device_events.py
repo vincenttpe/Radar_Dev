@@ -85,6 +85,40 @@ class Summary:
     ended_offline: datetime | None = None
 
 
+# 報告分開寫的兩種解除原因（docs/05 A30）；其他原因照樣算解除，只是不寫原因
+RESOLUTION_REASONS = ("noNeedHelp", "standUp")
+
+
+@dataclass(frozen=True)
+class AlertOutcomes:
+    """跌倒警報與主動呼救各自配上的解除紀錄；沒配到的解除另外留著，不能丟掉（REVIEW.md 3.1）。"""
+    pairs: list[tuple[FallAlert, Resolution | None]]
+    unpaired: list[Resolution]
+
+
+def alert_outcomes(summary: Summary) -> AlertOutcomes:
+    """警報之後、下一次警報之前的第一筆解除，算這次警報的解除；沒有就是 None（資料中沒有解除紀錄，不代表現場仍未處理）。
+
+    依 docs/05 A26（重複的 fall 合併算一次，直到解除）推定，待雷達負責人確認（issue #38）。
+    中間有斷線就不配對：斷線期間的狀況不明，不寫出一段不知道的經過時間（2026-10-29 決定）；那筆解除留在 unpaired。
+    報告的句子與輸出檢查的事實都用這裡的結果，兩邊不會各算各的。
+    """
+    alerts = sorted(summary.fall_alerts, key=lambda a: a.time)
+    pairs: list[tuple[FallAlert, Resolution | None]] = []
+    used: set[int] = set()
+    for i, alert in enumerate(alerts):
+        until = alerts[i + 1].time if i + 1 < len(alerts) else None
+        found = next((j for j, r in enumerate(summary.resolutions)
+                      if r.time >= alert.time and (until is None or r.time < until)), None)
+        if found is not None and any(alert.time <= a.end and summary.resolutions[found].time >= b.start
+                                     for a, b in zip(summary.online, summary.online[1:], strict=False)):
+            found = None
+        if found is not None:
+            used.add(found)
+        pairs.append((alert, None if found is None else summary.resolutions[found]))
+    return AlertOutcomes(pairs, [r for j, r in enumerate(summary.resolutions) if j not in used])
+
+
 def disconnected(summary: Summary) -> bool:
     """有沒有斷線：在線時段不只一段（中間斷過）、沒有資料、使用途中斷線，或資料結束前斷線。"""
     return len(summary.online) != 1 or bool(summary.interrupted_visits) or summary.ended_offline is not None

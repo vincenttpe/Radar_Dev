@@ -136,7 +136,8 @@ button:hover { border-color: var(--accent); }
 .records li { padding-bottom: 6px; border-bottom: 1px solid var(--line); }
 .records li:last-child { border-bottom: 0; }
 .copied { font-size: 13px; color: var(--ok); min-height: 1.2em; }
-.summary { font-size: 16px; line-height: 1.8; max-width: 68ch; margin: 0; }
+.summary { font-size: 16px; line-height: 1.8; max-width: 68ch; margin: 0; white-space: pre-line; }
+.summary.key { font-weight: 600; margin-bottom: 8px; }
 .big { font-size: 18px; line-height: 1.8; max-width: 60ch; margin: 0; }
 
 /* 提問 */
@@ -326,7 +327,7 @@ body { font-size: 16px; }
       </section>
       <section aria-labelledby="h-cg-sum">
         <h2 id="h-cg-sum">事件摘要</h2>
-        <div class="panel"><p class="summary" id="cg-summary"></p></div>
+        <div class="panel"><p class="summary key" id="cg-highlights"></p><p class="summary" id="cg-summary"></p></div>
       </section>
     </div>
     <section aria-labelledby="h-cg-ask">
@@ -791,6 +792,7 @@ function openForm(card, c, mode) {
     const fallback = () => { const r = document.createRange(); r.selectNodeContents($("cg-records")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("cg-copied").textContent = say("copy_fallback"); };
     try { navigator.clipboard.writeText(text).then(() => { $("cg-copied").textContent = say("copied", { n: C.events.length }); }, fallback); } catch (err) { fallback(); }
   };
+  $("cg-highlights").textContent = C.highlights;
   $("cg-summary").textContent = C.summary;
 
   // 提問一次選一題：單選（radio），方向鍵、Home、End 切換

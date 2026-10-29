@@ -107,7 +107,8 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .records li:last-child { border-bottom: 0; }
 .records li.latest { color: var(--accent); }
 .copied { font-size: 13px; color: var(--ok); min-height: 1.2em; }
-.summary { font-size: 16px; line-height: 1.8; max-width: 68ch; margin: 0; }
+.summary { font-size: 16px; line-height: 1.8; max-width: 68ch; margin: 0; white-space: pre-line; }
+.summary.key { font-weight: 600; margin-bottom: 8px; }
 .summary.wait { color: var(--muted); }
 
 
@@ -233,7 +234,7 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
   <section aria-labelledby="h-sum">
     <h2 id="h-sum">事件摘要<button type="button" class="gap-badge" data-gap="7" aria-label="Gap 7">7</button></h2>
-    <div class="panel"><p class="summary" id="summary"></p>
+    <div class="panel"><p class="summary key" id="highlights" hidden></p><p class="summary" id="summary"></p>
       <div class="handover" id="handover" hidden>
         <div class="row"><button type="button" id="btn-handover">整理交班重點（實驗）</button><button type="button" id="btn-handover-toggle" hidden>看原句</button></div>
         <div class="handover-text" id="handover-text" aria-live="polite"></div>
@@ -357,6 +358,7 @@ function render() {
   const done = shown === events.length;
   const sum = $("summary"); sum.className = "summary" + (done ? "" : " wait");
   sum.textContent = done ? DATA.summary : "重播中。播完全部事件後顯示這段時間的摘要。";
+  $("highlights").hidden = !done; $("highlights").textContent = DATA.highlights;
   $("btn-prev").disabled = shown === 0; $("btn-next").disabled = done; $("btn-all").disabled = done;
   renderAsk(done);
   if (LIVE) renderHandover(done);

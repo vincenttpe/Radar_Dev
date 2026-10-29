@@ -17,7 +17,10 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
-from radar_agent.device_events import FallAlert, Summary, disconnected, read_records, summarize, summarize_days
+from radar_agent.device_events import (
+    RESOLUTION_REASONS, AlertOutcomes, FallAlert, Resolution, Summary, alert_outcomes, disconnected, read_records,
+    summarize, summarize_days,
+)
 from radar_agent.kg_rules import Assessment
 from radar_agent.output_check import check_output, numbers, wording_problems
 from radar_agent.time_range import in_range, parse_bound
@@ -68,22 +71,19 @@ def count_sentence(summary: Summary, label: str, times: list[datetime]) -> str:
     return f"{scope}{label} {len(times)} 次{listed}。"
 
 
-def no_need_help_sentences(summary: Summary) -> list[str]:
-    """語音回覆沒事；不直接當誤報（C2），沒有就不寫。"""
-    replies = summary.no_need_help_replies
-    return [f"語音回覆沒事 {len(replies)} 次。"] if replies else []
-
-
 def usage_sentences(summary: Summary) -> list[str]:
-    if summary.visits:
+    if len(summary.visits) == 1:
+        lines = [f"有人使用 1 次，停留 {duration_text(summary.visits[0].duration)}。"]
+    elif summary.visits:
         longest = max(v.duration for v in summary.visits)
         lines = [f"有人使用 {len(summary.visits)} 次，最長一次 {duration_text(longest)}。"]
     else:
         lines = ["沒有偵測到有人使用。"]
+    if summary.ongoing_visit is not None:
+        # 接在使用情形同一行（照 2026-10-29 草稿）
+        lines[0] += f"資料結束時仍有人在內（{summary.ongoing_visit.start:%H:%M} 起）。"
     if summary.interrupted_visits:
         lines.append(f"另有 {len(summary.interrupted_visits)} 次使用途中裝置斷線，停留時間不明。")
-    if summary.ongoing_visit is not None:
-        lines.append(f"資料結束時仍有人在內（{summary.ongoing_visit.start:%H:%M} 起）。")
     return lines
 
 
@@ -112,18 +112,147 @@ def device_problem_sentences(summary: Summary) -> list[str]:
     return lines
 
 
+# ── 警報與後續、【重點】：2026-10-29 確認（A＋B，docs/11「事件摘要加【重點】與每次警報的結果」）──────
+# 警報後面接它的解除：長者回覆什麼、隔多久偵測到起身。配對規則見 device_events.alert_outcomes（待雷達負責人確認）。
+
+Pairs = list[tuple[FallAlert, Resolution | None]]
+
+
+def elapsed_text(span: timedelta) -> str:
+    """警報到解除隔多久：一小時內同 duration_text；一小時以上寫到分鐘（「1 小時 15 分」），不寫秒。"""
+    hours, minutes = divmod(int(span.total_seconds()) // 60, 60)
+    if not hours:
+        return duration_text(span)
+    return f"{hours} 小時 {minutes} 分" if minutes else f"{hours} 小時"
+
+
+def _after(alert: FallAlert, resolution: Resolution) -> str:
+    span = resolution.time - alert.time
+    return f"{elapsed_text(span)}後" if span.total_seconds() > 0 else "隨即"
+
+
+def _alert_with_outcome(alert: FallAlert, resolution: Resolution | None) -> str:
+    """「09:16 長者回覆需要協助，3 分 10 秒後偵測到起身，警報解除」。"""
+    start = f"{alert.time:%H:%M}"
+    if alert.mode == "radar" and alert.trigger == "timeout":
+        waited = f" {alert.delay_s} 秒" if alert.delay_s is not None else ""
+        start += f" 語音詢問{waited}未獲回應"
+    elif alert.mode == "fusion":
+        start += " 長者回覆需要協助"
+    if resolution is None:
+        return f"{start}，資料中沒有解除紀錄"
+    if resolution.trigger == "noNeedHelp":
+        return f"{start}，{_after(alert, resolution)}長者回覆沒事，警報解除"
+    if resolution.trigger == "standUp":
+        return f"{start}，{_after(alert, resolution)}偵測到起身，警報解除"
+    return f"{start}，{_after(alert, resolution)}警報解除"
+
+
+def alert_sentences(summary: Summary, label: str, pairs: Pairs) -> list[str]:
+    """「在線期間跌倒警報 2 次：」加上每一則的後續；沒有警報時寫「沒有跌倒警報。」。"""
+    scope = "在線期間" if disconnected(summary) else ""
+    if not pairs:
+        return [_none_of(summary, [label])]
+    items = [_alert_with_outcome(a, r) for a, r in pairs]
+    if len(items) == 1:
+        return [f"{scope}{label} 1 次：{items[0]}。"]
+    return [f"{scope}{label} {len(items)} 次：", *(f"　{item}{'。' if i == len(items) - 1 else '；'}" for i, item in enumerate(items))]
+
+
+def unpaired_resolution_sentences(unpaired: list[Resolution]) -> list[str]:
+    """沒配到警報的解除紀錄：不能因為改了寫法就漏掉（REVIEW.md 3.1）。"""
+    lines = []
+    for trigger, said in (("noNeedHelp", "語音回覆沒事"), ("standUp", "偵測到起身、警報解除")):
+        times = [r.time for r in unpaired if r.trigger == trigger]
+        if times:
+            lines.append(f"另有{said} {len(times)} 次（{'、'.join(f'{t:%H:%M}' for t in times)}）。")
+    others = [r.time for r in unpaired if r.trigger not in RESOLUTION_REASONS]
+    if others:
+        lines.append(f"另有警報解除 {len(others)} 次（{'、'.join(f'{t:%H:%M}' for t in others)}）。")
+    return lines
+
+
+def falls_and_calls_with_outcomes(outcomes: AlertOutcomes) -> tuple[Pairs, Pairs]:
+    """配好解除的警報，分成跌倒警報與主動呼救。"""
+    return ([p for p in outcomes.pairs if not p[0].distress_call],
+            [p for p in outcomes.pairs if p[0].distress_call])
+
+
+def _longstay_sentences(summary: Summary) -> list[str]:
+    if not summary.longstay_alerts:
+        return [_none_of(summary, ["久待警報"])]
+    return [count_sentence(summary, "久待警報", summary.longstay_alerts)]
+
+
+def highlights(summary: Summary) -> str:
+    """一行說完要注意的事：沒有解除紀錄的警報、已解除的警報、找不到警報的解除、久待、資料結束時仍有人、斷線、裝置問題。"""
+    if not summary.online:
+        return "【重點】沒有收到資料，無法判斷，請通知資訊人員。"
+    outcomes = alert_outcomes(summary)
+    items = []
+    for alert, resolution in outcomes.pairs:
+        if resolution is None:
+            label = "主動呼救" if alert.distress_call else "跌倒警報"
+            items.append(f"{alert.time:%H:%M} {label}，資料中沒有解除紀錄，請確認是否已有人到場")
+    falls = sum(1 for a, r in outcomes.pairs if r is not None and not a.distress_call)
+    calls = sum(1 for a, r in outcomes.pairs if r is not None and a.distress_call)
+    resolved = [f"跌倒警報 {falls} 次" if falls else "", f"主動呼救 {calls} 次" if calls else ""]
+    if falls or calls:
+        items.append("、".join(r for r in resolved if r) + ("都已解除" if falls + calls > 1 else "已解除"))
+    if outcomes.unpaired:
+        # 可能是資料開始前的警報：不能寫成「沒有警報」（2026-10-29 決定）
+        items.append(f"另有 {len(outcomes.unpaired)} 筆解除紀錄找不到對應的警報")
+    if summary.longstay_alerts:
+        times = "、".join(f"{t:%H:%M}" for t in summary.longstay_alerts)
+        items.append(f"{times} 有 {len(summary.longstay_alerts)} 次久待警報")
+    if summary.ongoing_visit is not None:
+        items.append(f"資料結束時仍有人在內（{summary.ongoing_visit.start:%H:%M} 起），請確認現況")
+    gaps = [f"{a.end:%H:%M}–{b.start:%H:%M}" for a, b in pairwise(summary.online)]
+    if gaps:
+        items.append(f"{'、'.join(gaps)} 裝置斷線，期間狀況不明，請通知資訊人員")
+    if summary.ended_offline is not None:
+        items.append(f"{summary.ended_offline:%H:%M} 起裝置斷線，之後狀況不明，請通知資訊人員")
+    if summary.errors:
+        items.append(f"裝置回報錯誤 {len(summary.errors)} 次，請通知資訊人員")
+    unreadable = len(summary.unreadable) + len(summary.unknown_events)
+    if unreadable:
+        items.append(f"另有 {unreadable} 筆紀錄無法判讀，請通知資訊人員")
+    return "【重點】" + ("；".join(items) if items else "這段時間沒有警報，裝置都在線") + "。"
+
+
+def _none_of(summary: Summary, labels: list[str]) -> str:
+    """「沒有主動呼救或久待警報。」；裝置有斷線時前面加「在線期間」。"""
+    listed = labels[0] if len(labels) == 1 else "、".join(labels[:-1]) + "或" + labels[-1]
+    return f"{'在線期間' if disconnected(summary) else ''}沒有{listed}。"
+
+
+def _event_lines(summary: Summary, falls: Pairs, calls: Pairs) -> list[str]:
+    """跌倒、呼救、久待依序寫；沒有的合成一句「沒有……」，放在第一個沒有的位置。"""
+    blocks = [("跌倒警報", alert_sentences(summary, "跌倒警報", falls) if falls else None),
+              ("主動呼救", alert_sentences(summary, "主動呼救", calls) if calls else None),
+              ("久待警報", _longstay_sentences(summary) if summary.longstay_alerts else None)]
+    missing = [label for label, lines in blocks if lines is None]
+    out: list[str] = []
+    for label, lines in blocks:
+        if lines is not None:
+            out += lines
+        elif label == missing[0]:
+            out.append(_none_of(summary, missing))
+    return out
+
+
 def _site_text(summary: Summary, place: str) -> str:
+    """【事件摘要】：一句一行，警報後面接它的後續；跌倒、呼救、久待都沒有時合成一句。"""
     if not summary.online:
         return f"{place}：沒有收到資料，無法判斷。"
-    falls, calls = falls_and_calls(summary)
-    parts = [period_head(summary, place), *usage_sentences(summary),
-             count_sentence(summary, "跌倒警報", [a.time for a in falls]),
-             count_sentence(summary, "主動呼救", [a.time for a in calls])]
-    parts += no_need_help_sentences(summary)
-    parts.append(count_sentence(summary, "久待警報", summary.longstay_alerts))
-    parts += offline_sentences(summary) or ["這段時間裝置都在線。"]
-    parts += device_problem_sentences(summary)
-    return "".join(parts)
+    outcomes = alert_outcomes(summary)
+    lines = usage_sentences(summary)
+    lines[0] = period_head(summary, place) + lines[0]
+    lines += _event_lines(summary, *falls_and_calls_with_outcomes(outcomes))
+    lines += unpaired_resolution_sentences(outcomes.unpaired)
+    lines += offline_sentences(summary)
+    lines += device_problem_sentences(summary)
+    return "\n".join(lines)
 
 
 def _personal_text(a: Assessment) -> str:
@@ -223,7 +352,7 @@ def handover_text(summary: Summary, *, place: str) -> str:
 
 def caregiver_report(summary: Summary, *, place: str) -> str:
     """事件摘要＋處置提示＋照護紀錄草稿。沒有事件時只有摘要，不另寫「沒有事件」。"""
-    parts = ["【事件摘要】", _site_text(summary, place)]
+    parts = [highlights(summary), "", "【事件摘要】", _site_text(summary, place)]
     notes = event_notes(summary, place)
     if notes:
         parts += ["", "【處置提示】", *(f"{n.span or f'{n.time:%H:%M}'} {n.prompt}" for n in notes)]
@@ -269,8 +398,9 @@ def note_kind(prompt: str) -> tuple[str, str]:
 # 主題就是事件提問的題號；每個主題要補哪些斷線、無法判斷、裝置問題的句子都在這裡決定，呼叫端不必知道。
 
 def _falls(summary: Summary) -> list[str]:
-    return [count_sentence(summary, "跌倒警報", [a.time for a in falls_and_calls(summary)[0]]),
-            *no_need_help_sentences(summary)]
+    outcomes = alert_outcomes(summary)
+    falls = falls_and_calls_with_outcomes(outcomes)[0]
+    return [*alert_sentences(summary, "跌倒警報", falls), *unpaired_resolution_sentences(outcomes.unpaired)]
 
 
 def _calls_also(summary: Summary) -> list[str]:
@@ -280,11 +410,7 @@ def _calls_also(summary: Summary) -> list[str]:
 
 
 def _calls(summary: Summary) -> list[str]:
-    return [count_sentence(summary, "主動呼救", [a.time for a in falls_and_calls(summary)[1]])]
-
-
-def _longstay(summary: Summary) -> list[str]:
-    return [count_sentence(summary, "久待警報", summary.longstay_alerts)]
+    return alert_sentences(summary, "主動呼救", falls_and_calls_with_outcomes(alert_outcomes(summary))[1])
 
 
 def _offline(summary: Summary) -> list[str]:
@@ -307,7 +433,7 @@ def _alerts(summary: Summary, place: str) -> list[str]:
 _TOPICS: dict[str, tuple[Callable[[Summary, str], list[str]], str | None]] = {
     "falls": (lambda s, _: _falls(s), "是否有跌倒"),
     "calls": (lambda s, _: _calls(s), "是否有人呼救"),
-    "longstay": (lambda s, _: _longstay(s), "是否有人待太久"),
+    "longstay": (lambda s, _: _longstay_sentences(s), "是否有人待太久"),
     "visits": (lambda s, _: usage_sentences(s), "使用情形"),
     "offline": (lambda s, _: _offline(s), None),
     "alerts": (_alerts, None),
@@ -353,6 +479,7 @@ def report_data(summary: Summary, *, place: str) -> dict[str, Any]:
         "place": place,
         "from": _stamp(online[0].start) if online else None,
         "to": _stamp(online[-1].end) if online else None,
+        "highlights": highlights(summary),
         "summary": _site_text(summary, place),
         "counts": {
             "visits": len(summary.visits),
