@@ -34,8 +34,9 @@ def duration_text(span: timedelta) -> str:
 
 
 # ── 場域摘要的句子：radar-caregiver 的【事件摘要】──
-# 同一個事實只有一種寫法；斷線與無法判讀的提醒放在這裡，不會漏（REVIEW.md 3.1）。
-# radar-ask 的答案用同一份事實、較口語的說法，在下面「事件提問的答案」。
+# 【事件摘要】與 radar-ask 的答案（下面「事件提問的答案」）說法不同，但要寫哪些斷線、要不要加「在線期間」、
+# 有幾筆無法判讀，都由這裡的 _scope、_offline_lines、_device_problems 決定，兩邊只給句型，
+# 修正時不會只修到一邊（REVIEW.md 3.1）。
 
 def falls_and_calls(summary: Summary) -> tuple[list[FallAlert], list[FallAlert]]:
     """跌倒警報與主動呼救分開（mode=speech 的 fall 是主動呼救，不算跌倒；docs/05 C2）。"""
@@ -52,11 +53,15 @@ def period_head(summary: Summary, place: str) -> str:
     return f"{place} {days}："
 
 
+def _scope(summary: Summary) -> str:
+    """裝置有斷線時，次數前面要加的「在線期間」。"""
+    return "在線期間" if disconnected(summary) else ""
+
+
 def count_sentence(summary: Summary, label: str, times: list[datetime]) -> str:
     """「跌倒警報 2 次（08:32、09:16）。」；裝置有斷線時前面加「在線期間」。"""
-    scope = "在線期間" if disconnected(summary) else ""
     listed = f"（{'、'.join(f'{t:%H:%M}' for t in times)}）" if times else ""
-    return f"{scope}{label} {len(times)} 次{listed}。"
+    return f"{_scope(summary)}{label} {len(times)} 次{listed}。"
 
 
 def no_need_help_sentences(summary: Summary) -> list[str]:
@@ -78,29 +83,42 @@ def usage_sentences(summary: Summary) -> list[str]:
     return lines
 
 
-def ended_offline_sentences(summary: Summary, what: str = "是否有跌倒") -> list[str]:
-    """資料結束前斷線、之後沒再連上：「HH:MM 起裝置斷線，之後無法判斷……」。"""
-    if summary.ended_offline is None:
-        return []
-    return [f"{summary.ended_offline:%H:%M} 起裝置斷線，之後無法判斷{what}。"]
+def _offline_lines(summary: Summary, *, gap: str | None, end: str, what: str) -> list[str]:
+    """中間的斷線時段（gap 是 None 時不寫），加上資料結束前的斷線；沒有斷線時回傳空清單。
+
+    gap、end 是句型：{down} 斷線時刻、{up} 再連上的時刻（只有 gap 有）、{what} 無法判斷的對象。
+    """
+    lines = [gap.format(down=f"{a.end:%H:%M}", up=f"{b.start:%H:%M}", what=what)
+             for a, b in pairwise(summary.online)] if gap is not None else []
+    if summary.ended_offline is not None:
+        lines.append(end.format(down=f"{summary.ended_offline:%H:%M}", what=what))
+    return lines
 
 
 def offline_sentences(summary: Summary, what: str = "是否有跌倒") -> list[str]:
-    """中間的斷線時段，加上資料結束前的斷線；沒有斷線時回傳空清單。"""
-    gaps = [f"{a.end:%H:%M}–{b.start:%H:%M} 裝置斷線，這段時間無法判斷{what}。" for a, b in pairwise(summary.online)]
-    return gaps + ended_offline_sentences(summary, what)
+    """「11:10–11:25 裝置斷線，這段時間無法判斷是否有跌倒。」；資料結束前斷線寫「HH:MM 起裝置斷線，之後無法判斷……」。"""
+    return _offline_lines(summary, gap="{down}–{up} 裝置斷線，這段時間無法判斷{what}。",
+                          end="{down} 起裝置斷線，之後無法判斷{what}。", what=what)
 
 
-def device_problem_sentences(summary: Summary) -> list[str]:
-    """裝置錯誤與讀不懂的紀錄：都要請資訊人員處理，不能省略。"""
+def _device_problems(summary: Summary, *, errors: str, unreadable: str) -> list[str]:
+    """裝置錯誤與讀不懂的紀錄：都要請資訊人員處理，不能省略。
+
+    errors、unreadable 是句型：{n} 筆數、{times} 錯誤的時刻（只有 errors 有）。
+    """
     lines = []
     if summary.errors:
         times = "、".join(f"{when:%H:%M}" for when, _ in summary.errors)
-        lines.append(f"裝置回報錯誤 {len(summary.errors)} 次（{times}），請通知資訊人員。")
-    unreadable = len(summary.unreadable) + len(summary.unknown_events)
-    if unreadable:
-        lines.append(f"另有 {unreadable} 筆紀錄無法判讀，請通知資訊人員。")
+        lines.append(errors.format(n=len(summary.errors), times=times))
+    count = len(summary.unreadable) + len(summary.unknown_events)
+    if count:
+        lines.append(unreadable.format(n=count))
     return lines
+
+
+def device_problem_sentences(summary: Summary) -> list[str]:
+    return _device_problems(summary, errors="裝置回報錯誤 {n} 次（{times}），請通知資訊人員。",
+                            unreadable="另有 {n} 筆紀錄無法判讀，請通知資訊人員。")
 
 
 def _site_text(summary: Summary, place: str) -> str:
@@ -236,7 +254,8 @@ def note_kind(prompt: str) -> tuple[str, str]:
 
 # ── 事件提問的答案：radar-ask 六題的口語句子（2026-10-28 確認，docs/21）──
 # 和【事件摘要】用同一份事實，說法較口語；主題就是事件提問的題號。
-# 每個主題要補哪些斷線、無法判斷、裝置問題的句子都在這裡決定，呼叫端不必知道（REVIEW.md 3.1）。
+# 斷線、在線期間、無法判讀的判斷和【事件摘要】共用（上面的 _scope、_offline_lines、_device_problems），這裡只給句型；
+# 每個主題要補哪些句子在 topic_sentences 決定，呼叫端不必知道（REVIEW.md 3.1）。
 # 沒發生的事仍寫「跌倒警報 0 次」：輸出檢查靠這個寫法抓斷線時漏寫「在線期間」（docs/21 待決 1）。
 
 def ask_head(summary: Summary, place: str) -> str:
@@ -252,10 +271,6 @@ def ask_head(summary: Summary, place: str) -> str:
     return start if f"{last:%H:%M}" == f"{first:%H:%M}" else f"{start}–{last:%H:%M} 這段時間"
 
 
-def _scope(summary: Summary) -> str:
-    return "在線期間" if disconnected(summary) else ""
-
-
 def _ask_count(summary: Summary, label: str, times: list[datetime]) -> str:
     """「有 2 次跌倒警報，分別在 08:32、09:16。」；沒有就寫「跌倒警報 0 次。」；裝置有斷線時前面加「在線期間」。"""
     if not times:
@@ -267,23 +282,13 @@ def _ask_count(summary: Summary, label: str, times: list[datetime]) -> str:
 
 def _ask_offline(summary: Summary, what: str = "有沒有跌倒", *, gaps: bool = True) -> list[str]:
     """中間的斷線時段（gaps=False 時不寫），加上資料結束前的斷線；沒有斷線時回傳空清單。"""
-    lines = [f"{a.end:%H:%M}–{b.start:%H:%M} 裝置斷線，這段時間{what}，系統無法判斷。"
-             for a, b in pairwise(summary.online)] if gaps else []
-    if summary.ended_offline is not None:
-        lines.append(f"{summary.ended_offline:%H:%M} 之後裝置就斷線了，之後{what}，系統無法判斷。")
-    return lines
+    return _offline_lines(summary, gap="{down}–{up} 裝置斷線，這段時間{what}，系統無法判斷。" if gaps else None,
+                          end="{down} 之後裝置就斷線了，之後{what}，系統無法判斷。", what=what)
 
 
 def _ask_device_problems(summary: Summary) -> list[str]:
-    """裝置錯誤與讀不懂的紀錄：都要請資訊人員處理，不能省略。"""
-    lines = []
-    if summary.errors:
-        times = "、".join(f"{when:%H:%M}" for when, _ in summary.errors)
-        lines.append(f"裝置回報錯誤 {len(summary.errors)} 次（{times}），請通知資訊人員處理。")
-    unreadable = len(summary.unreadable) + len(summary.unknown_events)
-    if unreadable:
-        lines.append(f"另外有 {unreadable} 筆紀錄系統看不懂，請通知資訊人員處理。")
-    return lines
+    return _device_problems(summary, errors="裝置回報錯誤 {n} 次（{times}），請通知資訊人員處理。",
+                            unreadable="另外有 {n} 筆紀錄系統看不懂，請通知資訊人員處理。")
 
 
 def _falls(summary: Summary) -> list[str]:
@@ -318,7 +323,8 @@ def _visits(summary: Summary) -> list[str]:
         longest = max(v.duration for v in summary.visits)
         lines = [f"一共有人用了 {len(summary.visits)} 次，最久的一次待了 {duration_text(longest)}。"]
     else:
-        lines = ["都沒有偵測到有人使用。"]
+        # 有斷線時不能說「都沒有」：斷線那段不知道（docs/21 決定 C）
+        lines = [f"{_scope(summary) or '都'}沒有偵測到有人使用。"]
     if summary.interrupted_visits:
         lines.append(f"另外有 {len(summary.interrupted_visits)} 次是用到一半裝置斷線，不知道待了多久。")
     if summary.ongoing_visit is not None:  # 不加「要去看一下」：那是新的處置建議（docs/21 待決 3）
@@ -340,7 +346,7 @@ def _alerts(summary: Summary, place: str) -> list[str]:
         lines.append(f"{n.span or f'{n.time:%H:%M}'} {said}")
     if not lines:
         return [f"{_scope(summary)}沒有任何警報。"]
-    return ["警報和處理提示照時間排：", *lines]
+    return ["警報和處置提示照時間排：", *lines]
 
 
 # 主題 → （句子主體, 斷線時「系統無法判斷」的對象；None 表示主體自己處理斷線）
@@ -348,7 +354,7 @@ _TOPICS: dict[str, tuple[Callable[[Summary, str], list[str]], str | None]] = {
     "falls": (lambda s, _: _falls(s), "有沒有跌倒"),
     "calls": (lambda s, _: _calls(s), "有沒有人呼救"),
     "longstay": (lambda s, _: _longstay(s), "有沒有人待太久"),
-    "visits": (lambda s, _: _visits(s), "有多少人使用"),
+    "visits": (lambda s, _: _visits(s), "的使用情形"),  # 不寫「有多少人」：算的是造訪次數，不是人數
     "offline": (lambda s, _: _offline(s), None),
     "alerts": (_alerts, None),
 }

@@ -101,7 +101,7 @@ def _run(capsys, *argv):
 def test_cli_pick_skips_the_model(capsys):
     code, out, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--pick", "visits")
     assert code == 0
-    assert out == "您是想問「用了幾次？最久待多久？」嗎？\n1 號廁所在 10/14 08:00–11:59 這段時間，一共有人用了 5 次，最久的一次待了 22 分鐘。\n11:10–11:25 裝置斷線，這段時間有多少人使用，系統無法判斷。\n"
+    assert out == "您是想問「用了幾次？最久待多久？」嗎？\n1 號廁所在 10/14 08:00–11:59 這段時間，一共有人用了 5 次，最久的一次待了 22 分鐘。\n11:10–11:25 裝置斷線，這段時間的使用情形，系統無法判斷。\n"
 
 
 def test_cli_without_a_model_shows_the_menu(capsys):
@@ -259,11 +259,16 @@ def test_prompt_version_is_bumped_when_the_prompt_or_menu_changes():
 
 # ── 口語說法（2026-10-28 確認，docs/21）──────────────────────────────
 
-def test_answers_never_start_with_yes():
-    """「有沒有人跌倒？」回「有」會被讀成真的有人跌倒；系統收到的只是警報（docs/21 原則 2）。"""
+@pytest.mark.parametrize("summary, head", [(SUMMARY, "1 號廁所在 10/14 08:00–11:59 這段時間，"),
+                                           (ENDED_OFFLINE, "1 號廁所在 10/14 09:00，")],
+                         ids=["period", "one-minute"])
+def test_answers_never_start_with_yes(summary, head):
+    """「有沒有人跌倒？」回「有」會被讀成真的有人跌倒；系統收到的只是警報（docs/21 原則 2）。
+    頭尾在同一分鐘時開頭沒有「這段時間」（docs/21 C1），兩種開頭都要看。"""
     for q in EVENT_QUESTIONS:
-        body = answer(q.id, SUMMARY, place="1 號廁所").split("這段時間，", 1)[1]
-        assert not body.startswith(("有，", "沒有，")), (q.id, body)
+        text = answer(q.id, summary, place="1 號廁所")
+        assert text.startswith(head), (q.id, text)
+        assert not text.removeprefix(head).startswith(("有，", "沒有，")), (q.id, text)
 
 
 def test_one_alert_is_written_with_its_time_and_longstay_is_explained():
@@ -282,3 +287,19 @@ def test_ongoing_visit_is_stated_without_adding_advice():
     text = answer("visits", summary, place=PLACE)
     assert text.endswith("資料最後一筆的時候還有人在裡面，是 09:00 進去的。")
     assert "看一下" not in text and "查看" not in text
+
+
+def test_no_visits_while_disconnected_is_scoped_to_online_time():
+    """斷線時不說「都沒有」：斷線那段不知道（docs/21 決定 C）。"""
+    assert answer("visits", ENDED_OFFLINE, place=PLACE).startswith(f"{PLACE}在 10/14 09:00，在線期間沒有偵測到有人使用。")
+    assert "都沒有偵測到有人使用" in answer("visits", summarize([_rec("09:00:00", "absence")]), place=PLACE)
+
+
+def test_visits_never_count_people():
+    """算的是造訪次數，不是人數（CONTEXT.md「造訪」、REVIEW.md 3.3）。"""
+    for summary in (SUMMARY, ENDED_OFFLINE, GAP_THEN_OFFLINE):
+        assert "多少人" not in answer("visits", summary, place=PLACE)
+
+
+def test_alerts_answer_uses_the_glossary_term():
+    assert "警報和處置提示照時間排：" in answer("alerts", SUMMARY, place="1 號廁所")
