@@ -34,6 +34,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from radar_agent import kg_rules
+from radar_agent.ask import PROMPT_VERSION as ASK_PROMPT_VERSION
 from radar_agent.ask import Match, Question, match_question
 from radar_agent.care_record import care_record
 from radar_agent.caregiver import event_notes
@@ -42,6 +43,7 @@ from radar_agent.local_model import CommandModel, EchoModel, HttpChatModel, add_
 from radar_agent.text_metrics import bleu, rouge_1, rouge_l
 from radar_agent.device_events import Summary, summarize
 from radar_agent.event_ask import EVENT_QUESTIONS
+from radar_agent.event_ask import PROMPT_VERSION as EVENT_PROMPT_VERSION
 from radar_agent.kg_rules import Assessment
 from radar_agent.rewrite import Rewritten, rewrite
 
@@ -406,10 +408,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.reasoning_effort is not None:  # 開不開思維鏈結果差很多，報告上要看得出這次用了什麼設定
         print(f"設定：reasoning_effort={args.reasoning_effort}")
-    if args.questions:
+    if args.questions:  # 印出提示詞版本：選單改過時，評估結果才分得出量的是哪一版
+        print(f"提示詞版本：{ASK_PROMPT_VERSION}")
         print(report_asks(evaluate_asks(model, ASK_CASES)))
         return 0
     if args.event_questions:
+        print(f"提示詞版本：{EVENT_PROMPT_VERSION}")
         print(report_asks(evaluate_asks(model, EVENT_ASK_CASES, menu=EVENT_QUESTIONS)))
         return 0
     if args.records:
