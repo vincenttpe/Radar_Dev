@@ -153,11 +153,14 @@ class Demo:
         recorder = Recorder(self.model)
         started = time.perf_counter()
         result = self._rewrite(kind, recorder)
-        rejected_output = recorder.last.strip() if result.layer == "template" and recorder.last else None
+        output = (recorder.last or "").strip()
+        rejected_output = output if result.layer == "template" and output else None
+        # 模型逾時、出錯或沒有輸出：不是檢查擋下的，頁面要分開寫（不靠比對退回原因的字串）
+        no_reply = result.layer == "template" and bool(result.rejected) and not output
         return {
             "kind": kind, "text": result.text, "layer": result.layer, "model": result.model,
             "prompt_version": result.prompt_version, "seconds": round(time.perf_counter() - started, 2),
-            "rejected": list(result.rejected), "candidate": rejected_output,
+            "rejected": list(result.rejected), "candidate": rejected_output, "no_reply": no_reply,
         }
 
     def warm_up(self) -> str:

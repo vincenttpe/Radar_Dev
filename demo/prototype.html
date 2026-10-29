@@ -750,8 +750,7 @@ function paintCompare(pending) {
     paras(model, "沒有改寫結果。"); meta.textContent = cmp.error;
   } else {
     const why = (cmp.rejected || []).join("、");
-    const noReply = (cmp.rejected || []).length > 0 && cmp.rejected.every(r => r.startsWith("模型錯誤") || r === "模型沒有輸出");
-    if (noReply) {  // 逾時、當掉、沒有輸出：不是檢查擋下的，分開寫
+    if (cmp.no_reply) {  // 逾時、當掉、沒有輸出：不是檢查擋下的，分開寫
       paras(model, "沒有改寫結果。");
       meta.textContent = `${cmp.model || "在地模型"}${took} · 在地模型沒有回應（${why}）；讀者看到的是左邊的原句`;
       return;

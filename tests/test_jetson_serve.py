@@ -245,14 +245,14 @@ def test_handover_that_fails_the_check_keeps_the_template_and_says_why(server):
     assert code == 200 and data["layer"] == "template"
     assert data["text"] == handover_text(demo.summary, place=demo.place)
     assert data["model"] == "fake-model" and "漏掉時間 08:32" in data["rejected"]
-    assert data["candidate"] == "1"  # 測試版：模型實際寫的也回給頁面，標「未採用」
+    assert data["candidate"] == "1" and data["no_reply"] is False  # 測試版：模型實際寫的也回給頁面，標「未採用」
 
 
 def test_handover_model_errors_keep_the_template(server):
     _, url = server(Broken())
     code, data = _compare(url)
     assert code == 200 and data["layer"] == "template" and data["rejected"] == ["模型錯誤：TimeoutError"]
-    assert data["candidate"] is None  # 模型出錯：沒有輸出可以列
+    assert data["candidate"] is None and data["no_reply"] is True  # 模型出錯：沒有輸出可以列，頁面寫「沒有回應」
 
 
 def test_other_sites_cannot_trigger_a_handover(server):
@@ -296,7 +296,6 @@ def test_unknown_comparison_is_404(server):
     assert _compare(url, kind="kg")[0] == 404
 
 
-
 def test_rejected_event_summary_rewrite_is_returned_as_candidate(server):
     from radar_agent.caregiver import caregiver_text
 
@@ -317,3 +316,13 @@ def test_comparison_paths_need_the_compare_prefix(server):
     with pytest.raises(urllib.error.HTTPError) as e:
         urllib.request.urlopen(req)
     assert e.value.code == 404
+
+
+def test_event_summary_without_data_is_not_sent_to_the_model(server):
+    from radar_agent.device_events import summarize
+
+    demo, url = server(Broken())  # 被呼叫就丟例外
+    demo.summary = summarize([])
+    code, data = _compare(url, kind="summary")
+    assert code == 200 and (data["layer"], data["rejected"], data["no_reply"]) == ("template", [], False)
+    assert data["text"] == "1 號廁所：沒有收到資料，無法判斷。"
