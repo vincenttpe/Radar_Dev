@@ -19,7 +19,9 @@ from radar_agent.device_events import Summary
 from radar_agent.kg_rules import Assessment
 from radar_agent.output_check import check_output, numbers
 
-PROMPT_VERSION = "caregiver-v0"
+# 改了 build_prompt 或採用的檢查都要升版，追溯紀錄才分得出是哪一套規則（原則 3）：
+# v1 是 2026-10-29 檢查加上次數與時間長度整段比對（_kept_quantities，PR #41）
+PROMPT_VERSION = "caregiver-v1"
 # 範本裡的這些提醒，改寫後一定要留著：拿掉就變成「沒有資料」被讀成「沒事」（REVIEW.md 3.1）
 REQUIRED_PHRASES = ("無法判斷", "無法評估", "僅供測試", "請通知資訊人員")
 # 暫定：改寫最多是範本的幾倍長；限制輸出長度見 docs/02
