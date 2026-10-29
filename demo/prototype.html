@@ -638,6 +638,7 @@ function refill(t, lines, meta) {
   t.replaceChildren(); t.classList.remove("wait");
   lines.forEach(line => t.append(el("p", null, line)));
   if (meta) t.append(el("span", "meta", meta));
+  chat.scrollTop = chat.scrollHeight;  // 換成較長的回覆後再捲到底，最新一則不被切掉
 }
 async function liveAsk(typed) {
   if (shown !== events.length) { chat.replaceChildren(); say("system wait", ["重播中。播完全部事件後再提問。"]); return; }
