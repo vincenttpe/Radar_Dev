@@ -350,3 +350,42 @@ def test_adopted_rewrite_is_not_no_reply(server):
     _, url = server(Echoing())
     code, data = _compare(url, kind="summary")
     assert code == 200 and (data["layer"], data["no_reply"]) == ("model", False)
+
+
+class PickHandover:
+    """假模型：一律回第 7 題（交班重點，只在內部 Demo）。"""
+
+    name = "fake-model"
+
+    def __call__(self, prompt: str) -> str:
+        return "7"
+
+
+def test_handover_question_answers_with_the_handover_original_and_a_note(serve_mod, server):
+    from radar_agent.caregiver import handover_text
+
+    demo, url = server(PickHandover())
+    code, data = _ask(url, "交接報告")
+    assert code == 200 and data["question"]["id"] == "handover"
+    assert data["answer"] == f"{serve_mod.HANDOVER_NOTE}\n{handover_text(demo.summary, place=demo.place)}"
+    assert data["prompt_version"] == serve_mod.DEMO_ASK_PROMPT_VERSION
+    assert [m["id"] for m in data["menu"]][-1] == "handover" and len(data["menu"]) == 7
+
+
+def test_radar_ask_keeps_its_six_questions(serve_mod):
+    """交班重點只加在內部 Demo（2026-10-30 決定）：radar-ask 與 Dashboard 的題目不動。"""
+    from radar_agent.event_ask import EVENT_QUESTIONS
+
+    assert len(EVENT_QUESTIONS) == 6 and "handover" not in {q.id for q in EVENT_QUESTIONS}
+    assert serve_mod.DEMO_QUESTIONS[:6] == EVENT_QUESTIONS
+
+
+def test_demo_ask_prompt_version_is_bumped_when_the_prompt_or_menu_changes(serve_mod):
+    """紀錄只記 prompt_version；Demo 的選單或提示詞改了卻沒升版，就分不出模型當時看到哪一版。"""
+    import hashlib
+
+    from radar_agent.ask import build_prompt
+
+    digest = hashlib.sha256(build_prompt("{提問}", serve_mod.DEMO_QUESTIONS).encode("utf-8")).hexdigest()[:16]
+    assert (serve_mod.DEMO_ASK_PROMPT_VERSION, digest) == ("jetson-demo-ask-v0", "9bcb685859cc3656"), \
+        "DEMO_QUESTIONS 或 ask.build_prompt 改了：升 DEMO_ASK_PROMPT_VERSION，再更新這裡的版本與雜湊"
