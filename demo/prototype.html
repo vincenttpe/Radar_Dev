@@ -167,6 +167,7 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .compare-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 16px; }
 .compare-cols > div { display: grid; gap: 6px; align-content: start; border-top: 1px solid var(--line); padding-top: 8px; }
 .compare-cols h3 { margin: 0; font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: .04em; }
+.chat .turn.unused p:not(:first-child) { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
 .compare-text.unused p { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
 .compare .tag { font: 600 12px var(--f-body); color: var(--check); }
 .compare-live { display: grid; gap: 6px; }
@@ -625,7 +626,7 @@ function renderAsk(done) {
   const out = $("ask-answer");
   out.replaceChildren();
   if (!done) { asked = null; chat.replaceChildren(); }  // 重播時清掉上一輪的答案與對話
-  askButtons.forEach((b, i) => { b.disabled = !done; b.setAttribute("aria-pressed", String(DATA.ask[i].id === asked)); });
+  askButtons.forEach((b, i) => { b.disabled = !done; b.setAttribute("aria-pressed", String(!!DATA.ask[i] && DATA.ask[i].id === asked)); });
   if (!done) { out.append(el("p", "wait", "重播中。播完全部事件後再提問。")); return; }
   if (asked === "unmatched") { out.append(el("p", "wait", "沒有對應到固定問題（這一頁沒有接上在地模型）。請從下面選一題。")); return; }
   const q = DATA.ask.find(x => x.id === asked);
@@ -684,18 +685,44 @@ async function liveAsk(typed) {
   const done = () => { yes.disabled = no.disabled = true; $("ask-input").focus({ preventScroll: true }); };
   yes.onclick = () => {
     done();
+    if (r.question.id === "handover" && r.answer) { chatHandover(r.answer); return; }
     if (r.answer) say("system", r.answer.split("\n"), `答案涵蓋 ${r.from.slice(11, 16)}–${r.to.slice(11, 16)} 的資料；固定句型，不是模型寫的`);
     else say("system", ["答案沒通過輸出檢查，不顯示。請從下面選一題。"]);
   };
   no.onclick = () => { done(); say("system", ["請從下面選一題。"]); };
   row.append(yes, no); pending.append(row); chat.scrollTop = chat.scrollHeight; yes.focus({ preventScroll: true });
 }
+// 交班重點（交接報告，只在內部 Demo）：先列沒經過模型的原句，再列在地模型改寫的版本，兩則對照
+async function chatHandover(answer) {
+  say("system", answer.split("\n"), "沒經過模型（規則產生）");
+  const pending = say("system wait", ["在地模型改寫中…"]);
+  let r;
+  try {
+    const res = await fetch("/api/compare/handover", { method: "POST" });
+    r = await res.json().catch(() => ({}));
+    if (!res.ok) { refill(pending, ["沒有改寫結果。"], r.error || `服務回應錯誤（${res.status}）`); return; }
+  } catch (e) {
+    refill(pending, ["沒有改寫結果。"], "連不上這台 Jetson 上的服務");
+    return;
+  }
+  const body = text => text.split("\n").slice(2);  // 前兩行（地點與時段、【重點】）不經過模型，上一則已列
+  const took = `${r.model} · ${r.seconds.toFixed(1)} 秒`;
+  if (r.layer === "model") refill(pending, body(r.text), `經過在地模型改寫 · ${took} · 已比對數字與時刻；意思請對照上一則原句`);
+  else if (r.no_reply) refill(pending, ["沒有改寫結果。"], `${took} · 在地模型沒有回應（${r.rejected.join("、")}）`);
+  else if (r.candidate) {
+    refill(pending, ["未採用（沒通過檢查，讀者看到的是上一則原句）：", ...r.candidate.split("\n")], `${took} · 沒通過檢查：${r.rejected.join("、")}`);
+    pending.classList.add("unused");
+  } else refill(pending, ["不改寫。"]);
+}
 if (LIVE) {
+  const handoverButton = el("button", null, LIVE.handover_question); handoverButton.type = "button";
+  handoverButton.onclick = () => { say("reader", [LIVE.handover_question]); chatHandover(`${LIVE.handover_note}\n${LIVE.compare.handover}`); };
+  $("ask-menu").append(handoverButton); askButtons.push(handoverButton);
   $("src-note").textContent = `非真實裝置紀錄；裝置名稱 DEMO-SIM-01，沒有任何長者資料。句子由範本產生；打字提問由這台 Jetson 上的在地模型（${LIVE.model}）選題；提問不寫進本服務的紀錄。`;
   $("ask-hint").textContent = "打字提問由這台 Jetson 上的在地模型對到下面其中一題，先問「您是想問……嗎？」，按「對」才顯示答案。答案是固定句型，不是模型寫的。也可以直接點題目。";
   $("note-ask").textContent = "在地模型跑在這台 Jetson 上，只負責選題號；答案由固定句型產生，數字都通過輸出檢查。對不到題目時改從選單點。打的字只留在畫面上，不寫進本服務的紀錄。";
   $("ask-answer").hidden = true; chat.hidden = false;
-  askButtons.forEach((b, i) => {
+  askButtons.slice(0, DATA.ask.length).forEach((b, i) => {
     b.onclick = () => { const q = DATA.ask[i]; say("reader", [q.text]); say("system", q.answer.split("\n"), "從選單點選，不經模型"); };
   });
   const stats = $("jetson-stats");

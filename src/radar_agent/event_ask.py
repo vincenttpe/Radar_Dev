@@ -89,7 +89,8 @@ def checked_answer(question: Question, summary: Summary, *, place: str) -> tuple
     return (None, tuple(problems)) if problems else (text, ())
 
 
-def _period(summary: Summary) -> tuple[str, str] | None:
+def answer_period(summary: Summary) -> tuple[str, str] | None:
+    """答案涵蓋的時間（第一筆在線到最後一筆在線）；沒有收到資料時是 None。Jetson 內部 Demo 也用。"""
     if not summary.online:
         return None
     return f"{summary.online[0].start:%Y-%m-%d %H:%M:%S}", f"{summary.online[-1].end:%Y-%m-%d %H:%M:%S}"
@@ -101,16 +102,16 @@ def ask_events(asked: str, summary: Summary, *, place: str, model: Model | None,
     match = match_question(asked, EVENT_QUESTIONS, model=model, prompt_version=PROMPT_VERSION)
     seconds = clock() - started
     if match.question is None:
-        return Reply(match, None, seconds, period=_period(summary))
+        return Reply(match, None, seconds, period=answer_period(summary))
     text, problems = checked_answer(match.question, summary, place=place)
-    return Reply(match, text, seconds, problems, _period(summary))
+    return Reply(match, text, seconds, problems, answer_period(summary))
 
 
 def pick(question_id: str, summary: Summary, *, place: str) -> Reply:
     """讀者直接從選單點題目：不經過模型。"""
     q = _BY_ID[question_id]
     text, problems = checked_answer(q, summary, place=place)
-    return Reply(Match(q), text, 0.0, problems, _period(summary))
+    return Reply(Match(q), text, 0.0, problems, answer_period(summary))
 
 
 def _text(reply: Reply) -> str:

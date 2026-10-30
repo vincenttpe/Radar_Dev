@@ -1,7 +1,7 @@
 """Jetson 內部 Demo：在 Jetson 本機開原型頁，打字提問交給同一台 Jetson 上的在地模型（docs/21）。
 
 頁面和 demo/build.py 產生的原型頁相同（模擬資料、句子都來自 radar-caregiver 與 radar-ask），
-只多了兩件事：輸入框接上 event_ask.ask_events()（模型只選題號，答案仍是固定句型並通過輸出檢查），
+只多了兩件事：輸入框接上在地模型（模型只選題號，答案仍是固定句型並通過輸出檢查；比 radar-ask 多一題「交班重點」），
 頁面角落的 Jetson 狀態（tegrastats 讀得到時才顯示），以及「沒用模型／用模型」的比對（測試版，2026-10-29 決定）：
 事件摘要（rewrite.rewrite）與交班重點（rewrite.rewrite_handover）各自並排「規則產生的原句」與「在地模型改寫」；
 沒通過檢查的模型輸出也列出並標「未採用」，方便評比模型實際寫了什麼、為什麼被擋。
@@ -35,7 +35,8 @@ from typing import Any
 
 import demo_page  # demo/ 底下的共用外殼；直接執行或測試時 demo/ 都在 sys.path
 from radar_agent.device_events import Summary, read_records, summarize
-from radar_agent.event_ask import ask_events
+from radar_agent.ask import Question, match_question
+from radar_agent.event_ask import EVENT_QUESTIONS, Reply, answer_period, checked_answer
 from radar_agent.local_model import add_model_args, model_from_args
 from radar_agent.rewrite import Model, Rewritten, rewrite, rewrite_handover
 
@@ -59,6 +60,15 @@ PORT = 8765
 MAX_BODY = 4096
 WARMUP_ASKED = "有人跌倒嗎"
 COMPARE_KINDS = ("summary", "handover")  # 事件摘要、交班重點
+# 提問多一題「幫我整理交班重點」（打「交接報告」也對得到）：只在 Jetson 內部 Demo（2026-10-30 決定），radar-ask 與 Dashboard 的 6 題不動。
+# 「幫我寫一份交班紀錄」也對到這一題，答案開頭註明不是正式紀錄（2026-10-30 決定）。
+# 題目或 ask.build_prompt 改了要升 DEMO_ASK_PROMPT_VERSION（tests/test_jetson_serve.py 會檢查）
+# 題目文字就是確認句裡的「您是想問『幫我整理交班重點』嗎？」。只寫「交班重點」實測有 2 題對錯題（2026-10-30）；「交接報告」等問法由模型對到這一題
+HANDOVER_QUESTION = Question("handover", "幫我整理交班重點")
+DEMO_QUESTIONS = [*EVENT_QUESTIONS, HANDOVER_QUESTION]
+DEMO_ASK_PROMPT_VERSION = "jetson-demo-ask-v0"
+DEMO_ASK_SCHEMA = "jetson-demo-ask-v0"  # 選單 7 題、多了 handover，和 Dashboard 用的 event-ask-v0 不同
+HANDOVER_NOTE = "以下是交班重點，不是機構的正式交班紀錄。"
 # 畫面寫「在這台 Jetson 上執行」，所以模型伺服器只能在本機（local_model 本身允許區網）
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 
@@ -135,11 +145,35 @@ class Demo:
             "model": model.name, "stats": self.stats.proc is not None,
             # 比對用的原句先顯示，模型改寫好再補上右邊那欄，讀者不必乾等
             "compare": {kind: self._rewrite(kind, None).text for kind in COMPARE_KINDS},
+            # 提問選單第 7 顆按鈕與答案開頭的註明：頁面不另寫一份
+            "handover_question": HANDOVER_QUESTION.text, "handover_note": HANDOVER_NOTE,
         }
         self.page = demo_page.page(build.HERE / "template.html", build.PLACEHOLDER, data).encode("utf-8")
 
     def ask(self, asked: str) -> dict[str, Any]:
-        return ask_events(asked, self.summary, place=self.place, model=self.model).data()
+        """模型從 DEMO_QUESTIONS 選一題。前 6 題的答案和 radar-ask 相同；交班重點回原句（沒經過模型），
+        頁面再另外叫 /api/compare/handover 拿模型改寫的版本並排比對。"""
+        started = time.perf_counter()
+        match = match_question(asked, DEMO_QUESTIONS, model=self.model, prompt_version=DEMO_ASK_PROMPT_VERSION)
+        seconds = time.perf_counter() - started
+        period = answer_period(self.summary)
+        q = match.question
+        if q is None:
+            data = Reply(match, None, seconds, period=period).data()
+        elif q.id == HANDOVER_QUESTION.id:
+            # 原句沒通過輸出檢查時不交出文字、寫出原因：和前 6 題（checked_answer）一致
+            try:
+                text: str | None = f"{HANDOVER_NOTE}\n{self._rewrite('handover', None).text}"
+                problems: tuple[str, ...] = ()
+            except ValueError as e:
+                text, problems = None, (str(e),)
+            data = Reply(match, text, seconds, problems, period).data()
+        else:
+            text, problems = checked_answer(q, self.summary, place=self.place)
+            data = Reply(match, text, seconds, problems, period).data()
+        data["schema"] = DEMO_ASK_SCHEMA
+        data["menu"] = [{"id": m.id, "text": m.text} for m in DEMO_QUESTIONS]
+        return data
 
     def _rewrite(self, kind: str, model: Model | None) -> Rewritten:
         if kind == "summary":
