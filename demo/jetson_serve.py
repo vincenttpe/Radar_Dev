@@ -60,7 +60,7 @@ PORT = 8765
 MAX_BODY = 4096
 WARMUP_ASKED = "有人跌倒嗎"
 COMPARE_KINDS = ("summary", "handover")  # 事件摘要、交班重點
-# 提問多一題「交班重點（交接報告）」：只在 Jetson 內部 Demo（2026-10-30 決定），radar-ask 與 Dashboard 的 6 題不動。
+# 提問多一題「幫我整理交班重點」（打「交接報告」也對得到）：只在 Jetson 內部 Demo（2026-10-30 決定），radar-ask 與 Dashboard 的 6 題不動。
 # 「幫我寫一份交班紀錄」也對到這一題，答案開頭註明不是正式紀錄（2026-10-30 決定）。
 # 題目或 ask.build_prompt 改了要升 DEMO_ASK_PROMPT_VERSION（tests/test_jetson_serve.py 會檢查）
 # 題目文字就是確認句裡的「您是想問『幫我整理交班重點』嗎？」。只寫「交班重點」實測有 2 題對錯題（2026-10-30）；「交接報告」等問法由模型對到這一題
