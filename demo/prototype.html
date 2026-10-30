@@ -685,7 +685,7 @@ async function liveAsk(typed) {
   const done = () => { yes.disabled = no.disabled = true; $("ask-input").focus({ preventScroll: true }); };
   yes.onclick = () => {
     done();
-    if (r.question.id === "handover") { chatHandover(r.answer); return; }
+    if (r.question.id === "handover" && r.answer) { chatHandover(r.answer); return; }
     if (r.answer) say("system", r.answer.split("\n"), `答案涵蓋 ${r.from.slice(11, 16)}–${r.to.slice(11, 16)} 的資料；固定句型，不是模型寫的`);
     else say("system", ["答案沒通過輸出檢查，不顯示。請從下面選一題。"]);
   };
@@ -699,8 +699,8 @@ async function chatHandover(answer) {
   let r;
   try {
     const res = await fetch("/api/compare/handover", { method: "POST" });
-    r = await res.json();
-    if (!res.ok) throw new Error(r.error || String(res.status));
+    r = await res.json().catch(() => ({}));
+    if (!res.ok) { refill(pending, ["沒有改寫結果。"], r.error || `服務回應錯誤（${res.status}）`); return; }
   } catch (e) {
     refill(pending, ["沒有改寫結果。"], "連不上這台 Jetson 上的服務");
     return;
@@ -715,8 +715,8 @@ async function chatHandover(answer) {
   } else refill(pending, ["不改寫。"]);
 }
 if (LIVE) {
-  const handoverButton = el("button", null, "幫我整理交班重點（交接報告）"); handoverButton.type = "button";
-  handoverButton.onclick = () => { say("reader", [handoverButton.textContent]); chatHandover(`以下是交班重點，不是機構的正式交班紀錄。\n${LIVE.compare.handover}`); };
+  const handoverButton = el("button", null, LIVE.handover_question); handoverButton.type = "button";
+  handoverButton.onclick = () => { say("reader", [LIVE.handover_question]); chatHandover(`${LIVE.handover_note}\n${LIVE.compare.handover}`); };
   $("ask-menu").append(handoverButton); askButtons.push(handoverButton);
   $("src-note").textContent = `非真實裝置紀錄；裝置名稱 DEMO-SIM-01，沒有任何長者資料。句子由範本產生；打字提問由這台 Jetson 上的在地模型（${LIVE.model}）選題；提問不寫進本服務的紀錄。`;
   $("ask-hint").textContent = "打字提問由這台 Jetson 上的在地模型對到下面其中一題，先問「您是想問……嗎？」，按「對」才顯示答案。答案是固定句型，不是模型寫的。也可以直接點題目。";

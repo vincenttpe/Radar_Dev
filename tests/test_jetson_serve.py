@@ -369,6 +369,7 @@ def test_handover_question_answers_with_the_handover_original_and_a_note(serve_m
     assert code == 200 and data["question"]["id"] == "handover"
     assert data["answer"] == f"{serve_mod.HANDOVER_NOTE}\n{handover_text(demo.summary, place=demo.place)}"
     assert data["prompt_version"] == serve_mod.DEMO_ASK_PROMPT_VERSION
+    assert (data["schema"], data["question"]["text"]) == ("jetson-demo-ask-v0", "幫我整理交班重點")
     assert [m["id"] for m in data["menu"]][-1] == "handover" and len(data["menu"]) == 7
 
 
@@ -387,5 +388,22 @@ def test_demo_ask_prompt_version_is_bumped_when_the_prompt_or_menu_changes(serve
     from radar_agent.ask import build_prompt
 
     digest = hashlib.sha256(build_prompt("{提問}", serve_mod.DEMO_QUESTIONS).encode("utf-8")).hexdigest()[:16]
-    assert (serve_mod.DEMO_ASK_PROMPT_VERSION, digest) == ("jetson-demo-ask-v0", "9bcb685859cc3656"), \
+    assert (serve_mod.DEMO_ASK_PROMPT_VERSION, digest) == ("jetson-demo-ask-v0", "fb0409607c9c42ac"), \
         "DEMO_QUESTIONS 或 ask.build_prompt 改了：升 DEMO_ASK_PROMPT_VERSION，再更新這裡的版本與雜湊"
+
+
+def test_handover_question_whose_template_fails_its_check_shows_no_text_and_says_why(server):
+    """和前 6 題一致：原句沒通過輸出檢查時不交出文字、寫出原因（不斷線、不回 500）。"""
+    demo, url = server(PickHandover())
+    demo.place = "治療室"  # 「治療」是不能出現的用語
+    code, data = _ask(url, "交接報告")
+    assert code == 200 and data["question"]["id"] == "handover" and data["answer"] is None
+    assert any("範本沒通過輸出檢查" in r for r in data["rejected"])
+
+
+def test_page_carries_the_handover_button_text_and_note(serve_mod, server):
+    _, url = server(PickFirst())
+    with urllib.request.urlopen(url + "/") as resp:
+        page = resp.read().decode("utf-8")
+    assert '"handover_question": "幫我整理交班重點"' in page
+    assert json.dumps(serve_mod.HANDOVER_NOTE, ensure_ascii=False) in page
