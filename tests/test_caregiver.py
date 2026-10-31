@@ -458,12 +458,12 @@ def test_every_prompt_has_a_level_and_title():
     assert {e["prompt"] for e in data["events"]} <= set(NOTE_KINDS)
 
 
-def test_fall_alert_reference_lists_every_prompt_with_its_level():
+def test_fall_alert_reference_lists_every_prompt_with_its_level(repo):
     """docs/22 第一節的對照表要和 NOTE_KINDS 逐字一致：處置提示一改，處理流程參考也要跟著改。"""
     from radar_agent.caregiver import NOTE_KINDS
 
-    doc = Path(__file__).resolve().parent.parent / "docs" / "22_跌倒警報處理流程參考.md"
-    rows = [line.split("|") for line in doc.read_text(encoding="utf-8").splitlines() if line.startswith("| ")]
+    doc = (repo / "docs" / "22_跌倒警報處理流程參考.md").read_text(encoding="utf-8")
+    rows = [line.split("|") for line in doc.splitlines() if line.startswith("| ")]
     listed = {cells[1].strip(): cells[2].strip() for cells in rows if cells[1].strip() in NOTE_KINDS}
     assert listed == {prompt: level for prompt, (level, _) in NOTE_KINDS.items()}
 
