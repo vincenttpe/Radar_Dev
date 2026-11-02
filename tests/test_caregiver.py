@@ -623,6 +623,17 @@ def test_cli_with_only_unreadable_records_says_so(tmp_path, capsys):
                    "【事件摘要】\n1 號廁所：沒有讀得懂的資料，2 筆紀錄無法判讀，無法判斷。\n")
 
 
+def test_cli_with_only_radar60fl_records_says_they_are_unreadable(tmp_path, capsys):
+    """Dashboard 現在的實測資料是 Radar60FL（docs/16）：以前整份當成伺服器指令略過，寫「沒有收到資料」（#64）。"""
+    post = {"timestamp": "2026-10-14 09:00:00", "topic": "Radar60FL/DEV9/sys/property/post", "resolution": None,
+            "payload": {"method": "post", "params": {"someoneExists": "0"}, "version": "1"}}
+    path = write_jsonl(tmp_path / "events.jsonl", [post, {**post, "timestamp": "2026-10-14 09:00:05"}])
+    code, out, err = _run(capsys, path, "--place", "1 號廁所")
+    assert (code, err) == (0, "")
+    assert out == ("【重點】沒有讀得懂的資料，2 筆紀錄無法判讀，無法判斷，請通知資訊人員。\n\n"
+                   "【事件摘要】\n1 號廁所：沒有讀得懂的資料，2 筆紀錄無法判讀，無法判斷。\n")
+
+
 def test_cli_range_without_records_says_cannot_judge(tmp_path, capsys):
     path = tmp_path / "events.json"
     path.write_text(json.dumps(timeline("09:00:00", "09:30:00", VISITS)), encoding="utf-8")

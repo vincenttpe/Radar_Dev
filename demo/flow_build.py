@@ -73,8 +73,8 @@ def pending(report: dict[str, Any], side: dict[str, Any], end: str) -> list[str]
         notes.append("摘要寫「無法判斷」，數字欄位卻是 0：Dashboard 做成數字卡會顯示「跌倒警報 0」。"
                      "數字要能表示「無法判斷」（例如 null），屬於給讀者的輸出格式，待決。")
     if side["count"] and report["from"] is None:
-        notes.append(f"Dashboard 有 {side['count']} 筆紀錄，回傳的文字卻是「沒有收到資料」：本 repo 讀不懂這種格式"
-                     "（例如 Radar60FL，docs/05 A45）。居服員會以為裝置沒送資料，要先確認格式。")
+        notes.append(f"Dashboard 有 {side['count']} 筆紀錄，回傳的文字卻沒有任何事件：本 repo 讀不懂這種格式"
+                     "（例如 Radar60FL，docs/05 A45；報告會寫「沒有讀得懂的資料」），要先確認格式。")
     last = side["last"]
     if last is not None and parse_bound(end) - parse_bound(last) > HEARTBEAT_GAP:
         notes.append(f"要的是到 {end[11:]}，資料只到 {last[11:]}；回傳的文字沒有寫出之後沒有資料，"

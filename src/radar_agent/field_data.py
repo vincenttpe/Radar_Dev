@@ -73,7 +73,8 @@ class Report:
     layout: str = ""
     devices: Counter[str] = field(default_factory=Counter)
     no_topic: int = 0
-    commands: int = 0                                   # topic 多層：伺服器下給裝置的指令
+    commands: int = 0                                   # 已知的伺服器下給裝置的指令（device_events.COMMAND_TOPICS）
+    unknown_topic: int = 0                              # topic 多層、但不是已知的指令（例如 Radar60FL）：無法判讀
     unreadable_time: int = 0
     duplicates: int = 0
     first: datetime | None = None
@@ -88,13 +89,15 @@ def inspect(records: list[dict[str, Any]], layout: str) -> Report:
     report = Report(records=len(records), layout=layout)
     line = timeline(records)
     report.duplicates = line.duplicates
-    for record in [r for _, r in line.no_topic + line.commands + line.unreadable_time] + [e.record for e in line.entries]:
+    others = line.no_topic + line.commands + line.unknown_topic + line.unreadable_time
+    for record in [r for _, r in others] + [e.record for e in line.entries]:
         device = device_of(record)
         if device is None:
             report.no_topic += 1
         else:
             report.devices[device] += 1
     report.commands = sum(device_of(r) is not None for _, r in line.commands)
+    report.unknown_topic = sum(device_of(r) is not None for _, r in line.unknown_topic)
     report.unreadable_time = sum(device_of(r) is not None for _, r in line.unreadable_time)
     by_topic: dict[str, list[dict[str, Any]]] = {}
     for entry in line.entries:
@@ -149,6 +152,8 @@ def report_text(r: Report) -> str:
         lines.append(f"沒有 topic：{r.no_topic:,} 筆")
     if r.commands:
         lines.append(f"伺服器下給裝置的指令（topic 多層）：{r.commands:,} 筆，不算進事件")
+    if r.unknown_topic:
+        lines.append(f"不認得的多層 topic（不是已知的伺服器指令，例如 Radar60FL）：{r.unknown_topic:,} 筆，列為無法判讀")
     if r.unreadable_time:
         lines.append(f"時間戳讀不懂（不是 {TIMESTAMP_FORMAT}）：{r.unreadable_time:,} 筆")
     if r.first is None or r.last is None:
