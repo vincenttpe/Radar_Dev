@@ -47,6 +47,9 @@ class Match:
     model: str | None = None
     prompt_version: str | None = None
     rejected: tuple[str, ...] = ()
+    # 對不到的原因代碼，呼叫端依它決定給讀者的提示（2026-11-02）：
+    # empty 沒有輸入、too_long 太長、no_model 沒有模型、model_error 模型出錯、no_fit 模型判斷沒有符合或回答不合格式
+    why: str | None = None
 
 
 def build_prompt(asked: str, questions: Sequence[Question]) -> str:
@@ -65,19 +68,19 @@ def match_question(asked: str, menu: Menu, *, model: Model | None) -> Match:
     questions, prompt_version = menu.questions, menu.prompt_version
     asked = asked.strip()
     if not asked:
-        return Match(None, rejected=("沒有輸入提問",))
+        return Match(None, rejected=("沒有輸入提問",), why="empty")
     if len(asked) > MAX_ASKED:
-        return Match(None, rejected=(f"提問超過 {MAX_ASKED} 字",))
+        return Match(None, rejected=(f"提問超過 {MAX_ASKED} 字",), why="too_long")
     if model is None:
-        return Match(None, rejected=("沒有在地模型",))
+        return Match(None, rejected=("沒有在地模型",), why="no_model")
 
-    def miss(reason: str) -> Match:
-        return Match(None, model.name, prompt_version, (reason,))
+    def miss(reason: str, why: str = "no_fit") -> Match:
+        return Match(None, model.name, prompt_version, (reason,), why)
 
     try:
         reply = model(build_prompt(asked, questions))
     except Exception as e:  # 模型逾時、當掉都當作沒對應到，讓讀者改從選單點選
-        return miss(f"模型錯誤：{type(e).__name__}")
+        return miss(f"模型錯誤：{type(e).__name__}", "model_error")
     found = _REPLY.fullmatch(reply.strip())
     if not found:
         return miss("模型回答不是單一編號")

@@ -14,6 +14,7 @@ from radar_agent import dashboard_link
 from radar_agent.caregiver import report_data
 from radar_agent.dashboard_link import Fetched, HttpDashboard, Job, handle, main, run, run_once
 from radar_agent.device_events import read_records, summarize
+from radar_agent.event_ask import pick
 from radar_agent.time_range import in_range, parse_bound
 
 RECORDS = read_records(fake_dashboard.page_data.SAMPLE)
@@ -50,7 +51,7 @@ def test_every_job_in_the_queue_is_answered_and_sent_back(dashboard):
     fake, base = dashboard()
     _drain(base, FakeModel("1"))
     by_id = {r["job_id"]: r for r in fake.results}
-    assert set(by_id) == {"j-1", "j-2", "j-3"} and not fake.jobs
+    assert set(by_id) == {"j-1", "j-2", "j-3", "j-4"} and not fake.jobs
 
     report = by_id["j-1"]
     expected = report_data(summarize(in_range(RECORDS, parse_bound("2026-10-14 08:00:00"),
@@ -60,7 +61,12 @@ def test_every_job_in_the_queue_is_answered_and_sent_back(dashboard):
 
     ask = by_id["j-2"]["result"]
     assert (by_id["j-2"]["status"], ask["schema"], ask["question"]["id"]) == ("done", "event-ask-v0", "falls")
-    assert ask["answer"].startswith("1 號廁所 10/14 08:00–11:59：")
+    assert ask["answer"].startswith("1 號廁所 10/14 08:00–11:59：") and ask["confirm"] == "您是想問「有沒有人跌倒？」嗎？"
+
+    picked = by_id["j-4"]["result"]  # 在選單上點題：不經過模型，答案和 radar-ask --pick 相同
+    assert (picked["question"]["id"], picked["model"], picked["notice"]) == ("visits", None, None)
+    assert picked["answer"] == pick("visits", summarize(in_range(RECORDS, parse_bound("2026-10-14 08:00:00"),
+                                                                 parse_bound("2026-10-14 12:00:00"))), place=PLACE).answer
 
 
 def test_a_range_longer_than_the_data_says_how_far_the_data_goes(dashboard):
@@ -81,7 +87,7 @@ def test_records_are_fetched_page_by_page_until_the_last_page(dashboard):
 def test_the_asked_text_is_never_logged(dashboard):
     _, base = dashboard()
     lines = _drain(base, FakeModel("1"))
-    assert len(lines) == 3 and all("跌倒" not in line for line in lines), "提問原文不寫進 log"
+    assert len(lines) == 4 and all("跌倒" not in line for line in lines), "提問原文不寫進 log"
     assert lines[1].startswith("j-2 ask done ")
 
 
@@ -130,6 +136,9 @@ JOB = {"job_id": "j-9", "kind": "report", "device": "DEMO-SIM-01", "place": PLAC
     ({**JOB, "place": ""}, "需求缺少欄位：place"),
     ({**JOB, "kind": "ask"}, "提問需求沒有提問"),
     ({**JOB, "to": "明天"}, "看不懂"),
+    ({**JOB, "kind": "pick"}, "點題需求的題號不在選單裡"),
+    ({**JOB, "kind": "pick", "question_id": "handover"}, "點題需求的題號不在選單裡"),
+    ({**JOB, "kind": "pick", "question_id": ["falls"]}, "點題需求的題號不在選單裡"),
 ])
 def test_a_malformed_job_fails_and_says_why(job, problem):
     body = handle(job, Memory(), None)
@@ -191,7 +200,7 @@ def test_cli_once_answers_the_queue_and_exits(dashboard, monkeypatch, capsys):
     fake, base = dashboard()
     monkeypatch.setenv(dashboard_link.TOKEN_ENV, fake_dashboard.TOKEN)
     assert main(["--base", base, "--once", "--echo"]) == 0
-    assert {r["job_id"] for r in fake.results} == {"j-1", "j-2", "j-3"}
+    assert {r["job_id"] for r in fake.results} == {"j-1", "j-2", "j-3", "j-4"}
     assert "早上有人跌倒嗎" not in capsys.readouterr().err
 
 
