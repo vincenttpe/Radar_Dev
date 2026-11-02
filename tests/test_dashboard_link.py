@@ -184,3 +184,126 @@ def test_cli_without_a_token_stops_before_connecting(monkeypatch, capsys):
     monkeypatch.delenv(dashboard_link.TOKEN_ENV, raising=False)
     assert main(["--base", "https://dashboard.example.com", "--once"]) == 2
     assert "RADAR_DASHBOARD_TOKEN" in capsys.readouterr().err
+
+
+# ── 2026-11-02 審查後補：轉址、格式不對的資料、送不出去的結果、系統時間 ─────────
+
+def test_redirects_are_not_followed_so_the_token_stays_put(dashboard):
+    """轉址時 urllib 會把 Authorization 一起帶去新位置：一律不跟，token 不會送到別的主機。"""
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    seen = []
+
+    class Elsewhere(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            seen.append(self.headers.get("Authorization"))
+            self.send_response(204)
+            self.end_headers()
+
+    other = ThreadingHTTPServer(("127.0.0.1", 0), Elsewhere)
+    threading.Thread(target=other.serve_forever, daemon=True).start()
+
+    class Redirect(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            self.send_response(302)
+            self.send_header("Location", f"http://127.0.0.1:{other.server_address[1]}/api/v1/jetson/jobs/next")
+            self.end_headers()
+
+    source = ThreadingHTTPServer(("127.0.0.1", 0), Redirect)
+    threading.Thread(target=source.serve_forever, daemon=True).start()
+    try:
+        with pytest.raises(OSError):
+            HttpDashboard(f"http://127.0.0.1:{source.server_address[1]}", "secret-token").next_job()
+        assert seen == []
+    finally:
+        for server in (source, other):
+            server.shutdown()
+            server.server_close()
+
+
+@pytest.mark.parametrize("records", [{"a": 1}, ["不是物件"], None])
+def test_records_in_the_wrong_shape_fail_the_job_instead_of_stopping(records, monkeypatch):
+    link = HttpDashboard("http://127.0.0.1:9", "t")
+    monkeypatch.setattr(link, "_call", lambda method, path, body=None: (200, {"records": records, "next_cursor": None}))
+    body = handle(JOB, link, None)
+    assert body["status"] == "failed" and "records 要是一筆一個物件的清單" in body["problems"][0]
+
+
+def test_a_cursor_that_never_ends_stops_at_the_page_limit(monkeypatch):
+    link = HttpDashboard("http://127.0.0.1:9", "t")
+    monkeypatch.setattr(dashboard_link, "MAX_PAGES", 3)
+    monkeypatch.setattr(link, "_call", lambda method, path, body=None: (200, {"records": [], "next_cursor": "same"}))
+    body = handle(JOB, link, None)
+    assert body["status"] == "failed" and "超過 3 頁" in body["problems"][0]
+
+
+def test_a_question_that_is_not_text_fails_the_job():
+    body = handle({**JOB, "kind": "ask", "question": 123}, Memory(), None)
+    assert body["status"] == "failed" and "提問不是文字" in body["problems"][0]
+
+
+def test_an_unexpected_error_while_generating_is_sent_back_without_details(monkeypatch):
+    """意料外的錯誤也傳回 failed，不讓服務停掉；只寫錯誤種類，訊息可能帶出提問原文所以不寫。"""
+    def boom(*args, **kwargs):
+        raise RuntimeError("早上有人跌倒嗎")
+
+    monkeypatch.setattr(dashboard_link, "ask_events", boom)
+    body = handle({**JOB, "kind": "ask", "question": "早上有人跌倒嗎"}, Memory(), None)
+    assert (body["status"], body["problems"]) == ("failed", ["產生時發生錯誤：RuntimeError"])
+
+
+class Flaky(Memory):
+    """第一次傳回結果時連不上，之後就好了；佇列裡只有一筆需求。"""
+
+    def __init__(self):
+        super().__init__()
+        self.jobs, self.posted, self.fail = [dict(JOB)], [], 1
+
+    def next_job(self):
+        return self.jobs.pop() if self.jobs else None
+
+    def post_result(self, job_id, body):
+        if self.fail:
+            self.fail -= 1
+            raise ConnectionResetError
+        self.posted.append(job_id)
+
+
+def test_a_result_that_could_not_be_sent_is_sent_on_the_next_round():
+    link, lines, unsent = Flaky(), [], []
+    assert run_once(link, None, log=lines.append, unsent=unsent)
+    assert [b["job_id"] for b in unsent] == ["j-9"] and link.posted == []
+    assert lines[0] == "j-9 結果沒送出（ConnectionResetError），下一輪再送"
+    assert not run_once(link, None, log=lines.append, unsent=unsent)
+    assert unsent == [] and link.posted == ["j-9"]
+
+
+def test_unsent_results_are_capped(monkeypatch):
+    monkeypatch.setattr(dashboard_link, "MAX_UNSENT", 1)
+    link, lines = Flaky(), []
+    link.fail = 99
+    unsent = [{**JOB, "job_id": "old"}]
+    assert not run_once(link, None, log=lines.append, unsent=unsent)
+    assert lines == ["old 結果沒送出（ConnectionResetError），下一輪再送"]
+    link.jobs = [dict(JOB)]
+    unsent.clear()
+    run_once(link, None, log=lines.append, unsent=unsent)
+    unsent.append({**JOB, "job_id": "older"})
+    run_once(link, None, log=lines.append, unsent=unsent)
+    assert any("留太久還沒送出，丟掉" in line for line in lines) and len(unsent) == 1
+
+
+def test_cli_refuses_to_start_before_the_clock_is_set(monkeypatch, capsys):
+    """沒有 RTC 電池的 Jetson 開機後時間可能回到 1970：先校時，否則 HTTPS 憑證會驗證失敗。"""
+    from datetime import UTC, datetime
+
+    monkeypatch.setattr(dashboard_link, "CLOCK_FLOOR", datetime(2999, 1, 1, tzinfo=UTC))
+    monkeypatch.setenv(dashboard_link.TOKEN_ENV, "t")
+    assert main(["--base", "https://dashboard.example.com", "--once"]) == 2
+    assert "NTP 校時" in capsys.readouterr().err

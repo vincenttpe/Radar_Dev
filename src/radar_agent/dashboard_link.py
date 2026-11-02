@@ -19,6 +19,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from radar_agent.caregiver import OutputRejected, report_data
@@ -33,6 +34,11 @@ POLL_SECONDS = 5.0  # 暫定（docs/23）：延遲以模型秒數為主，輪詢
 KINDS = ("report", "ask")  # 第一階段只做報告與提問；趨勢要 14 天資料，之後再加
 # 只有本機的假 Dashboard 可以用 http；其他一律 HTTPS（docs/adr/0009）
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+MAX_PAGES = 1000  # 一段時間最多取幾頁：Dashboard 一直回同一個 next_cursor 時不會無限迴圈
+MAX_UNSENT = 100  # 送不出去的結果最多留幾筆（只在記憶體）；再多就丟掉最舊的並記下來
+# 這個版本寫成的時間：系統時間比它早，多半是開機後還沒 NTP 校時（很多 Jetson 載板沒有 RTC 電池），
+# 這時 TLS 會以「憑證還沒生效」失敗，先停下來講清楚
+CLOCK_FLOOR = datetime(2026, 11, 1, tzinfo=UTC)
 
 
 @dataclass(frozen=True)
@@ -55,12 +61,15 @@ class Job:
             raise ValueError(f"需求缺少欄位：{'、'.join(missing)}")
         if data["kind"] not in KINDS:
             raise ValueError(f"不認得的需求種類：{data['kind']}")
-        if data["kind"] == "ask" and not str(data.get("question") or "").strip():
+        question = data.get("question")
+        if question is not None and not isinstance(question, str):
+            raise ValueError("提問不是文字")
+        if data["kind"] == "ask" and not (question or "").strip():
             raise ValueError("提問需求沒有提問")
         parse_bound(str(data["from"]))
         parse_bound(str(data["to"]))
         return cls(str(data["job_id"]), data["kind"], str(data["device"]), str(data["place"]),
-                   str(data["from"]), str(data["to"]), data.get("question"))
+                   str(data["from"]), str(data["to"]), question)
 
 
 @dataclass(frozen=True)
@@ -82,6 +91,14 @@ class Dashboard(Protocol):
     def post_result(self, job_id: str, body: dict[str, Any]) -> None: ...
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """不跟轉址：轉址時 urllib 會把 Authorization 一起帶去新的位置，token 可能送到別的主機或 http。
+    草案的三支 API 都不需要轉址，收到 3xx 就當成錯誤（HTTPError），下一輪再試。"""
+
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
 class HttpDashboard:
     """照 docs/23 草案的 HTTPS 連線。網址或欄位名稱和 Dashboard 約定後有變，只改這個類別。"""
 
@@ -95,8 +112,8 @@ class HttpDashboard:
         self.base, self.timeout = base.rstrip("/"), timeout
         self._headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
         # 本機的假 Dashboard 不走 proxy；真實的 Dashboard 照系統設定（機構網路可能要經 proxy）
-        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({})) if local else \
-            urllib.request.build_opener()
+        handlers: list[Any] = [_NoRedirect()] + ([urllib.request.ProxyHandler({})] if local else [])
+        self._opener = urllib.request.build_opener(*handlers)
 
     def _call(self, method: str, path: str, body: dict[str, Any] | None = None) -> tuple[int, Any]:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else None
@@ -113,14 +130,18 @@ class HttpDashboard:
     def records(self, device: str, start: str, end: str) -> Fetched:
         records: list[dict[str, Any]] = []
         cursor: str | None = None
-        while True:
+        for _ in range(MAX_PAGES):
             query = {"from": start, "to": end, **({"cursor": cursor} if cursor else {})}
             path = f"/api/v1/devices/{urllib.parse.quote(device, safe='')}/records?{urllib.parse.urlencode(query)}"
             _, page = self._call("GET", path)
-            records += page["records"]
+            rows = page.get("records") if isinstance(page, dict) else None
+            if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):
+                raise ValueError("裝置事件的格式不對：records 要是一筆一個物件的清單")
+            records += rows
             cursor = page.get("next_cursor")
             if not cursor:
                 return Fetched(records, page.get("received_until"), bool(page.get("complete")))
+        raise ValueError(f"裝置事件超過 {MAX_PAGES} 頁還沒取完")
 
     def post_result(self, job_id: str, body: dict[str, Any]) -> None:
         self._call("POST", f"/api/v1/jetson/jobs/{urllib.parse.quote(job_id, safe='')}/result", body)
@@ -139,26 +160,46 @@ def handle(data: dict[str, Any], dashboard: Dashboard, model: Model | None) -> d
     except (OSError, ValueError, KeyError, TypeError) as e:  # 需求寫錯、取資料失敗、資料格式不對
         body["problems"] = [f"{type(e).__name__}：{e}"]
         return body
-    if job.kind == "report":
-        try:
+    try:
+        if job.kind == "report":
             body.update(status="done", result=report_data(summary, place=job.place))
-        except OutputRejected as e:  # 沒通過輸出檢查：不交出任何文字（radar-caregiver 也一樣）
-            body.update(status="rejected", problems=list(e.problems))
-        return body
-    assert job.question is not None
-    body.update(status="done", result=ask_events(job.question, summary, place=job.place, model=model).data())
+        else:
+            body.update(status="done", result=ask_events(job.question or "", summary, place=job.place, model=model).data())
+    except OutputRejected as e:  # 沒通過輸出檢查：不交出任何文字（radar-caregiver 也一樣）
+        body.update(status="rejected", problems=list(e.problems))
+    except Exception as e:  # 意料外的錯誤也傳回，不讓服務停掉、Dashboard 空等；只寫錯誤種類，不帶出提問原文
+        body.update(status="failed", result=None, problems=[f"產生時發生錯誤：{type(e).__name__}"])
     return body
 
 
-def run_once(dashboard: Dashboard, model: Model | None, *, log: Callable[[str], None]) -> bool:
-    """處理一筆需求；沒有需求回 False。log 只記編號、種類、結果與秒數，不記提問原文。"""
+def _send(dashboard: Dashboard, body: dict[str, Any], unsent: list[dict[str, Any]], log: Callable[[str], None]) -> bool:
+    """傳回一筆結果；送不出去就留在 unsent，下一輪再送（只在記憶體，最多 MAX_UNSENT 筆）。"""
+    try:
+        dashboard.post_result(body["job_id"], body)
+        return True
+    except (OSError, ValueError) as e:
+        unsent.append(body)
+        log(f"{body['job_id']} 結果沒送出（{type(e).__name__}），下一輪再送")
+        if len(unsent) > MAX_UNSENT:
+            log(f"{unsent.pop(0)['job_id']} 留太久還沒送出，丟掉")
+        return False
+
+
+def run_once(dashboard: Dashboard, model: Model | None, *, log: Callable[[str], None],
+             unsent: list[dict[str, Any]] | None = None) -> bool:
+    """先補送上一輪沒送出的結果，再處理一筆需求；沒有需求回 False。log 只記編號、種類、結果與秒數，不記提問原文。"""
+    unsent = [] if unsent is None else unsent
+    for body in [*unsent]:
+        unsent.remove(body)
+        if not _send(dashboard, body, unsent, log):
+            return False  # Dashboard 還連不上：先不取新需求，等下一輪
     data = dashboard.next_job()
     if data is None:
         return False
     started = time.perf_counter()
     body = handle(data, dashboard, model)
     if body["job_id"]:
-        dashboard.post_result(body["job_id"], body)
+        _send(dashboard, body, unsent, log)
     else:  # 沒有編號就傳不回去：只記下來，不再重試同一筆
         log("收到沒有 job_id 的需求，無法傳回結果")
     log(f"{body['job_id'] or '-'} {data.get('kind')} {body['status']} {time.perf_counter() - started:.1f} 秒")
@@ -169,9 +210,10 @@ def run(dashboard: Dashboard, model: Model | None, *, interval: float = POLL_SEC
         log: Callable[[str], None], sleep: Callable[[float], None] = time.sleep,
         keep_going: Callable[[], bool] = lambda: True) -> None:
     """一直輪詢：有需求就連著處理，沒有就等 interval 秒。連不上 Dashboard 時記下來、等一下再試，不停下來。"""
+    unsent: list[dict[str, Any]] = []
     while keep_going():
         try:
-            if run_once(dashboard, model, log=log):
+            if run_once(dashboard, model, log=log, unsent=unsent):
                 continue
         except (OSError, ValueError) as e:  # 網路斷了、Dashboard 回錯誤碼或不是 JSON
             log(f"連不上 Dashboard：{type(e).__name__}")
@@ -189,13 +231,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--once", action="store_true", help="把目前佇列裡的需求處理完就結束（試跑用）")
     add_model_args(ap, required=False)
     args = ap.parse_args(sys.argv[1:] if argv is None else argv)
+    now = datetime.now(UTC)
+    if now < CLOCK_FLOOR:
+        print(f"錯誤：系統時間 {now:%Y-%m-%d %H:%M}（UTC）早於 {CLOCK_FLOOR:%Y-%m-%d}，看起來還沒校時；"
+              "請先完成 NTP 校時（systemd 設 After=time-sync.target），否則 HTTPS 憑證會驗證失敗", file=sys.stderr)
+        return 2
     try:
         model = model_from_args(args)
         dashboard = HttpDashboard(args.base, os.environ.get(TOKEN_ENV, ""))
         if args.once:
-            while run_once(dashboard, model, log=_log):
+            unsent: list[dict[str, Any]] = []
+            while run_once(dashboard, model, log=_log, unsent=unsent):
                 pass
-            return 0
+            return 0 if not unsent else 1
     except (OSError, ValueError) as e:
         print(f"錯誤：{e}", file=sys.stderr)
         return 2

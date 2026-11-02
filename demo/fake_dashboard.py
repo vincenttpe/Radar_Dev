@@ -25,6 +25,7 @@ HOST = "127.0.0.1"
 PORT = 8770
 TOKEN = "demo-token"
 DEVICE = "DEMO-SIM-01"
+SETTINGS = [{"since": "2026-10-14 00:00:00", "fallSwitch": True, "stillThreshold": 30}]  # 示意值，不是裝置真的設定
 PAGE_SIZE = 500  # 一頁幾筆；模擬上午約 2,900 筆，會分成好幾頁，連線程式要接得起來
 JOBS: list[dict[str, Any]] = [
     {"job_id": "j-1", "kind": "report", "device": DEVICE, "place": page_data.PLACE,
@@ -61,7 +62,9 @@ class FakeDashboard:
         return {"records": kept[at:nxt], "next_cursor": str(nxt) if nxt < len(kept) else None,
                 "received_until": f"{last:%Y-%m-%d %H:%M:%S}" if last else None,
                 # 最後一筆離結束時間不到一個心跳空檔，就當作這段時間的資料都到了
-                "complete": last is not None and last + HEARTBEAT_GAP >= parse_bound(end)}
+                "complete": last is not None and last + HEARTBEAT_GAP >= parse_bound(end),
+                # 草案請 Dashboard 先準備的偵測設定（docs/23 ②）；這一版的 Jetson 還不讀，這裡只示範形狀
+                "settings": SETTINGS}
 
 
 def handler(fake: FakeDashboard, *, quiet: bool = False) -> type[BaseHTTPRequestHandler]:
