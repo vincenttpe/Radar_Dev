@@ -54,7 +54,8 @@ def confirm_text(question: Question) -> str:
     return f"您是想問「{question.text}」嗎？"
 
 
-# 一題的答案：(文字, 沒通過的原因)。文字是 None 時不顯示答案，原因寫在 rejected
+# 一題的答案：(文字, 沒通過的原因)。文字是 None 時不顯示答案，原因寫在 rejected。
+# 選單的答案函式一律照位置傳 (題目, 摘要, 地點)，所以 checked_answer 的 place 不像 answer() 那樣限關鍵字
 Answer = Callable[[Question, Summary, str], tuple[str | None, tuple[str, ...]]]
 
 

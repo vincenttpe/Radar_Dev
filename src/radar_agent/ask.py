@@ -13,7 +13,8 @@ from dataclasses import dataclass
 
 from radar_agent.rewrite import Model
 
-# 知識圖譜提問選單（model_eval.ASK_MENU）的版本：每份選單自己帶版本（Menu.prompt_version）
+# 知識圖譜提問選單（model_eval.ASK_MENU）的版本：每份選單自己帶版本（Menu.prompt_version）。
+# 常數留在 ask：這個版本也涵蓋 ask.build_prompt，改 prompt 的人在同一個檔就看得到要升版
 PROMPT_VERSION = "ask-v0"
 # 暫定：提問長度上限。太長的提問多半不是在問選單上的問題，也白白吃掉 Jetson 的算力
 MAX_ASKED = 100
