@@ -38,9 +38,11 @@ def _facts(source: Summary | Assessment, place: str) -> set[Decimal]:
             sum(not a.distress_call for a in source.fall_alerts),
             len(source.no_need_help_replies), len(source.longstay_alerts), len(source.interrupted_visits),
             len(source.errors), len(source.unreadable) + len(source.unknown_events),
-            # 只收到斷線紀錄時分開寫「其中 N 筆的設定無法判讀，另有 M 筆紀錄無法判讀」（#62）
-            len(source.unreadable), len(source.unknown_events),
         ]
+        if not source.online:
+            # 只收到斷線紀錄時分開寫「其中 N 筆的設定無法判讀，另有 M 筆紀錄無法判讀」（#62）；
+            # 有在線時段時只寫總筆數，不放寬，寫錯的筆數照樣擋（#65 第二輪審查）
+            counts += [len(source.unreadable), len(source.unknown_events)]
         allowed |= {Decimal(c) for c in counts}
         times = [a.time for a in source.fall_alerts] + source.longstay_alerts + [w for w, _ in source.errors]
         times += [r.time for r in source.resolutions]

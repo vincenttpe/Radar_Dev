@@ -122,6 +122,14 @@ def test_offline_whose_settings_are_unreadable_is_not_counted_twice():
     assert check_output(text, summary, place="1 號廁所") == []
 
 
+def test_output_check_still_refuses_a_wrong_unreadable_count_in_a_normal_report():
+    """有在線時段時只允許總筆數：分開的兩個筆數只在「只收到斷線紀錄」時才能出現（#65 第二輪審查）。"""
+    summary = summarize([*timeline("09:00:00", "09:00:20"), rec("09:00:10", "weird"), *ALL_UNREADABLE])
+    assert (len(summary.unreadable), len(summary.unknown_events)) == (2, 1)
+    assert check_output("另有 3 筆紀錄無法判讀，請通知資訊人員。", summary, place="1 號廁所") == []
+    assert check_output("另有 2 筆紀錄無法判讀，請通知資訊人員。", summary, place="1 號廁所") == ["數字 2 不在事實裡"]
+
+
 def test_output_check_refuses_no_data_when_a_disconnection_was_received():
     summary = summarize(OFFLINE_ONLY)
     assert check_output("1 號廁所：沒有收到資料，無法判斷。", summary, place="1 號廁所") == [
