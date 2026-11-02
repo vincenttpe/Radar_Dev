@@ -184,16 +184,38 @@ def test_unreadable_records_are_kept_as_is_and_skipped():
     assert [(p.start, p.end) for p in summary.online] == [(t("10:00:00"), t("10:00:00"))]
 
 
-@pytest.mark.parametrize("params", [[1], "sys.config", None, {"sys.config": [1]}, {"sys.config": "x"}])
-def test_params_that_are_not_objects_make_the_record_unreadable(params):
-    """params 或 params.sys.config 不是物件：整筆列為無法判讀，不中斷、也不參與計算（REVIEW.md 3.1）。"""
-    odd = {"timestamp": "2026-10-13 10:00:10", "topic": TOPIC, "resolution": None,
-           "payload": {"event": "absence", "params": params}}
-    summary = summarize([rec("10:00:00", "presence"), odd])
-    assert summary.unreadable == [odd]
-    assert summary.setting_changes == []
-    assert summary.visits == []
-    assert [(p.start, p.end) for p in summary.online] == [(t("10:00:00"), t("10:00:00"))]
+@pytest.mark.parametrize("params", [[1], "sys.config", None, {"sys.config": [1]}, {"sys.config": "fallSwitch"}])
+def test_settings_in_the_wrong_shape_are_not_taken_but_the_event_still_counts(params):
+    """params 或 params["sys.config"] 不是物件：不採用這筆設定，但事件與心跳照常計算，並列出來請人確認
+    （報告寫「無法判讀」）。漏掉一次跌倒警報，比不採用一筆設定嚴重（2026-11-02 決定）。"""
+    odd = {"timestamp": "2026-10-13 10:00:20", "topic": TOPIC, "resolution": None,
+           "payload": {"event": "fall", "mode": "radar", "trigger": "timeout", "params": params}}
+    summary = summarize([rec("10:00:00", "absence"), odd, rec("10:00:40", "absence")])
+    assert [a.time for a in summary.fall_alerts] == [t("10:00:20")]
+    assert summary.setting_changes == [] and summary.unknown_events == [odd] and summary.unreadable == []
+    # 前後兩筆隔 40 秒，超過心跳空檔：這一筆不算心跳的話會多出一次斷線
+    assert [(p.start, p.end) for p in summary.online] == [(t("10:00:00"), t("10:00:40"))], "這一筆仍算心跳，不會多出斷線"
+
+
+def test_an_unknown_event_with_bad_settings_is_listed_once():
+    odd = rec("10:00:05", "jumping", params=[1])
+    assert summarize([rec("10:00:00", "absence"), odd]).unknown_events == [odd]
+
+
+def test_an_offline_record_with_bad_settings_is_still_listed():
+    """offline 帶著壞設定：斷線照常算，設定不採用，也一樣列出來請人確認（不悄悄略過，REVIEW.md 3.1）。"""
+    odd = rec("10:00:05", "offline", params=[1])
+    summary = summarize([rec("10:00:00", "absence"), odd, rec("10:00:10", "absence")])
+    assert summary.unknown_events == [odd] and summary.setting_changes == []
+    assert [(p.start, p.end) for p in summary.online] == [(t("10:00:00"), t("10:00:05")), (t("10:00:10"), t("10:00:10"))]
+
+
+@pytest.mark.parametrize("event", [[1], {"a": 1}, 3])
+def test_an_event_that_is_not_text_makes_the_record_unreadable_instead_of_crashing(event):
+    """event 是清單、物件或數字：讀不懂是哪一種事件，整筆列為無法判讀，不讓整份報告停掉（2026-11-02）。"""
+    odd = {"timestamp": "2026-10-13 10:00:05", "topic": TOPIC, "resolution": None, "payload": {"event": event}}
+    summary = summarize([rec("10:00:00", "absence"), odd, rec("10:00:10", "absence")])
+    assert summary.unreadable == [odd] and summary.unknown_events == []
 
 
 def test_params_without_sys_config_is_still_a_setting_change():
@@ -291,3 +313,18 @@ def test_timeline_sorts_and_sorts_out_every_record():
     assert line.commands == [(3, command)]
     assert line.no_topic == [(4, no_topic)]
     assert line.unreadable_time == [(5, bad_time)]
+
+
+@pytest.mark.parametrize("payload", [{"event": "absence", "params": [1]}, {"event": [1]}])
+def test_radar_caregiver_reports_a_record_in_the_wrong_shape_as_unreadable(payload, tmp_path, capsys):
+    """命令列層級：這兩種紀錄以前會讓 radar-caregiver 直接丟錯，現在報告照樣產生，並寫出有讀不懂的紀錄。"""
+    import json
+
+    from radar_agent.caregiver import main
+
+    odd = {"timestamp": "2026-10-13 10:00:05", "topic": TOPIC, "resolution": None, "payload": payload}
+    path = tmp_path / "odd.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in [rec("10:00:00", "absence"), odd, rec("10:00:10", "absence")]),
+                    encoding="utf-8")
+    assert main([str(path), "--place", "1 號廁所"]) == 0
+    assert "另有 1 筆紀錄無法判讀" in capsys.readouterr().out

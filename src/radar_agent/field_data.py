@@ -42,6 +42,7 @@ from radar_agent.device_events import (
     Summary,
     parse_timestamp,
     read_records,
+    readable_payload,
     summarize,
     timeline,
 )
@@ -103,7 +104,8 @@ def inspect(records: list[dict[str, Any]], layout: str) -> Report:
         by_topic.setdefault(entry.topic, []).append(entry.record)
         report.first = when if report.first is None else min(report.first, when)
         report.last = when if report.last is None else max(report.last, when)
-        event = payload.get("event") if isinstance(payload, dict) else None
+        # 和 radar-caregiver 同一個判斷（device_events.readable_payload）：讀不懂的事件不當成某種 event 計數
+        event = payload.get("event") if readable_payload(payload) else None
         if event == "fall" and isinstance(payload, dict):
             report.events[f"fall（{payload.get('mode')}）"] += 1
         else:

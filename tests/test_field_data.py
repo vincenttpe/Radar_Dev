@@ -66,6 +66,14 @@ def test_inspect_without_gaps():
     assert "斷線（超過 30 秒沒有可判讀的資料，或 offline）：沒有" in text and "MAC" not in text.split("每小時")[0]
 
 
+def test_inspect_does_not_count_an_unreadable_event_as_some_kind_of_event():
+    """event 是清單：和 radar-caregiver 同一個判斷，整筆讀不懂，不會算成某一種 event，也不會讓 inspect 停掉（2026-11-02）。"""
+    odd = rec("09:00:05", "absence", device="X")
+    odd["payload"]["event"] = ["fall"]
+    report = inspect([rec("09:00:00", "absence", device="X"), odd], "JSON 陣列")
+    assert "['fall']" not in report.events and report.events["absence"] == 1
+
+
 def test_inspect_counts_disconnections_the_same_way_as_summarize():
     """裝置送出 offline、幾秒後又有資料：radar-caregiver 算斷線，inspect 也要算（同一份資料不能報出兩種斷線）。"""
     from radar_agent.device_events import summarize
