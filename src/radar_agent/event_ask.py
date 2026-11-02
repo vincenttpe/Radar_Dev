@@ -66,36 +66,6 @@ class EventMenu(Menu):
     answer: Answer
 
 
-@dataclass(frozen=True)
-class Reply:
-    """一次提問的結果。刻意不存讀者打的原文（可能有姓名），只記對到哪一題。"""
-
-    match: Match
-    answer: str | None   # 對到題目且答案通過輸出檢查才有；讀者確認後才顯示
-    seconds: float       # 模型對應花的時間，不含產生答案
-    problems: tuple[str, ...] = ()
-    # 答案涵蓋的時間：題目不解析「今天早上」這類時段，畫面要標出答案是哪一段資料（2026-10-19 決定）
-    period: tuple[str, str] | None = None
-    menu: EventMenu | None = None  # None 就是 EVENT_MENU（radar-ask 與 Dashboard 的 6 題）
-
-    def data(self) -> dict[str, Any]:
-        q, menu = self.match.question, self.menu or EVENT_MENU
-        return {
-            "schema": menu.schema,
-            "question": {"id": q.id, "text": q.text} if q else None,
-            "confirm": confirm_text(q) if q else None,
-            "answer": self.answer,
-            "menu": [{"id": m.id, "text": m.text} for m in menu.questions],
-            "model": self.match.model,
-            "prompt_version": self.match.prompt_version,
-            "seconds": round(self.seconds, 2),
-            "from": self.period[0] if self.period else None,
-            "to": self.period[1] if self.period else None,
-            "rejected": list(self.match.rejected + self.problems),
-            "text_layer": "template",
-        }
-
-
 def checked_answer(question: Question, summary: Summary, place: str) -> tuple[str | None, tuple[str, ...]]:
     text = answer(question.id, summary, place=place)
     problems = check_output(text, summary, place=place)
@@ -130,6 +100,36 @@ def _demo_answer(question: Question, summary: Summary, place: str) -> tuple[str 
 DEMO_MENU = EventMenu((*EVENT_QUESTIONS, HANDOVER_QUESTION), DEMO_PROMPT_VERSION, DEMO_SCHEMA, _demo_answer)
 
 
+@dataclass(frozen=True)
+class Reply:
+    """一次提問的結果。刻意不存讀者打的原文（可能有姓名），只記對到哪一題。"""
+
+    match: Match
+    answer: str | None   # 對到題目且答案通過輸出檢查才有；讀者確認後才顯示
+    seconds: float       # 模型對應花的時間，不含產生答案
+    problems: tuple[str, ...] = ()
+    # 答案涵蓋的時間：題目不解析「今天早上」這類時段，畫面要標出答案是哪一段資料（2026-10-19 決定）
+    period: tuple[str, str] | None = None
+    menu: EventMenu = EVENT_MENU  # 預設是 radar-ask 與 Dashboard 的 6 題
+
+    def data(self) -> dict[str, Any]:
+        q, menu = self.match.question, self.menu
+        return {
+            "schema": menu.schema,
+            "question": {"id": q.id, "text": q.text} if q else None,
+            "confirm": confirm_text(q) if q else None,
+            "answer": self.answer,
+            "menu": [{"id": m.id, "text": m.text} for m in menu.questions],
+            "model": self.match.model,
+            "prompt_version": self.match.prompt_version,
+            "seconds": round(self.seconds, 2),
+            "from": self.period[0] if self.period else None,
+            "to": self.period[1] if self.period else None,
+            "rejected": list(self.match.rejected + self.problems),
+            "text_layer": "template",
+        }
+
+
 def answer_period(summary: Summary) -> tuple[str, str] | None:
     """答案涵蓋的時間（第一筆在線到最後一筆在線）；沒有收到資料時是 None。Jetson 內部 Demo 也用。"""
     if not summary.online:
@@ -153,14 +153,14 @@ def pick(question_id: str, summary: Summary, *, place: str) -> Reply:
     """讀者直接從選單點題目：不經過模型。"""
     q = _BY_ID[question_id]
     text, problems = checked_answer(q, summary, place)
-    return Reply(Match(q), text, 0.0, problems, answer_period(summary))
+    return Reply(Match(q), text, 0.0, problems, answer_period(summary), EVENT_MENU)
 
 
 def _text(reply: Reply) -> str:
     q = reply.match.question
     if q is None:
         reasons = "、".join(reply.match.rejected)
-        menu = "\n".join(f"{i}. {m.text}" for i, m in enumerate((reply.menu or EVENT_MENU).questions, start=1))
+        menu = "\n".join(f"{i}. {m.text}" for i, m in enumerate(reply.menu.questions, start=1))
         return f"沒有對應到固定問題（{reasons}）。請從選單選一題：\n{menu}"
     head = confirm_text(q)
     if reply.match.model:

@@ -11,7 +11,7 @@ from typing import ClassVar
 
 import pytest
 from fakes import FakeModel
-from test_ask import menu_digest
+from fingerprints import menu_digest
 
 from radar_agent.caregiver import caregiver_text, event_notes
 from radar_agent.device_events import Summary

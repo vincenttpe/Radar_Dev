@@ -99,7 +99,7 @@ def test_empty_model_output_falls_back():
 def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
     """紀錄只記 prompt_version；照護紀錄的 prompt 或採用的檢查改了卻沒升版，就分不出一筆退回是哪一套規則（原則 3）。
     2026-11-02 起規則清單寫在 care_record.RECORD.rules，這裡不另外手列。"""
-    from test_rewrite import kind_digest
+    from fingerprints import kind_digest
 
     from radar_agent.care_record import RECORD
 

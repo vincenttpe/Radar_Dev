@@ -13,7 +13,7 @@ import urllib.request
 import pytest
 
 from fakes import FakeModel
-from test_ask import menu_digest
+from fingerprints import menu_digest
 
 from radar_agent.local_model import EchoModel
 from radar_agent.event_ask import DEMO_MENU, DEMO_PROMPT_VERSION, HANDOVER_NOTE, pick
@@ -374,6 +374,14 @@ def test_demo_ask_prompt_version_is_bumped_when_the_prompt_or_menu_changes(serve
     """紀錄只記 prompt_version；Demo 的選單或提示詞改了卻沒升版，就分不出模型當時看到哪一版。"""
     assert (DEMO_MENU.prompt_version, menu_digest(DEMO_MENU)) == ("jetson-demo-ask-v0", "fb0409607c9c42ac"), \
         "event_ask.DEMO_MENU 的題目或 ask.build_prompt 改了：升 event_ask.DEMO_PROMPT_VERSION，再更新這裡的版本與雜湊"
+
+
+def test_an_unmatched_demo_question_still_lists_the_seven_question_menu(server):
+    _, url = server(FakeModel("0", name="fake-model"))
+    code, data = _ask(url, "今天天氣如何")
+    assert code == 200 and data["question"] is None and data["answer"] is None
+    assert data["schema"] == "jetson-demo-ask-v0" and [m["id"] for m in data["menu"]][-1] == "handover"
+    assert len(data["menu"]) == 7 and data["prompt_version"] == "jetson-demo-ask-v0"
 
 
 def test_handover_question_whose_template_fails_its_check_shows_no_text_and_says_why(server):

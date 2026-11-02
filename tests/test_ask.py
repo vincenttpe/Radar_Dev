@@ -1,20 +1,14 @@
 """提問對應：讀者打字提問，在地模型只選最接近的固定問題，不自己寫答案。只透過 ask.match_question() 驗證。"""
 from fakes import FakeModel
 
-import hashlib
 
-from radar_agent.ask import Menu, Question, build_prompt, match_question
+from radar_agent.ask import Menu, Question, match_question
 
 MENU = Menu((
     Question("walk", "這週走路的狀況怎麼樣？"),
     Question("how", "步速是怎麼算出來的？"),
     Question("out", "其他問題"),
 ), "menu-v1")
-
-
-def menu_digest(menu: Menu) -> str:
-    """一份選單的 prompt 指紋：題目套進 build_prompt 的文字（2026-11-02 起每份選單都用這個算，不另外手寫）。"""
-    return hashlib.sha256(build_prompt("{提問}", menu.questions).encode("utf-8")).hexdigest()[:16]
 
 
 def test_model_reply_with_a_question_number_picks_that_question():
@@ -28,6 +22,14 @@ def test_the_menu_prompt_version_is_recorded_whether_or_not_it_matches():
     assert match_question("速度怎麼算的", MENU, model=FakeModel("2")).prompt_version == "menu-v1"
     match = match_question("速度怎麼算的", MENU, model=FakeModel("x"))
     assert (match.question, match.prompt_version) == (None, "menu-v1")
+
+
+def test_each_ask_is_matched_on_its_own():
+    """同一個模型先回錯格式、再回編號：第一次沒對應到，第二次照編號選題，不受前一次影響。"""
+    model = FakeModel("第 2 題吧", "2")
+    first, second = (match_question("速度怎麼算的", MENU, model=model) for _ in range(2))
+    assert (first.question, first.rejected) == (None, ("模型回答不是單一編號",))
+    assert second.question == MENU.questions[1] and len(model.prompts) == 2
 
 
 def test_zero_means_no_question_fits():

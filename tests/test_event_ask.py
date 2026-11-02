@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from fakes import FakeModel
-from test_ask import menu_digest
+from fingerprints import menu_digest
 
 from radar_agent.device_events import read_records, summarize
 from radar_agent.event_ask import EVENT_QUESTIONS, answer, ask_events, main, pick
@@ -105,6 +105,18 @@ def test_cli_with_a_command_model_and_json(capsys):
     code, out, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--question", "有人跌倒嗎", "--cmd", "echo 1", "--json")
     data = json.loads(out)
     assert code == 0 and data["question"]["id"] == "falls" and data["model"] == "echo 1"
+
+
+def test_cli_json_keeps_the_event_ask_v0_fields_and_six_question_menu(capsys):
+    """Dashboard 讀的 event-ask-v0：欄位與 6 題選單固定（2026-11-02 提問流程改吃選單時鎖住，不能跟著 Demo 變）。"""
+    code, out, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--pick", "falls", "--json")
+    data = json.loads(out)
+    assert code == 0 and set(data) == {"schema", "question", "confirm", "answer", "menu", "model", "prompt_version",
+                                       "seconds", "from", "to", "rejected", "text_layer"}
+    assert (data["schema"], data["text_layer"], data["model"], data["prompt_version"]) == (
+        "event-ask-v0", "template", None, None)
+    assert [m["id"] for m in data["menu"]] == ["falls", "calls", "longstay", "visits", "offline", "alerts"]
+    assert (data["from"], data["to"]) == ("2026-10-14 08:00:00", "2026-10-14 11:59:55")
 
 
 def test_cli_refuses_models_from_china(capsys):
