@@ -10,6 +10,7 @@ import pytest
 
 from fakes import FakeModel
 from fingerprints import menu_digest
+from records import write_jsonl
 
 from radar_agent.device_events import read_records, summarize
 from radar_agent.event_ask import EVENT_QUESTIONS, answer, ask_events, main, pick
@@ -126,8 +127,7 @@ def test_cli_lists_a_record_whose_params_is_a_list_instead_of_failing(tmp_path, 
     records = read_records(DEMO)
     odd = {"timestamp": records[-1]["timestamp"], "topic": records[-1]["topic"], "resolution": None,
            "payload": {"event": "absence", "params": [1]}}
-    path = tmp_path / "events.jsonl"
-    path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in [*records, odd]), encoding="utf-8")
+    path = write_jsonl(tmp_path / "events.jsonl", [*records, odd])
     _, expected, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--pick", "falls", "--echo")
     code, out, err = _run(capsys, path, "--place", "1 號廁所", "--pick", "falls", "--echo")
     assert (code, err) == (0, "")
