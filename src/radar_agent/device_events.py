@@ -267,7 +267,7 @@ def timeline(records: list[dict[str, Any]]) -> Timeline:
 def _parse(
     records: list[dict[str, Any]], summary: Summary
 ) -> list[tuple[datetime, dict[str, Any], dict[str, Any]]]:
-    """summarize 用的時間軸：只收一台裝置，payload 不是物件的紀錄列為無法判讀。"""
+    """summarize 用的時間軸：只收一台裝置，payload 讀不懂的紀錄列為無法判讀（_readable_payload）。"""
     line = timeline(records)
     summary.duplicates_removed = line.duplicates
     device: str | None = None
@@ -280,12 +280,25 @@ def _parse(
     unreadable = line.no_topic + line.unreadable_time
     parsed = []
     for entry in line.entries:
-        if isinstance(entry.payload, dict):
+        if _readable_payload(entry.payload):
             parsed.append((entry.when, entry.payload, entry.record))
         else:
             unreadable.append((entry.index, entry.record))
     summary.unreadable = [r for _, r in sorted(unreadable, key=lambda ir: ir[0])]
     return parsed
+
+
+def _readable_payload(payload: Any) -> bool:
+    """payload 是物件；有 params 時 params 也是物件，有 sys.config 時 sys.config 也是物件。
+
+    形狀不對的整筆列為無法判讀，不中斷整份報告、也不算心跳（REVIEW.md 3.1）。
+    """
+    if not isinstance(payload, dict):
+        return False
+    if "params" not in payload:
+        return True
+    params = payload["params"]
+    return isinstance(params, dict) and isinstance(params.get("sys.config", {}), dict)
 
 
 def read_records(path: Path) -> list[dict[str, Any]]:

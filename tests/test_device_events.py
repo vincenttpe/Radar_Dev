@@ -184,6 +184,26 @@ def test_unreadable_records_are_kept_as_is_and_skipped():
     assert [(p.start, p.end) for p in summary.online] == [(t("10:00:00"), t("10:00:00"))]
 
 
+@pytest.mark.parametrize("params", [[1], "sys.config", None, {"sys.config": [1]}, {"sys.config": "x"}])
+def test_params_that_are_not_objects_make_the_record_unreadable(params):
+    """params 或 params.sys.config 不是物件：整筆列為無法判讀，不中斷、也不參與計算（REVIEW.md 3.1）。"""
+    odd = {"timestamp": "2026-10-13 10:00:10", "topic": TOPIC, "resolution": None,
+           "payload": {"event": "absence", "params": params}}
+    summary = summarize([rec("10:00:00", "presence"), odd])
+    assert summary.unreadable == [odd]
+    assert summary.setting_changes == []
+    assert summary.visits == []
+    assert [(p.start, p.end) for p in summary.online] == [(t("10:00:00"), t("10:00:00"))]
+
+
+def test_params_without_sys_config_is_still_a_setting_change():
+    report = {"timestamp": "2026-10-13 10:00:10", "topic": TOPIC, "resolution": None,
+              "payload": {"params": {}}}
+    summary = summarize([rec("10:00:00", "absence"), report])
+    assert summary.unreadable == []
+    assert [(c.time, c.values) for c in summary.setting_changes] == [(t("10:00:10"), {})]
+
+
 def test_unknown_event_counts_as_heartbeat_but_is_listed():
     """裝置送了沒列在規格裡的 event：裝置還在線，但要列出來請人確認（docs/05 A3）。"""
     odd = rec("10:00:05", "jumping")
