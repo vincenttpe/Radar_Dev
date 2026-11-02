@@ -190,6 +190,14 @@ def test_cli_trend_with_a_medical_word_in_the_place_prints_nothing(tmp_path, cap
     assert out == "" and "治療" in err
 
 
+def test_check_trend_refuses_no_data_when_times_were_unreadable():
+    trend = usage_trend(UNREADABLE_TIME)
+    assert check_trend("【使用趨勢】1 號廁所：沒有收到資料，無法判斷。", trend, place="1 號廁所") == [
+        "有 2 筆紀錄時間無法判讀，資料其實收到了，不能寫「沒有收到資料」"
+    ]
+    assert check_trend("【使用趨勢】1 號廁所：沒有收到資料，無法判斷。", usage_trend([]), place="1 號廁所") == []
+
+
 def test_cli_trend_json_with_only_unreadable_times(tmp_path, capsys):
     path = tmp_path / "events.json"
     path.write_text(json.dumps(UNREADABLE_TIME, ensure_ascii=False), encoding="utf-8")

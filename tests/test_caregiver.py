@@ -108,6 +108,20 @@ def test_offline_with_unreadable_records_lists_both():
     )
 
 
+def test_offline_whose_settings_are_unreadable_is_not_counted_twice():
+    """斷線紀錄本身的設定（params）形狀不對：是同一筆，寫「其中」不寫「另有」（2026-11-02 使用者決定）。"""
+    bad_settings = raw("09:00:00", {"event": "offline", "params": [1]})
+    assert caregiver_text(summarize([bad_settings]), place="1 號廁所") == (
+        "1 號廁所：只收到裝置斷線的紀錄（09:00），其中 1 筆的設定無法判讀，無法判斷。"
+    )
+    summary = summarize([bad_settings, *ALL_UNREADABLE])
+    text = caregiver_report(summary, place="1 號廁所")
+    assert text.startswith(
+        "【重點】只收到裝置斷線的紀錄（09:00），其中 1 筆的設定無法判讀，另有 2 筆紀錄無法判讀，無法判斷，請通知資訊人員。"
+    )
+    assert check_output(text, summary, place="1 號廁所") == []
+
+
 def test_output_check_refuses_no_data_when_a_disconnection_was_received():
     summary = summarize(OFFLINE_ONLY)
     assert check_output("1 號廁所：沒有收到資料，無法判斷。", summary, place="1 號廁所") == [

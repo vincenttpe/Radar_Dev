@@ -191,12 +191,14 @@ def no_data(summary: Summary) -> str:
     資訊人員該查的是格式而不是裝置或網路（REVIEW.md 3.1；2026-11-02 使用者在 #57 選 b）。
     不寫「收到的 N 筆都」：伺服器下的指令、完全重複的紀錄也是收到的，但不在 N 裡。
     只收到裝置斷線（offline）的紀錄時，那筆讀得懂、但不算在線時段：寫斷線的時間，不寫「之後狀況不明」，
-    因為之前同樣沒有資料（2026-11-02 使用者在 #62 決定）。
+    因為之前同樣沒有資料（2026-11-02 使用者在 #62 決定）。沒有在線時段時，unknown_events 只會是斷線紀錄本身的
+    設定形狀不對：是同一筆，寫「其中」不寫「另有」（2026-11-02 使用者決定）。
     """
     unreadable = len(summary.unreadable) + len(summary.unknown_events)
     if summary.ended_offline is not None:
-        also = f"，另有 {unreadable} 筆紀錄無法判讀" if unreadable else ""
-        return f"只收到裝置斷線的紀錄（{summary.ended_offline:%H:%M}）{also}，無法判斷"
+        bad_settings = f"，其中 {len(summary.unknown_events)} 筆的設定無法判讀" if summary.unknown_events else ""
+        also = f"，另有 {len(summary.unreadable)} 筆紀錄無法判讀" if summary.unreadable else ""
+        return f"只收到裝置斷線的紀錄（{summary.ended_offline:%H:%M}）{bad_settings}{also}，無法判斷"
     if unreadable:
         return f"沒有讀得懂的資料，{unreadable} 筆紀錄無法判讀，無法判斷"
     return "沒有收到資料，無法判斷"
@@ -634,6 +636,8 @@ def check_trend(text: str, trend: Trend | None, *, place: str = "") -> list[str]
                     allowed.add(Decimal(_one(avg)))
         allowed.add(Decimal(trend.unplaced))
     problems = [f"數字 {n} 不在統計裡" for n in sorted(numbers(text) - allowed)]
+    if trend is not None and trend.unplaced and "沒有收到資料" in text:  # 和 check_output 同一條（#57、#63）
+        problems.append(f"有 {trend.unplaced} 筆紀錄時間無法判讀，資料其實收到了，不能寫「沒有收到資料」")
     return problems + wording_problems(text)
 
 

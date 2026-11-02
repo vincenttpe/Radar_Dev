@@ -38,6 +38,8 @@ def _facts(source: Summary | Assessment, place: str) -> set[Decimal]:
             sum(not a.distress_call for a in source.fall_alerts),
             len(source.no_need_help_replies), len(source.longstay_alerts), len(source.interrupted_visits),
             len(source.errors), len(source.unreadable) + len(source.unknown_events),
+            # 只收到斷線紀錄時分開寫「其中 N 筆的設定無法判讀，另有 M 筆紀錄無法判讀」（#62）
+            len(source.unreadable), len(source.unknown_events),
         ]
         allowed |= {Decimal(c) for c in counts}
         times = [a.time for a in source.fall_alerts] + source.longstay_alerts + [w for w, _ in source.errors]
