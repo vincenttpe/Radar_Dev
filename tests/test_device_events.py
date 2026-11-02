@@ -202,6 +202,14 @@ def test_an_unknown_event_with_bad_settings_is_listed_once():
     assert summarize([rec("10:00:00", "absence"), odd]).unknown_events == [odd]
 
 
+def test_an_offline_record_with_bad_settings_is_still_listed():
+    """offline 帶著壞設定：斷線照常算，設定不採用，也一樣列出來請人確認（不悄悄略過，REVIEW.md 3.1）。"""
+    odd = rec("10:00:05", "offline", params=[1])
+    summary = summarize([rec("10:00:00", "absence"), odd, rec("10:00:10", "absence")])
+    assert summary.unknown_events == [odd] and summary.setting_changes == []
+    assert [(p.start, p.end) for p in summary.online] == [(t("10:00:00"), t("10:00:05")), (t("10:00:10"), t("10:00:10"))]
+
+
 @pytest.mark.parametrize("event", [[1], {"a": 1}, 3])
 def test_an_event_that_is_not_text_makes_the_record_unreadable_instead_of_crashing(event):
     """event 是清單、物件或數字：讀不懂是哪一種事件，整筆列為無法判讀，不讓整份報告停掉（2026-11-02）。"""

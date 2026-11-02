@@ -134,6 +134,10 @@ def summarize(records: list[dict[str, Any]]) -> Summary:
     fall_active = False
     for when, payload, record in parsed:
         event = payload.get("event")
+        # 形狀不對的設定不採用、列出來請人確認：放在 offline 分支之前，offline 帶壞設定也不會悄悄略過
+        settings_ok = _settings_readable(payload)
+        if not settings_ok:
+            summary.unknown_events.append(record)
         # 連續的 offline 以第一筆為斷線起點；之後只要再收到資料就清掉
         summary.ended_offline = (summary.ended_offline or when) if event == "offline" else None
         if event == "offline":
@@ -151,8 +155,7 @@ def summarize(records: list[dict[str, Any]]) -> Summary:
                 start = None
             online_start = when
         last = when
-        settings_ok = _settings_readable(payload)
-        if (event is not None and event not in KNOWN_EVENTS) or not settings_ok:
+        if event is not None and event not in KNOWN_EVENTS and settings_ok:  # 壞設定已經在上面列過，不重複列
             summary.unknown_events.append(record)
         if event == "error":
             summary.errors.append((when, str(payload.get("message", ""))))
