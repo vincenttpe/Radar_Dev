@@ -128,8 +128,8 @@ def test_cli_lists_a_record_whose_params_is_a_list_instead_of_failing(tmp_path, 
            "payload": {"event": "absence", "params": [1]}}
     path = tmp_path / "events.jsonl"
     path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in [*records, odd]), encoding="utf-8")
-    _, expected, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--pick", "falls")
-    code, out, err = _run(capsys, path, "--place", "1 號廁所", "--pick", "falls")
+    _, expected, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--pick", "falls", "--echo")
+    code, out, err = _run(capsys, path, "--place", "1 號廁所", "--pick", "falls", "--echo")
     assert (code, err) == (0, "")
     assert out == expected + "另有 1 筆紀錄無法判讀，請通知資訊人員。\n"
 
