@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from records import write_jsonl
 
 from radar_agent.caregiver import caregiver_report, caregiver_text, event_notes, report_data
 from radar_agent.device_events import summarize
@@ -17,6 +18,11 @@ TOPIC = "radar10/DEVICE01"
 def rec(hms: str, event: str, day: str = "2026-10-14", **extra) -> dict:
     payload = {"mode": "radar", "event": event, "trigger": "track", "userReply": False}
     payload.update(extra)
+    return raw(hms, payload, day)
+
+
+def raw(hms: str, payload: dict, day: str = "2026-10-14") -> dict:
+    """payload 照給的原樣（不補 mode、trigger 等欄位）；時間與 topic 和 rec 相同。"""
     return {"timestamp": f"{day} {hms}", "topic": TOPIC, "resolution": None, "payload": payload}
 
 
@@ -102,8 +108,7 @@ def test_interrupted_and_ongoing_visits_are_not_dropped():
 def test_errors_and_unreadable_records_ask_for_it_staff():
     records = [
         *timeline("09:00:00", "09:10:00"),
-        {"timestamp": "2026-10-14 09:05:00", "topic": TOPIC, "resolution": None,
-         "payload": {"event": "error", "message": "radar is not running"}},
+        raw("09:05:00", {"event": "error", "message": "radar is not running"}),
         {"timestamp": "壞掉的時間", "topic": TOPIC, "resolution": None, "payload": {"event": "absence"}},
     ]
     text = caregiver_text(summarize(records), place="1 號廁所")
@@ -179,8 +184,7 @@ def _scenarios():
         rec("09:05:00", "fall", trigger="timeout", mode="speech", userReply=False, confidence=100),
         rec("09:05:20", "resolved", trigger="noNeedHelp", mode="speech", userReply=True, confidence=100),
         rec("09:45:00", "longstay", trigger="timeout", delaysec=600, confidence=100),
-        {"timestamp": "2026-10-14 09:30:00", "topic": TOPIC, "resolution": None,
-         "payload": {"event": "error", "message": "radar is not running"}},
+        raw("09:30:00", {"event": "error", "message": "radar is not running"}),
     ])
 
 
@@ -257,9 +261,8 @@ def test_cli_reads_json_lines_with_blank_lines(tmp_path, capsys):
 
 
 def test_cli_lists_records_with_unreadable_fields_instead_of_failing(tmp_path, capsys):
-    path = tmp_path / "events.jsonl"
     records = [*timeline("09:00:00", "09:10:00"), {"timestamp": "昨天", "topic": TOPIC, "payload": {}}]
-    path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in records), encoding="utf-8")
+    path = write_jsonl(tmp_path / "events.jsonl", records)
     code, out, _ = _run(capsys, path, "--place", "1 號廁所")
     assert code == 0
     assert out.endswith("另有 1 筆紀錄無法判讀，請通知資訊人員。\n")
@@ -267,11 +270,8 @@ def test_cli_lists_records_with_unreadable_fields_instead_of_failing(tmp_path, c
 
 def test_cli_lists_a_record_whose_params_is_a_list_instead_of_failing(tmp_path, capsys):
     """2026-11-02 審查 PR #51 時發現：params 是清單時整份報告以 AttributeError 中斷。"""
-    path = tmp_path / "events.jsonl"
-    odd = {"timestamp": "2026-10-14 09:10:01", "topic": TOPIC, "resolution": None,
-           "payload": {"event": "absence", "params": [1]}}
-    records = [*timeline("09:00:00", "09:10:00"), odd]
-    path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in records), encoding="utf-8")
+    odd = raw("09:10:01", {"event": "absence", "params": [1]})
+    path = write_jsonl(tmp_path / "events.jsonl", [*timeline("09:00:00", "09:10:00"), odd])
     code, out, err = _run(capsys, path, "--place", "1 號廁所")
     assert (code, err) == (0, "")
     assert out.endswith("另有 1 筆紀錄無法判讀，請通知資訊人員。\n")
@@ -536,9 +536,8 @@ def test_cli_range_without_records_says_cannot_judge(tmp_path, capsys):
 
 def test_cli_range_keeps_records_whose_time_cannot_be_read(tmp_path, capsys):
     """分不出在不在範圍內的紀錄不悄悄丟掉，照樣列為無法判讀（REVIEW.md 3.1）。"""
-    path = tmp_path / "events.jsonl"
     records = [*timeline("09:00:00", "09:10:00"), {"timestamp": "昨天", "topic": TOPIC, "payload": {}}]
-    path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in records), encoding="utf-8")
+    path = write_jsonl(tmp_path / "events.jsonl", records)
     code, out, _ = _run(capsys, path, "--place", "1 號廁所", "--from", "2026-10-14 09:05")
     assert code == 0
     assert out.endswith("另有 1 筆紀錄無法判讀，請通知資訊人員。\n")
@@ -632,8 +631,7 @@ def test_check_allows_only_the_elapsed_time_of_the_paired_resolution():
 
 def test_highlights_for_ongoing_visit_and_device_problems():
     records = [*timeline("09:00:00", "09:10:00", [("09:08:00", "09:30:00")]),
-               {"timestamp": "2026-10-14 09:05:00", "topic": TOPIC, "resolution": None,
-                "payload": {"event": "error", "message": "radar is not running"}}]
+               raw("09:05:00", {"event": "error", "message": "radar is not running"})]
     report = caregiver_report(summarize(records), place="1 號廁所")
     assert report.startswith("【重點】資料結束時仍有人在內（09:08 起），請確認現況；裝置回報錯誤 1 次，請通知資訊人員。")
 
