@@ -70,7 +70,7 @@ Dashboard 依登入 ID 判斷要交給哪一台 Jetson，把那個機構的裝�
 
 | 使用者在 Dashboard 上 | 需求 | Jetson 回 | Dashboard 顯示 |
 |---|---|---|---|
-| 在選單上點一題 | `pick` 加 `question_id` | `event-ask-v0`：固定句型的答案，不經過模型 | 直接顯示 `answer` |
+| 在選單上點一題 | `pick` 加 `question_id` | `event-ask-v0`：固定句型的答案，不經過模型 | 顯示 `answer`；`answer` 是 `null`（沒通過輸出檢查）時改顯示 `notice` |
 | 打字問 | `ask` 加 `question` | `event-ask-v0`：在地模型把提問歸類到選單的一題，同一次就附上確認句 `confirm` 和答案 `answer` | 先顯示 `confirm`（「您是想問……嗎？」）；按「對」才顯示 `answer`，按「不對」就顯示 `menu` 讓使用者點題 |
 | 打字問，但歸類不到任何一題 | `ask` | `question`、`answer` 都是 `null`，附上提示句 `notice` 與 `menu` | 照原文顯示 `notice` 和 `menu` |
 
