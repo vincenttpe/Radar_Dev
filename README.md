@@ -38,6 +38,7 @@
    `docs/14_週一資訊需求_2026-10-19.md`：週一會議要讓研發人員知道還缺哪些資訊、要誰提供、何時要。
    `docs/21_Jetson內部Demo.md`：頁面、服務、在地模型都跑在同一台 Jetson 上的內部 Demo（打字提問接上在地模型）。
    `docs/22_跌倒警報處理流程參考.md`：跌倒、呼救、久待、斷線時誰做什麼的參考草案（不含醫療判定；正式流程由機構訂定）。
+   `docs/23_Dashboard連線API草案.md`：Jetson 主動向 Dashboard 取需求、取裝置事件、傳回文字的 API 草案 v0（`docs/adr/0009` 提議中；還沒和 Dashboard 約定）。
 7. `docs/10_會議決策單_2026-10-16.md`：目前卡住開發的決定，每題附選項與影響，開會時逐題勾選。
 8. `REVIEW.md`：送 PR 前要知道的審查規範，特別是第 2 節的單向門。
 
@@ -61,6 +62,7 @@ radar-caregiver 事件.jsonl --place "1 號廁所"                              
 radar-caregiver 事件.jsonl --place "1 號廁所" --json                              # 同上，改輸出 JSON 給 Dashboard（docs/16）
 radar-caregiver 事件.jsonl --place "1 號廁所" --from "2026-10-14 08:00" --to "2026-10-14 10:00"  # 只整理這段時間（含開始、不含結束；docs/16）
 radar-ask 事件.jsonl --place "1 號廁所" --question "早上有人跌倒嗎" --endpoint 網址 --model 模型名稱  # 事件提問：在地模型選題號，答案套固定句型（--pick 直接點題；Ollama 跑 Gemma 4 這類有思維鏈的模型加 --reasoning-effort none）
+RADAR_DASHBOARD_TOKEN=… python -m radar_agent.dashboard_link --base https://Dashboard網址 --endpoint 網址 --model 模型名稱  # Jetson 主動向 Dashboard 取需求、傳回文字（docs/23 草案；本機試跑先開 demo/fake_dashboard.py）
 radar-field-data inspect 實測.json                                                 # 實測資料的格式、時間範圍、事件數與每小時分布（不印出 MAC）
 radar-field-data mask 實測.json --out-dir outputs/field                            # 裝置識別換成 FIELD-01…，每台一個檔案；只能寫到 outputs/
 radar-field-data sheet > 操演紀錄.csv                                              # 實機操演紀錄表（10 項，現場填手錶時間）

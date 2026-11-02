@@ -42,6 +42,8 @@
 
 ### 資料交換 API 草案（2026-10-23，還沒和 Dashboard 約定）
 
+> 2026-11-02 起，連線方向（Jetson 主動往外取需求，`docs/adr/0009` 提議中）與 v0 的請求、回應寫在 `docs/23_Dashboard連線API草案.md`，Jetson 端的連線程式是 `radar_agent.dashboard_link`。下面是 10-23 的原始草案，① 的欄位仍沿用。
+
 Dashboard 的 Logs 頁已經能依時間篩選、匯出 NDJSON（2026-10-23 截圖），看起來後台本來就能依時間查詢（待確認）。API 約定之前，先用手動方式走一遍：Logs 頁設定時間範圍 → 打開 heartbeat、topic → Export NDJSON → `radar-caregiver --from --to --json`。
 
 **① Jetson 向 Dashboard 要資料**：`GET /api/v1/devices/{裝置代號}/records?from=…&to=…`（網址只是示意）。

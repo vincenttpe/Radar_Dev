@@ -1,0 +1,207 @@
+"""Jetson 與 Dashboard 的連線：主動往外取需求、取裝置事件、傳回文字（docs/adr/0009 提議中，docs/23 API 草案 v0）。
+
+Jetson 不開任何對外埠：每隔幾秒向 Dashboard 問一次有沒有需求，取走後再分頁取那段時間的裝置事件，
+報告用 report_data、提問用 ask_events（在地模型只選題號），通過輸出檢查後把 JSON 傳回，Dashboard 照原文顯示。
+網址與欄位名稱都還沒和 Dashboard 負責人約定，全部集中在 HttpDashboard；測試與本機試跑用 demo/fake_dashboard.py。
+
+讀者打的提問原文只拿來選題號，不保存、不寫進 log；log 只記需求編號、種類、結果與秒數。
+token 從環境變數讀，不進 repo、不寫進 log。改這裡屬單向門「個人資料的流向」。
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any, Protocol
+
+from radar_agent.caregiver import OutputRejected, report_data
+from radar_agent.device_events import summarize
+from radar_agent.event_ask import ask_events
+from radar_agent.local_model import add_model_args, model_from_args
+from radar_agent.rewrite import Model
+from radar_agent.time_range import in_range, parse_bound
+
+TOKEN_ENV = "RADAR_DASHBOARD_TOKEN"
+POLL_SECONDS = 5.0  # 暫定（docs/23）：延遲以模型秒數為主，輪詢間隔不是瓶頸
+KINDS = ("report", "ask")  # 第一階段只做報告與提問；趨勢要 14 天資料，之後再加
+# 只有本機的假 Dashboard 可以用 http；其他一律 HTTPS（docs/adr/0009）
+LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+
+
+@dataclass(frozen=True)
+class Job:
+    """一筆需求（docs/23 ①）。question 只有 kind 為 ask 時才有。"""
+
+    job_id: str
+    kind: str
+    device: str
+    place: str
+    start: str
+    end: str
+    question: str | None = None
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> Job:
+        """欄位不齊、種類不認得、時間看不懂都丟 ValueError：不猜需求要什麼。"""
+        missing = [k for k in ("job_id", "kind", "device", "place", "from", "to") if not data.get(k)]
+        if missing:
+            raise ValueError(f"需求缺少欄位：{'、'.join(missing)}")
+        if data["kind"] not in KINDS:
+            raise ValueError(f"不認得的需求種類：{data['kind']}")
+        if data["kind"] == "ask" and not str(data.get("question") or "").strip():
+            raise ValueError("提問需求沒有提問")
+        parse_bound(str(data["from"]))
+        parse_bound(str(data["to"]))
+        return cls(str(data["job_id"]), data["kind"], str(data["device"]), str(data["place"]),
+                   str(data["from"]), str(data["to"]), data.get("question"))
+
+
+@dataclass(frozen=True)
+class Fetched:
+    """一段時間的裝置事件（docs/23 ②）：每一頁接起來的紀錄，和 Dashboard 收到哪個時間點為止。"""
+
+    records: list[dict[str, Any]]
+    received_until: str | None
+    complete: bool
+
+
+class Dashboard(Protocol):
+    """Jetson 看到的 Dashboard：正式是 HttpDashboard，測試可以換成記憶體裡的替身。"""
+
+    def next_job(self) -> dict[str, Any] | None: ...
+
+    def records(self, device: str, start: str, end: str) -> Fetched: ...
+
+    def post_result(self, job_id: str, body: dict[str, Any]) -> None: ...
+
+
+class HttpDashboard:
+    """照 docs/23 草案的 HTTPS 連線。網址或欄位名稱和 Dashboard 約定後有變，只改這個類別。"""
+
+    def __init__(self, base: str, token: str, *, timeout: float = 30) -> None:
+        parts = urllib.parse.urlsplit(base)
+        local = parts.hostname in LOOPBACK
+        if parts.scheme != "https" and not (parts.scheme == "http" and local):
+            raise ValueError("Dashboard 的網址要用 HTTPS（只有本機的假 Dashboard 可以用 http）")
+        if not token:
+            raise ValueError(f"沒有 Dashboard 的 token：請設定環境變數 {TOKEN_ENV}")
+        self.base, self.timeout = base.rstrip("/"), timeout
+        self._headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        # 本機的假 Dashboard 不走 proxy；真實的 Dashboard 照系統設定（機構網路可能要經 proxy）
+        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({})) if local else \
+            urllib.request.build_opener()
+
+    def _call(self, method: str, path: str, body: dict[str, Any] | None = None) -> tuple[int, Any]:
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else None
+        headers = {**self._headers, **({"Content-Type": "application/json"} if data is not None else {})}
+        req = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
+        with self._opener.open(req, timeout=self.timeout) as resp:  # 4xx、5xx 丟 HTTPError（OSError）
+            raw = resp.read()
+            return resp.status, json.loads(raw) if raw else None
+
+    def next_job(self) -> dict[str, Any] | None:
+        status, data = self._call("GET", "/api/v1/jetson/jobs/next")
+        return None if status == 204 else data
+
+    def records(self, device: str, start: str, end: str) -> Fetched:
+        records: list[dict[str, Any]] = []
+        cursor: str | None = None
+        while True:
+            query = {"from": start, "to": end, **({"cursor": cursor} if cursor else {})}
+            path = f"/api/v1/devices/{urllib.parse.quote(device, safe='')}/records?{urllib.parse.urlencode(query)}"
+            _, page = self._call("GET", path)
+            records += page["records"]
+            cursor = page.get("next_cursor")
+            if not cursor:
+                return Fetched(records, page.get("received_until"), bool(page.get("complete")))
+
+    def post_result(self, job_id: str, body: dict[str, Any]) -> None:
+        self._call("POST", f"/api/v1/jetson/jobs/{urllib.parse.quote(job_id, safe='')}/result", body)
+
+
+def handle(data: dict[str, Any], dashboard: Dashboard, model: Model | None) -> dict[str, Any]:
+    """一筆需求 → 要傳回的 JSON（docs/23 ③）。不丟例外：失敗也要傳回，Dashboard 才不會一直等。"""
+    body: dict[str, Any] = {"job_id": str(data.get("job_id") or ""), "status": "failed", "received_until": None,
+                            "complete": None, "result": None, "problems": []}
+    try:
+        job = Job.from_json(data)
+        fetched = dashboard.records(job.device, job.start, job.end)
+        body.update(received_until=fetched.received_until, complete=fetched.complete)
+        # Dashboard 多給了範圍外的紀錄也不算進去：範圍含開始、不含結束，和 radar-caregiver --from --to 相同
+        summary = summarize(in_range(fetched.records, parse_bound(job.start), parse_bound(job.end)))
+    except (OSError, ValueError, KeyError, TypeError) as e:  # 需求寫錯、取資料失敗、資料格式不對
+        body["problems"] = [f"{type(e).__name__}：{e}"]
+        return body
+    if job.kind == "report":
+        try:
+            body.update(status="done", result=report_data(summary, place=job.place))
+        except OutputRejected as e:  # 沒通過輸出檢查：不交出任何文字（radar-caregiver 也一樣）
+            body.update(status="rejected", problems=list(e.problems))
+        return body
+    assert job.question is not None
+    body.update(status="done", result=ask_events(job.question, summary, place=job.place, model=model).data())
+    return body
+
+
+def run_once(dashboard: Dashboard, model: Model | None, *, log: Callable[[str], None]) -> bool:
+    """處理一筆需求；沒有需求回 False。log 只記編號、種類、結果與秒數，不記提問原文。"""
+    data = dashboard.next_job()
+    if data is None:
+        return False
+    started = time.perf_counter()
+    body = handle(data, dashboard, model)
+    if body["job_id"]:
+        dashboard.post_result(body["job_id"], body)
+    else:  # 沒有編號就傳不回去：只記下來，不再重試同一筆
+        log("收到沒有 job_id 的需求，無法傳回結果")
+    log(f"{body['job_id'] or '-'} {data.get('kind')} {body['status']} {time.perf_counter() - started:.1f} 秒")
+    return True
+
+
+def run(dashboard: Dashboard, model: Model | None, *, interval: float = POLL_SECONDS,
+        log: Callable[[str], None], sleep: Callable[[float], None] = time.sleep,
+        keep_going: Callable[[], bool] = lambda: True) -> None:
+    """一直輪詢：有需求就連著處理，沒有就等 interval 秒。連不上 Dashboard 時記下來、等一下再試，不停下來。"""
+    while keep_going():
+        try:
+            if run_once(dashboard, model, log=log):
+                continue
+        except (OSError, ValueError) as e:  # 網路斷了、Dashboard 回錯誤碼或不是 JSON
+            log(f"連不上 Dashboard：{type(e).__name__}")
+        sleep(interval)
+
+
+def _log(line: str) -> None:
+    print(f"{time.strftime('%H:%M:%S')} {line}", file=sys.stderr, flush=True)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="Jetson 主動向 Dashboard 取需求、產生文字後傳回（docs/23 草案，還沒和 Dashboard 約定）")
+    ap.add_argument("--base", required=True, help="Dashboard 的網址（HTTPS；本機的假 Dashboard 可用 http://127.0.0.1:…）")
+    ap.add_argument("--interval", type=float, default=POLL_SECONDS, help=f"沒有需求時隔幾秒再問，預設 {POLL_SECONDS:g}")
+    ap.add_argument("--once", action="store_true", help="把目前佇列裡的需求處理完就結束（試跑用）")
+    add_model_args(ap, required=False)
+    args = ap.parse_args(sys.argv[1:] if argv is None else argv)
+    try:
+        model = model_from_args(args)
+        dashboard = HttpDashboard(args.base, os.environ.get(TOKEN_ENV, ""))
+        if args.once:
+            while run_once(dashboard, model, log=_log):
+                pass
+            return 0
+    except (OSError, ValueError) as e:
+        print(f"錯誤：{e}", file=sys.stderr)
+        return 2
+    run(dashboard, model, interval=args.interval, log=_log)  # pragma: no cover  一直跑，由 Ctrl+C 或 systemd 停止
+    return 0  # pragma: no cover
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

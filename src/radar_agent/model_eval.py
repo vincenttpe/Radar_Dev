@@ -200,7 +200,7 @@ class AskResult:
         return "沒對應到" if got is None else "對錯題"
 
 
-# 事件提問（radar-ask，11 月中甲方 Demo）：照護人員可能怎麼問，對到 EVENT_QUESTIONS 哪一題
+# 事件提問（radar-ask，11 月中甲方 Demo）：照護人員可能怎麼問，對到 EVENT_MENU 哪一題
 EVENT_ASK_CASES: list[AskCase] = [
     AskCase("V1", "早上有人跌倒嗎", "falls"),
     AskCase("V2", "今天有沒有跌倒警報", "falls"),
