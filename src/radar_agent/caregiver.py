@@ -184,10 +184,23 @@ def _longstay_sentences(summary: Summary) -> list[str]:
     return [count_sentence(summary, "久待警報", summary.longstay_alerts)]
 
 
+def no_data(summary: Summary) -> str:
+    """沒有在線時段（summary.online 是空的）時的說法，不含句號。
+
+    真的沒收到紀錄寫「沒有收到資料」；收到了但一筆都讀不懂，照實寫幾筆無法判讀：資料其實收到了，
+    資訊人員該查的是格式而不是裝置或網路（REVIEW.md 3.1；2026-11-02 使用者在 #57 選 b）。
+    不寫「收到的 N 筆都」：伺服器下的指令、完全重複的紀錄也是收到的，但不在 N 裡。
+    """
+    unreadable = len(summary.unreadable) + len(summary.unknown_events)
+    if unreadable:
+        return f"沒有讀得懂的資料，{unreadable} 筆紀錄無法判讀，無法判斷"
+    return "沒有收到資料，無法判斷"
+
+
 def highlights(summary: Summary) -> str:
     """一行說完要注意的事：沒有解除紀錄的警報、已解除的警報、找不到警報的解除、久待、資料結束時仍有人、斷線、裝置問題。"""
     if not summary.online:
-        return "【重點】沒有收到資料，無法判斷，請通知資訊人員。"
+        return f"【重點】{no_data(summary)}，請通知資訊人員。"
     outcomes = alert_outcomes(summary)
     items = []
     for alert, resolution in outcomes.pairs:
@@ -244,7 +257,7 @@ def _event_lines(summary: Summary, falls: Pairs, calls: Pairs) -> list[str]:
 def _site_text(summary: Summary, place: str) -> str:
     """【事件摘要】：一句一行，警報後面接它的後續；跌倒、呼救、久待都沒有時合成一句。"""
     if not summary.online:
-        return f"{place}：沒有收到資料，無法判斷。"
+        return f"{place}：{no_data(summary)}。"
     outcomes = alert_outcomes(summary)
     lines = usage_sentences(summary)
     lines[0] = period_head(summary, place) + lines[0]
@@ -342,9 +355,9 @@ def handover_head(summary: Summary, *, place: str) -> str:
 
 
 def handover_text(summary: Summary, *, place: str) -> str:
-    """給下一班照護人員的交班重點（原句）。沒有收到資料時是「沒有收到資料，無法判斷」加上【重點】（請通知資訊人員）。"""
+    """給下一班照護人員的交班重點（原句）。沒有在線時段時是 no_data 的說法加上【重點】（請通知資訊人員）。"""
     if not summary.online:
-        return f"{place}：沒有收到資料，無法判斷。\n{highlights(summary)}"
+        return f"{place}：{no_data(summary)}。\n{highlights(summary)}"
     return f"{handover_head(summary, place=place)}\n{_site_text(summary, place)}"
 
 

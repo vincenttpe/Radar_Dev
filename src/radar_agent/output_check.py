@@ -104,5 +104,10 @@ def check_output(text: str, source: Summary | Assessment, *, place: str = "") ->
             problems.append("裝置有斷線，不能寫「沒有跌倒警報／主動呼救／久待警報」這類句子而不註明在線期間")
         if "裝置都在線" in text:
             problems.append("裝置有斷線，不能寫「裝置都在線」")
+    if isinstance(source, Summary) and "沒有收到資料" in text:
+        # 收到了但讀不懂，不是沒收到（2026-11-02 使用者在 #57 選 b）
+        unreadable = len(source.unreadable) + len(source.unknown_events)
+        if unreadable:
+            problems.append(f"有 {unreadable} 筆紀錄無法判讀，資料其實收到了，不能寫「沒有收到資料」")
     return problems
 

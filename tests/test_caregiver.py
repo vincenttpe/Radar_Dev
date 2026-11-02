@@ -70,6 +70,29 @@ def test_no_data_at_all_says_cannot_judge():
     assert caregiver_text(summarize([]), place="1 號廁所") == "1 號廁所：沒有收到資料，無法判斷。"
 
 
+# 收到了、但一筆都讀不懂：時間格式錯、payload 不是物件（REVIEW.md 3.1；2026-11-02 使用者在 #57 選 b）
+ALL_UNREADABLE = [{"timestamp": "昨天", "topic": TOPIC, "resolution": None, "payload": {"event": "absence"}},
+                  {"timestamp": "2026-10-14 09:00:05", "topic": TOPIC, "resolution": None, "payload": "absence"}]
+
+
+def test_records_that_are_all_unreadable_are_not_reported_as_no_data():
+    """資料其實收到了：寫「沒有收到資料」會讓資訊人員先去查裝置與網路，而不是格式（#57）。"""
+    summary = summarize(ALL_UNREADABLE)
+    assert caregiver_text(summary, place="1 號廁所") == "1 號廁所：沒有讀得懂的資料，2 筆紀錄無法判讀，無法判斷。"
+    assert caregiver_report(summary, place="1 號廁所") == (
+        "【重點】沒有讀得懂的資料，2 筆紀錄無法判讀，無法判斷，請通知資訊人員。\n\n"
+        "【事件摘要】\n1 號廁所：沒有讀得懂的資料，2 筆紀錄無法判讀，無法判斷。"
+    )
+
+
+def test_output_check_refuses_no_data_when_records_were_unreadable():
+    summary = summarize(ALL_UNREADABLE)
+    assert check_output("1 號廁所：沒有收到資料，無法判斷。", summary, place="1 號廁所") == [
+        "有 2 筆紀錄無法判讀，資料其實收到了，不能寫「沒有收到資料」"
+    ]
+    assert check_output("1 號廁所：沒有收到資料，無法判斷。", summarize([]), place="1 號廁所") == []
+
+
 def test_online_without_visits_says_no_use_detected():
     assert caregiver_text(summarize(timeline("09:00:00", "09:10:00")), place="1 號廁所") == (
         "1 號廁所 10/14：沒有偵測到有人使用。\n沒有跌倒警報、主動呼救或久待警報。"
@@ -174,6 +197,7 @@ def test_check_flags_zero_falls_when_device_was_offline():
 
 def _scenarios():
     yield summarize([])
+    yield summarize(ALL_UNREADABLE)
     yield summarize(timeline("09:00:00", "09:10:00"))
     yield summarize(timeline("09:00:00", "09:30:00", ONLINE_TWO_VISITS))
     yield summarize(timeline("09:00:00", "09:10:00", [("09:02:00", "09:03:00")]) + timeline("09:40:00", "09:50:00"))
@@ -525,6 +549,14 @@ def test_cli_range_keeps_the_start_and_drops_the_end(tmp_path, capsys):
     code, out, _ = _run(capsys, path, "--place", "1 號廁所", "--json", "--from", "2026-10-14 09:15:00")
     data = json.loads(out)
     assert (data["from"], data["to"], data["counts"]["visits"]) == ("2026-10-14 09:15:00", "2026-10-14 09:30:00", 1)
+
+
+def test_cli_with_only_unreadable_records_says_so(tmp_path, capsys):
+    path = write_jsonl(tmp_path / "events.jsonl", ALL_UNREADABLE)
+    code, out, err = _run(capsys, path, "--place", "1 號廁所")
+    assert (code, err) == (0, "")
+    assert out == ("【重點】沒有讀得懂的資料，2 筆紀錄無法判讀，無法判斷，請通知資訊人員。\n\n"
+                   "【事件摘要】\n1 號廁所：沒有讀得懂的資料，2 筆紀錄無法判讀，無法判斷。\n")
 
 
 def test_cli_range_without_records_says_cannot_judge(tmp_path, capsys):
