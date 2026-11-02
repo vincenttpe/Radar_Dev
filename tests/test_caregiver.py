@@ -696,3 +696,15 @@ def test_a_resolution_after_a_disconnection_clears_nothing():
                rec("09:03:05", "offline"), *timeline("09:10:00", "09:12:00"), _resolved("09:11:00", "standUp")]
     events = report_data(summarize(records), place="1 號廁所")["events"]
     assert [e.get("clears") for e in events if e["level"] == "resolved"] == [None]
+
+
+def test_known_limit_a_resolution_with_an_unlisted_trigger_has_no_event_but_still_clears_its_alert_in_the_text():
+    """已知限制（docs/16，2026-11-02 決定先不處理，等雷達負責人確認規格 A3）：規格外原因的解除沒有處置提示，
+    所以不在 events[]；報告文字仍寫這則警報已解除，看板卻只能顯示狀態不明，後面一筆正常的解除也因此配不到警報。"""
+    records = [*timeline("08:59:00", "09:10:00"), _fall("09:00:00", "radar", "timeout", delaysec=10),
+               _resolved("09:02:00", "other"), _resolved("09:03:00", "noNeedHelp")]
+    summary = summarize(records)
+    text = caregiver_report(summary, place="1 號廁所")
+    events = report_data(summary, place="1 號廁所")["events"]
+    assert "09:00 語音詢問 10 秒未獲回應，2 分鐘後警報解除" in text and "另有 1 筆解除紀錄找不到對應的警報" in text
+    assert [(e["label"], e["level"], e.get("clears")) for e in events] == [("09:00", "urgent", None), ("09:03", "resolved", None)]
