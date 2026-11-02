@@ -9,7 +9,11 @@ import re
 
 import pytest
 
+from test_caregiver import _fall, _resolved, overlapping_alerts, timeline
+
 from radar_agent.caregiver import main as caregiver_main
+from radar_agent.caregiver import report_data
+from radar_agent.device_events import alert_outcomes, summarize
 from radar_agent.event_ask import main as ask_main
 
 
@@ -54,16 +58,27 @@ def test_incidents_keep_device_state_and_human_state_apart(data):
     assert [(c["label"], c["title"], c["cleared"] and c["cleared"]["label"]) for c in cards] == [
         ("08:32", "跌倒警報", "08:32"), ("09:16", "跌倒警報", "09:19"),
         ("10:03", "主動呼救", "10:05"), ("10:45", "久待警報", None)]
-    assert [c["id"] for c in cards] == ["e1", "e2", "e3", "e4"]
+    assert [c["id"] for c in cards] == ["e1", "e3", "e5", "e7"], "事件卡的 id 就是報告 events[] 的 id"
     assert cards[1]["cleared"]["cause"] == "偵測到起身" and data["caregiver"]["orphans"] == []
 
 
-def test_incidents_never_pair_a_resolution_with_a_longstay(build):
-    events = [{"at": "a", "label": "10:00", "level": "check", "title": "久待警報", "prompt": "p"},
-              {"at": "b", "label": "10:01", "level": "resolved", "title": "起身解除", "prompt": "q"}]
-    cards, orphans = build.incidents(events)
-    assert cards[0]["cleared"] is None
-    assert orphans == [{"label": "10:01", "title": "起身解除"}], "配不到警報的解除不能丟掉"
+def test_incidents_follow_the_report_pairing_instead_of_pairing_again(build):
+    """看板的「已解除」要和報告文字用的 alert_outcomes 一致（2026-11-02 之前看板自己配，會把 09:06 配給 09:00）。"""
+    summary = summarize(overlapping_alerts())
+    outcomes = alert_outcomes(summary)
+    cards, orphans = build.incidents(report_data(summary, place="1 號廁所")["events"])
+    assert [(c["label"], c["cleared"] and c["cleared"]["label"]) for c in cards] == [
+        (f"{a.time:%H:%M}", r and f"{r.time:%H:%M}") for a, r in outcomes.pairs]
+    assert [o["label"] for o in orphans] == [f"{r.time:%H:%M}" for r in outcomes.unpaired], "配不到警報的解除不能丟掉"
+
+
+def test_known_limit_an_unlisted_resolution_leaves_its_alert_card_unknown(build):
+    """已知限制（docs/16，2026-11-02 選 ②）：規格外原因的解除不在 events[]，報告寫已解除，卡片仍是狀態不明。"""
+    records = [*timeline("08:59:00", "09:10:00"), _fall("09:00:00", "radar", "timeout", delaysec=10),
+               _resolved("09:02:00", "other"), _resolved("09:03:00", "noNeedHelp")]
+    cards, orphans = build.incidents(report_data(summarize(records), place="1 號廁所")["events"])
+    assert [(c["label"], c["cleared"]) for c in cards] == [("09:00", None)]
+    assert orphans == [{"label": "09:03", "title": "回覆沒事"}]
 
 
 def test_family_view_is_simulated_and_has_no_caregiver_prompts_or_records(data):

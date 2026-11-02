@@ -422,26 +422,23 @@ CAUSE = {"回覆沒事": "長者回覆沒事", "起身解除": "偵測到起身"
 def incidents(events: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """把一件事的警報與之後的解除合成一張事件卡；回傳 (事件卡, 配不到警報的解除)。裝置斷線另外列，不算事件。
 
-    暫定配對：解除（resolved）配給它之前最近一則還沒解除的要到場通知（跌倒、主動呼救）。久待警報在規格裡沒有
-    解除事件，所以不配；配不到的解除不丟掉，另外列出（REVIEW.md 3.1）。兩件要到場的通知重疊時可能配錯，
-    正式版要有事件序號（會議清單 A11）。這份資料沒有人員處置紀錄：人員處置一律從「尚未確認」開始。
+    配對照 caregiver 輸出的 clears（和報告文字、輸出檢查同一套 alert_outcomes，2026-11-02），這裡不自己再配；
+    配對規則本身是推定，待雷達負責人確認（docs/05 A26、issue #38）。
+    久待警報在規格裡沒有解除事件，所以不會有解除指向它。配不到的解除不丟掉，另外列出（REVIEW.md 3.1）。
+    這份資料沒有人員處置紀錄：人員處置一律從「尚未確認」開始。
     """
-    out: list[dict[str, Any]] = []
+    cards = {e["id"]: {"id": e["id"], "at": e["at"], "label": e["label"], "level": e["level"], "title": e["title"],
+                       "prompt": e["prompt"], "cleared": None}
+             for e in events if e["level"] in ("urgent", "check")}
     orphans: list[dict[str, Any]] = []
-    open_urgent: list[dict[str, Any]] = []
     for e in events:
-        if e["level"] in ("urgent", "check"):
-            card = {"id": f"e{len(out) + 1}", "at": e["at"], "label": e["label"], "level": e["level"],
-                    "title": e["title"], "prompt": e["prompt"], "cleared": None}
-            out.append(card)
-            if e["level"] == "urgent":
-                open_urgent.append(card)
-        elif e["level"] == "resolved":
-            if open_urgent:
-                open_urgent.pop()["cleared"] = {"label": e["label"], "cause": CAUSE.get(e["title"], e["title"])}
-            else:
-                orphans.append({"label": e["label"], "title": e["title"]})
-    return out, orphans
+        if e["level"] != "resolved":
+            continue
+        if e["clears"] in cards:
+            cards[e["clears"]]["cleared"] = {"label": e["label"], "cause": CAUSE.get(e["title"], e["title"])}
+        else:
+            orphans.append({"label": e["label"], "title": e["title"]})
+    return list(cards.values()), orphans
 
 
 # 頁面上所有固定句型：JS 只把 {n}、{time} 這類欄位換成資料裡的數字與時間，不自己寫句子。
@@ -633,10 +630,11 @@ def scenario_data(build: Any, morning: list[dict[str, Any]], devices: list[tuple
     summary = summarize(morning)
     caregiver = build.demo_data(place=place_of(CARE_DEVICE, registry), records=morning)
     days = caregiver["trend"]["days"]
+    cards, orphans = incidents(caregiver["events"])
     caregiver.update({
         "period": _period(caregiver),
-        "incidents": incidents(caregiver["events"])[0],
-        "orphans": incidents(caregiver["events"])[1],
+        "incidents": cards,
+        "orphans": orphans,
         "offline_sentences": offline_sentences(summary),
         "trend_rule": trend_rule(),
         "counted_days": [sum(d["visits"] is not None for d in days[:7]), sum(d["visits"] is not None for d in days[7:])],

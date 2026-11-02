@@ -290,23 +290,25 @@ class EventNote:
     prompt: str   # 處置提示
     record: str   # 照護紀錄草稿
     span: str = ""  # 處置提示前面標的時間；空的就用 time 的 HH:MM（斷線標起訖）
+    source: FallAlert | Resolution | None = None  # 這則提示來自哪一筆警報或解除；結構化輸出用它標出配對
 
 
 def _fall_note(alert: FallAlert, place: str) -> EventNote:
     when = f"{alert.time:%H:%M}"
     if alert.mode == "speech":
-        return EventNote(alert.time, "長者主動呼救，請立即到場。", f"{when} {place}偵測到主動呼救。")
+        return EventNote(alert.time, "長者主動呼救，請立即到場。", f"{when} {place}偵測到主動呼救。", source=alert)
     if alert.mode == "fusion":
         return EventNote(
-            alert.time, "長者回覆需要協助，請立即到場。", f"{when} {place}雷達偵測到疑似跌倒，長者語音回覆需要協助。"
+            alert.time, "長者回覆需要協助，請立即到場。", f"{when} {place}雷達偵測到疑似跌倒，長者語音回覆需要協助。",
+            source=alert,
         )
     if alert.mode == "radar" and alert.trigger == "timeout":
         waited = f" {alert.delay_s} 秒" if alert.delay_s is not None else ""
         return EventNote(
-            alert.time, "請立即到場確認。", f"{when} {place}雷達偵測到疑似跌倒，語音詢問{waited}未獲回應。"
+            alert.time, "請立即到場確認。", f"{when} {place}雷達偵測到疑似跌倒，語音詢問{waited}未獲回應。", source=alert
         )
     # 規格外的來源組合：不猜是哪一種，一律當成要到場確認
-    return EventNote(alert.time, "請立即到場確認。", f"{when} {place}跌倒警報。")
+    return EventNote(alert.time, "請立即到場確認。", f"{when} {place}跌倒警報。", source=alert)
 
 
 def event_notes(summary: Summary, place: str) -> list[EventNote]:
@@ -315,9 +317,11 @@ def event_notes(summary: Summary, place: str) -> list[EventNote]:
     for r in summary.resolutions:
         when = f"{r.time:%H:%M}"
         if r.trigger == "noNeedHelp":
-            notes.append(EventNote(r.time, "長者回覆沒事，警報已解除；可視情況前往關心。", f"{when} 長者語音回覆沒事，警報解除。"))
+            notes.append(EventNote(
+                r.time, "長者回覆沒事，警報已解除；可視情況前往關心。", f"{when} 長者語音回覆沒事，警報解除。", source=r
+            ))
         elif r.trigger == "standUp":
-            notes.append(EventNote(r.time, "已偵測到起身，警報已解除。", f"{when} 偵測到長者起身，警報解除。"))
+            notes.append(EventNote(r.time, "已偵測到起身，警報已解除。", f"{when} 偵測到長者起身，警報解除。", source=r))
     for t in summary.longstay_alerts:
         notes.append(EventNote(t, "停留超過設定時間，請前往查看。", f"{t:%H:%M} {place}停留超過設定時間（久待警報）。"))
     for a, b in zip(summary.online, summary.online[1:], strict=False):
@@ -455,13 +459,22 @@ def report_data(summary: Summary, *, place: str) -> dict[str, Any]:
     problems = check_output(caregiver_report(summary, place=place), summary, place=place)
     if problems:
         raise OutputRejected(problems)
+    notes = event_notes(summary, place)
+    # 用物件身分對應：alert_outcomes 回傳的是 summary 裡同一批 FallAlert／Resolution（只重新排序，不複製）；
+    # 內容相同的兩筆警報用 == 會分不出來
+    ids = {id(n.source): f"e{i}" for i, n in enumerate(notes, 1) if n.source is not None}
+    # 解除配給哪一則警報：和報告文字、輸出檢查用同一個 alert_outcomes；配不到是 null（找不到對應的警報）
+    cleared = {id(r): ids[id(a)] for a, r in alert_outcomes(summary).pairs if r is not None}
     events = []
-    for note in event_notes(summary, place):
+    for i, note in enumerate(notes, 1):
         level, title = note_kind(note.prompt)
-        events.append({
-            "at": _stamp(note.time), "label": note.span or f"{note.time:%H:%M}", "level": level, "title": title,
-            "prompt": note.prompt, "record": note.record,
-        })
+        event: dict[str, str | None] = {
+            "id": f"e{i}", "at": _stamp(note.time), "label": note.span or f"{note.time:%H:%M}", "level": level,
+            "title": title, "prompt": note.prompt, "record": note.record,
+        }
+        if level == "resolved":
+            event["clears"] = cleared.get(id(note.source))
+        events.append(event)
     online = summary.online
     falls, calls = falls_and_calls(summary)
     return {
