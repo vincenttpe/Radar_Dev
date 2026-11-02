@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from radar_agent.audience import Profile, check_audience
@@ -63,13 +63,15 @@ class Rewritten:
 class RewriteKind:
     """一種文字交給模型改寫的規則：prompt、採用前除了 check_output 還要過的檢查、版本（2026-11-02 收在一處）。
 
-    prompt 或 kept 改了要升 version；rules 是版本指紋涵蓋的程式與常數（tests 依它計算雜湊，不另外手列）。
+    prompt、kept 或 head 改了要升 version；rules 是版本指紋涵蓋的程式與常數（tests 依它計算雜湊，不另外手列）。
     """
 
     version: str
     prompt: Callable[[str], str]  # 原句 → prompt，只放原句
     kept: Callable[[str, str, Summary | Assessment], list[str]]  # (原句, 改寫, 來源) → 被拿掉或改掉的
     rules: tuple[object, ...]
+    # (來源, 地點) → 固定顯示在最前面、不交給模型的開頭；None 表示整段都交給模型
+    head: Callable[[Summary | Assessment, str], str] | None = None
 
 
 def build_prompt(template: str) -> str:
@@ -151,13 +153,16 @@ def rewrite(
 def checked_rewrite(
     original: str, source: Summary | Assessment, kind: RewriteKind, *, place: str, profile: Profile, model: Model
 ) -> Rewritten:
-    """讓模型依 kind 改寫 original；採用前一定經過輸出檢查。給讀者的模型文字只從這裡出去。
+    """讓模型依 kind 改寫 original（kind.head 的開頭不交給模型，固定加在前面）；採用前一定經過輸出檢查。
+    給讀者的模型文字只從這裡出去。
 
     模型出錯、沒有輸出、輸出沒通過 check_output（擋多出來的事實與用詞）或 kind.kept（擋被拿掉或改掉的），
     都退回 original，並記下原因與模型版本；沒通過檢查時另外留下模型寫的文字（candidate）。
     """
+    head = f"{kind.head(source, place)}\n" if kind.head else ""
+
     def fallback(*reasons: str, candidate: str | None = None) -> Rewritten:
-        return Rewritten(original, "template", profile, model.name, kind.version, reasons, candidate)
+        return Rewritten(head + original, "template", profile, model.name, kind.version, reasons, candidate)
 
     try:
         text = model(kind.prompt(original)).strip()
@@ -168,7 +173,7 @@ def checked_rewrite(
     problems = check_output(text, source, place=place) + kind.kept(original, text, source)
     if problems:
         return fallback(*problems, candidate=text)
-    return Rewritten(text, "model", profile, model.name, kind.version)
+    return Rewritten(head + text, "model", profile, model.name, kind.version)
 
 
 # ── 交班重點的口語改寫（草案，2026-10-29；Jetson 內部 Demo 的實驗功能，docs/21）──────────
@@ -178,7 +183,7 @@ def checked_rewrite(
 # 已知限制（docs/21）：數量只比「有沒有出現」、不比屬於哪個事件；「沒有……」改成「有……」也擋不到。
 # 所以頁面一定把原句和模型版並排顯示（測試版，2026-10-29 決定）。
 # v1 是 2026-10-29 改用和 rewrite() 相同的 ADDED_WORDS（多了「清晨」等時段詞、「他」「她」「設備」，「其他」不算「他」）
-HANDOVER_PROMPT_VERSION = "handover-v1"
+HANDOVER_PROMPT_VERSION = "handover-v1"  # 2026-11-02 規則收進 RewriteKind 時純搬移、規則不變，版本不升
 _CLOCK = re.compile(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)")
 
 
@@ -232,18 +237,22 @@ def rewrite_handover(summary: Summary, *, place: str, model: Model | None = None
         raise ValueError("範本沒通過輸出檢查：" + "；".join(problems))
     if model is None or not summary.online:  # 沒有收到資料時只有「無法判斷」，不必改寫
         return Rewritten(template, "template", "居服員")
-    # 開頭兩行（地點與時段、【重點】）由程式固定顯示，模型只改寫下面的事件摘要：
-    # 實測模型常把開頭與【重點】整行省掉，而那兩行的數字在事件摘要裡都還有，檢查擋不到（2026-10-29）
-    head = handover_head(summary, place=place)
-    result = checked_rewrite(caregiver_text(summary, place=place), summary, HANDOVER, place=place, profile="居服員",
-                             model=model)
-    return replace(result, text=f"{head}\n{result.text}")
+    return checked_rewrite(caregiver_text(summary, place=place), summary, HANDOVER, place=place, profile="居服員",
+                           model=model)
 
 
 # ── 每種文字的改寫規則（2026-11-02 收在一處；搬移時規則沒變，版本不升）──────────
 
 def _kept_summary(template: str, text: str, source: Summary | Assessment) -> list[str]:
     return _kept_facts(template, text, source) + _kept_quantities(template, text) + _added_words(template, text)
+
+
+def _handover_head(source: Summary | Assessment, place: str) -> str:
+    """開頭兩行（地點與時段、【重點】）由程式固定顯示，模型只改寫下面的事件摘要：
+    實測模型常把開頭與【重點】整行省掉，而那兩行的數字在事件摘要裡都還有，檢查擋不到（2026-10-29）。"""
+    if not isinstance(source, Summary):
+        raise TypeError("交班重點只用場域事件摘要")
+    return handover_head(source, place=place)
 
 
 def _kept_handover(body: str, text: str, source: Summary | Assessment) -> list[str]:
@@ -255,5 +264,5 @@ _SHARED_RULES = (checked_rewrite, _kept_facts, _quantities, _kept_quantities, _a
                  REQUIRED_PHRASES, MAX_LENGTH_RATIO, ADDED_WORDS, _NOT_PRONOUNS)
 SUMMARY = RewriteKind(PROMPT_VERSION, build_prompt, _kept_summary, (rewrite, _kept_summary, *_SHARED_RULES))
 HANDOVER = RewriteKind(HANDOVER_PROMPT_VERSION, build_handover_prompt, _kept_handover,
-                       (rewrite_handover, handover_head, _kept_handover, _clock_times, _kept_times, _CLOCK.pattern,
-                        *_SHARED_RULES))
+                       (rewrite_handover, _handover_head, handover_head, _kept_handover, _clock_times, _kept_times, _CLOCK.pattern,
+                        *_SHARED_RULES), head=_handover_head)

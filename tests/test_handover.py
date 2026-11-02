@@ -146,7 +146,7 @@ def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
     from radar_agent.rewrite import HANDOVER
 
     digest = kind_digest(HANDOVER)
-    assert (HANDOVER.version, digest) == ("handover-v1", "e6b6c8f5ea27fc69"), \
+    assert (HANDOVER.version, digest) == ("handover-v1", "c50e5438a6a4c1f3"), \
         "rewrite.build_handover_prompt 或採用的檢查改了：升 rewrite.HANDOVER_PROMPT_VERSION，再更新這裡的版本與雜湊"
 
 

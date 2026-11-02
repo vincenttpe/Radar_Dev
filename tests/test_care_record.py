@@ -126,7 +126,7 @@ def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
 
     from radar_agent.care_record import RECORD
 
-    assert (RECORD.version, kind_digest(RECORD)) == ("record-v0", "2e27ee609ab92f7c"), \
+    assert (RECORD.version, kind_digest(RECORD)) == ("record-v0", "928a78cfdbb413e9"), \
         "care_record.build_prompt 或採用的檢查改了：升 care_record.PROMPT_VERSION，再更新這裡的版本與雜湊"
 
 

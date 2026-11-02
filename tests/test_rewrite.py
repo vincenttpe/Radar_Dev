@@ -182,7 +182,7 @@ def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
     from radar_agent.rewrite import SUMMARY
 
     digest = kind_digest(SUMMARY)
-    assert (SUMMARY.version, digest) == ("caregiver-v2", "93997a285059dffa"), \
+    assert (SUMMARY.version, digest) == ("caregiver-v2", "2994142a6491506e"), \
         "rewrite.build_prompt 或採用的檢查改了：升 rewrite.PROMPT_VERSION，再更新這裡的版本與雜湊"
 
 

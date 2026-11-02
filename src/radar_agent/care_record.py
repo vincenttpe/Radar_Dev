@@ -16,7 +16,7 @@ from radar_agent.kg_rules import Assessment
 from radar_agent.output_check import numbers
 from radar_agent.rewrite import Model, Rewritten, RewriteKind, checked_rewrite
 
-PROMPT_VERSION = "record-v0"
+PROMPT_VERSION = "record-v0"  # 2026-11-02 規則收進 RewriteKind（RECORD）時純搬移、規則不變，版本不升
 # 草稿裡有這些字，改寫後一定要留著：斷線期間沒有資料、沒有回應，不能被寫成沒事（REVIEW.md 3.1）
 REQUIRED_PHRASES = ("狀況不明", "未獲回應")
 # 暫定：改寫最多是草稿的幾倍長
