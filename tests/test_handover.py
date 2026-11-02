@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 from test_caregiver import timeline
-from test_rewrite import FakeModel, rule_digest
+from test_rewrite import FakeModel, kind_digest
 
 from radar_agent.caregiver import caregiver_text, handover_text, highlights
 from radar_agent.device_events import read_records, summarize
@@ -143,12 +143,10 @@ def test_known_limit_a_swapped_durations_are_not_caught():
 
 def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
     """紀錄只記 prompt_version；交班的 prompt 或採用的檢查改了卻沒升版，就分不出一筆退回是哪一套規則（原則 3）。"""
-    from radar_agent import rewrite as r
+    from radar_agent.rewrite import HANDOVER
 
-    digest = rule_digest(r.build_handover_prompt("{原句}"), r.rewrite_handover, r.checked_rewrite, r._kept_facts, r._quantities,
-                         r._kept_quantities, r._clock_times, r._kept_times, r._added_words, r._QUANTITY.pattern,
-                         r._CLOCK.pattern, r.REQUIRED_PHRASES, r.MAX_LENGTH_RATIO, r.ADDED_WORDS, r._NOT_PRONOUNS)
-    assert (HANDOVER_PROMPT_VERSION, digest) == ("handover-v1", "b4fa10736dcc09d7"), \
+    digest = kind_digest(HANDOVER)
+    assert (HANDOVER.version, digest) == ("handover-v1", "e6b6c8f5ea27fc69"), \
         "rewrite.build_handover_prompt 或採用的檢查改了：升 rewrite.HANDOVER_PROMPT_VERSION，再更新這裡的版本與雜湊"
 
 

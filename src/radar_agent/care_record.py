@@ -8,11 +8,12 @@ docs/adr/0002「AI 的分工」的「撰寫」：照護紀錄是查核點 B4 與
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 from radar_agent.caregiver import event_notes
 from radar_agent.device_events import Summary
 from radar_agent.output_check import numbers
-from radar_agent.rewrite import Model, Rewritten, checked_rewrite
+from radar_agent.rewrite import Model, Rewritten, RewriteKind, checked_rewrite
 
 PROMPT_VERSION = "record-v0"
 # 草稿裡有這些字，改寫後一定要留著：斷線期間沒有資料、沒有回應，不能被寫成沒事（REVIEW.md 3.1）
@@ -60,8 +61,18 @@ def care_record(
     draft = "\n".join(n.record for n in event_notes(summary, place))
     if model is None or not draft:
         return Rewritten(draft, "template", "居服員")
-    return checked_rewrite(
-        draft, summary, place=place, profile="居服員", model=model,
-        prompt=build_prompt(draft, style), prompt_version=PROMPT_VERSION,
-        kept=lambda text: _kept(draft, text),
-    )
+    # 機構格式樣本只是寫法示範（資料），不改規則，所以不升版
+    kind = RECORD if style is None else replace(RECORD, prompt=lambda text: build_prompt(text, style))
+    return checked_rewrite(draft, summary, kind, place=place, profile="居服員", model=model)
+
+
+def _prompt(draft: str) -> str:
+    return build_prompt(draft, None)
+
+
+def _kept_record(draft: str, text: str, source: object) -> list[str]:  # 草稿就是事實來源，不另外比對 summary
+    return _kept(draft, text)
+
+
+RECORD = RewriteKind(PROMPT_VERSION, _prompt, _kept_record,
+                     (care_record, checked_rewrite, _kept_record, _kept, _sentences, REQUIRED_PHRASES, MAX_LENGTH_RATIO))

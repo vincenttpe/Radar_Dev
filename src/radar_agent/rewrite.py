@@ -14,7 +14,7 @@ from dataclasses import dataclass, replace
 from typing import Literal, Protocol
 
 from radar_agent.audience import Profile, check_audience
-from radar_agent.caregiver import caregiver_text, handover_text
+from radar_agent.caregiver import caregiver_text, handover_head, handover_text
 from radar_agent.device_events import Summary
 from radar_agent.kg_rules import Assessment
 from radar_agent.output_check import check_output, numbers
@@ -23,6 +23,7 @@ from radar_agent.output_check import check_output, numbers
 # v1 是 2026-10-29 檢查加上次數與時間長度整段比對（_kept_quantities，PR #41）；
 # v2 是 2026-10-29 不能加範本沒有的時段詞、人稱與「設備」（ADDED_WORDS；PR #43 的比對畫面看到採用的版本寫了
 # 「我們有語音問一下」「他自己起來了」「設備斷線」，#35 也回報過）
+# 2026-11-02 規則收進 RewriteKind 時程式搬了位置、規則沒變，版本不升（只更新 tests 的雜湊）
 PROMPT_VERSION = "caregiver-v2"
 # 範本沒有、模型卻常自己加上的詞：時段詞會說錯（「下午 10:03」）；「我們」把裝置做的事寫成照護人員做的；
 # 「他」「她」替長者加上性別（範本一律寫「長者」）；「設備」換掉了「裝置」。範本裡沒有就不能出現。
@@ -53,6 +54,22 @@ class Rewritten:
     prompt_version: str | None = None
     # 模型輸出沒通過的原因；空的表示沒有呼叫模型或模型輸出被採用
     rejected: tuple[str, ...] = ()
+    # 模型寫了、但沒通過檢查的文字（未採用）；採用、沒呼叫模型、模型出錯或沒有輸出時是 None。
+    # 只給 Jetson 內部 Demo 並排比對用，不寫進 log 或檔案
+    candidate: str | None = None
+
+
+@dataclass(frozen=True)
+class RewriteKind:
+    """一種文字交給模型改寫的規則：prompt、採用前除了 check_output 還要過的檢查、版本（2026-11-02 收在一處）。
+
+    prompt 或 kept 改了要升 version；rules 是版本指紋涵蓋的程式與常數（tests 依它計算雜湊，不另外手列）。
+    """
+
+    version: str
+    prompt: Callable[[str], str]  # 原句 → prompt，只放原句
+    kept: Callable[[str, str, Summary | Assessment], list[str]]  # (原句, 改寫, 來源) → 被拿掉或改掉的
+    rules: tuple[object, ...]
 
 
 def build_prompt(template: str) -> str:
@@ -128,43 +145,30 @@ def rewrite(
         raise ValueError("範本沒通過輸出檢查：" + "；".join(problems))
     if model is None:
         return Rewritten(template, "template", profile)
-    return checked_rewrite(
-        template, source, place=place, profile=profile, model=model,
-        prompt=build_prompt(template), prompt_version=PROMPT_VERSION,
-        kept=lambda text: _kept_facts(template, text, source) + _kept_quantities(template, text)
-        + _added_words(template, text),
-    )
+    return checked_rewrite(template, source, SUMMARY, place=place, profile=profile, model=model)
 
 
 def checked_rewrite(
-    original: str,
-    source: Summary | Assessment,
-    *,
-    place: str,
-    profile: Profile,
-    model: Model,
-    prompt: str,
-    prompt_version: str,
-    kept: Callable[[str], list[str]],
+    original: str, source: Summary | Assessment, kind: RewriteKind, *, place: str, profile: Profile, model: Model
 ) -> Rewritten:
-    """讓模型改寫 original；採用前一定經過輸出檢查。給讀者的模型文字只從這裡出去。
+    """讓模型依 kind 改寫 original；採用前一定經過輸出檢查。給讀者的模型文字只從這裡出去。
 
-    模型出錯、沒有輸出、輸出沒通過 check_output（擋多出來的事實與用詞）或 kept（擋被拿掉的，由呼叫端依文字種類決定），
-    都退回 original，並記下原因與模型版本。
+    模型出錯、沒有輸出、輸出沒通過 check_output（擋多出來的事實與用詞）或 kind.kept（擋被拿掉或改掉的），
+    都退回 original，並記下原因與模型版本；沒通過檢查時另外留下模型寫的文字（candidate）。
     """
-    def fallback(*reasons: str) -> Rewritten:
-        return Rewritten(original, "template", profile, model.name, prompt_version, reasons)
+    def fallback(*reasons: str, candidate: str | None = None) -> Rewritten:
+        return Rewritten(original, "template", profile, model.name, kind.version, reasons, candidate)
 
     try:
-        text = model(prompt).strip()
+        text = model(kind.prompt(original)).strip()
     except Exception as e:  # 模型逾時、當掉都退回原文，不讓報告停住
         return fallback(f"模型錯誤：{type(e).__name__}")
     if not text:
         return fallback("模型沒有輸出")
-    problems = check_output(text, source, place=place) + kept(text)
+    problems = check_output(text, source, place=place) + kind.kept(original, text, source)
     if problems:
-        return fallback(*problems)
-    return Rewritten(text, "model", profile, model.name, prompt_version)
+        return fallback(*problems, candidate=text)
+    return Rewritten(text, "model", profile, model.name, kind.version)
 
 
 # ── 交班重點的口語改寫（草案，2026-10-29；Jetson 內部 Demo 的實驗功能，docs/21）──────────
@@ -228,14 +232,28 @@ def rewrite_handover(summary: Summary, *, place: str, model: Model | None = None
         raise ValueError("範本沒通過輸出檢查：" + "；".join(problems))
     if model is None or not summary.online:  # 沒有收到資料時只有「無法判斷」，不必改寫
         return Rewritten(template, "template", "居服員")
-    # 前兩行（地點與時段、【重點】）由程式固定顯示，模型只改寫下面的事件摘要：
+    # 開頭兩行（地點與時段、【重點】）由程式固定顯示，模型只改寫下面的事件摘要：
     # 實測模型常把開頭與【重點】整行省掉，而那兩行的數字在事件摘要裡都還有，檢查擋不到（2026-10-29）
-    first, highlight, body = template.split("\n", 2)
-    head = f"{first}\n{highlight}"
-    result = checked_rewrite(
-        body, summary, place=place, profile="居服員", model=model,
-        prompt=build_handover_prompt(body), prompt_version=HANDOVER_PROMPT_VERSION,
-        kept=lambda text: (_kept_facts(body, text, summary) + _kept_times(body, text)
-                           + _kept_quantities(body, text) + _added_words(body, text)),
-    )
+    head = handover_head(summary, place=place)
+    result = checked_rewrite(caregiver_text(summary, place=place), summary, HANDOVER, place=place, profile="居服員",
+                             model=model)
     return replace(result, text=f"{head}\n{result.text}")
+
+
+# ── 每種文字的改寫規則（2026-11-02 收在一處；搬移時規則沒變，版本不升）──────────
+
+def _kept_summary(template: str, text: str, source: Summary | Assessment) -> list[str]:
+    return _kept_facts(template, text, source) + _kept_quantities(template, text) + _added_words(template, text)
+
+
+def _kept_handover(body: str, text: str, source: Summary | Assessment) -> list[str]:
+    return (_kept_facts(body, text, source) + _kept_times(body, text)
+            + _kept_quantities(body, text) + _added_words(body, text))
+
+
+_SHARED_RULES = (checked_rewrite, _kept_facts, _quantities, _kept_quantities, _added_words, _QUANTITY.pattern,
+                 REQUIRED_PHRASES, MAX_LENGTH_RATIO, ADDED_WORDS, _NOT_PRONOUNS)
+SUMMARY = RewriteKind(PROMPT_VERSION, build_prompt, _kept_summary, (rewrite, _kept_summary, *_SHARED_RULES))
+HANDOVER = RewriteKind(HANDOVER_PROMPT_VERSION, build_handover_prompt, _kept_handover,
+                       (rewrite_handover, handover_head, _kept_handover, _clock_times, _kept_times, _CLOCK.pattern,
+                        *_SHARED_RULES))
