@@ -6,6 +6,7 @@ import importlib.util
 import json
 import re
 
+import page_data
 import pytest
 
 from radar_agent.caregiver import main
@@ -20,8 +21,8 @@ def build(repo):
 
 
 @pytest.fixture(scope="module")
-def data(build):
-    return build.demo_data()
+def data():
+    return page_data.demo_data()
 
 
 def test_committed_page_is_exactly_what_build_py_produces(repo, build, data):
@@ -60,7 +61,7 @@ def test_unknown_prompt_wording_stops_the_build(build, monkeypatch):
 
     monkeypatch.delitem(caregiver.NOTE_KINDS, "請立即到場確認。")
     with pytest.raises(ValueError, match="NOTE_KINDS"):
-        build.demo_data()
+        page_data.demo_data()
 
 
 def test_embedded_data_cannot_close_the_script_tag(build, data):
@@ -77,7 +78,7 @@ def test_field_data_page_is_labelled_as_field_data_and_has_no_trend(build, tmp_p
     masked, _ = mask(records)
     src = tmp_path / "FIELD-01.jsonl"
     src.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in masked["FIELD-01"]), encoding="utf-8")
-    data = build.demo_data(src, "2 號廁所")
+    data = page_data.demo_data(src, "2 號廁所")
     assert data["source"] == "field" and data["trend"] is None
     assert data["summary"].startswith("2 號廁所 10/14：")
     assert len(data["events"]) == 8
@@ -85,16 +86,23 @@ def test_field_data_page_is_labelled_as_field_data_and_has_no_trend(build, tmp_p
     assert all(q["answer"].startswith("2 號廁所 10/14 ") for q in data["ask"])
 
 
+def test_field_pages_are_never_written_where_they_would_be_committed(repo, tmp_path):
+    """實測資料版頁面只能寫到 outputs/ 或 repo 以外：build.py 與 flow_build.py 共用 page_data.field_out。"""
+    with pytest.raises(ValueError, match="會被 commit"):
+        page_data.field_out(repo / "demo" / "field.html")
+    assert page_data.field_out(tmp_path / "out" / "field.html").parent.is_dir()
+
+
 def test_field_data_page_refuses_unmasked_or_empty_input(build, tmp_path):
     raw = tmp_path / "raw.jsonl"
     raw.write_text(json.dumps({"timestamp": "2026-10-19 09:00:00", "topic": "radar10/02AB34CD56EF",
                                "resolution": None, "payload": {"event": "absence"}}) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="像 MAC"):
-        build.demo_data(raw)
+        page_data.demo_data(raw)
     empty = tmp_path / "empty.jsonl"
     empty.write_text("\n", encoding="utf-8")
     with pytest.raises(ValueError, match="沒有讀得懂的紀錄"):
-        build.demo_data(empty)
+        page_data.demo_data(empty)
 
 
 def test_field_data_page_without_events_has_only_the_summary(build, tmp_path):
@@ -102,7 +110,7 @@ def test_field_data_page_without_events_has_only_the_summary(build, tmp_path):
     quiet.write_text("".join(
         json.dumps({"timestamp": f"2026-10-19 09:00:{s:02d}", "topic": "radar10/FIELD-01", "resolution": None,
                     "payload": {"event": "absence"}}) + "\n" for s in (0, 5, 10)), encoding="utf-8")
-    data = build.demo_data(quiet)
+    data = page_data.demo_data(quiet)
     assert data["events"] == [] and "沒有偵測到有人使用" in data["summary"]
 
 
@@ -138,6 +146,6 @@ def test_ask_answer_that_fails_the_output_check_stops_the_build(build, monkeypat
     from radar_agent.event_ask import Reply
     from radar_agent.ask import Match
 
-    monkeypatch.setattr(build, "pick", lambda qid, summary, place: Reply(Match(None), None, 0.0, ("數字對不上",)))
+    monkeypatch.setattr(page_data, "pick", lambda qid, summary, place: Reply(Match(None), None, 0.0, ("數字對不上",)))
     with pytest.raises(ValueError, match="事件提問的答案沒通過輸出檢查"):
-        build.demo_data()
+        page_data.demo_data()

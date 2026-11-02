@@ -4,7 +4,7 @@
 同一份模擬資料，依讀者切換三種畫面，每種畫面只放那位讀者最常做的事：
 - 居服員：先看還有沒有要處理的警報，再看處置提示、可以複製的照護紀錄草稿、提問、兩週使用趨勢。
   跌倒、呼救、久待的事件卡附「後續處理步驟」（FOLLOW_UP，範例，待機構提供），接手與記錄處置自動打勾。
-  句子全部來自 demo/build.py（也就是 radar-caregiver、radar-ask 的同一套函式），不另寫。
+  句子全部來自 demo/page_data.py（也就是 radar-caregiver、radar-ask 的同一套函式），不另寫。
 - 家屬：模擬「單人房、有長者代號 DEMO-ELDER-01」的情境，只放事件摘要、今天發生過什麼（時間與種類）
   與每日使用次數。家屬版的用語還沒擬定與審核，所以不放處置提示與照護紀錄，也不放寫著「場域統計」的趨勢句子。
   現有資料是場域資料，依 audience.py 家屬不能看；這裡是模擬的個人情境，頁面一直標明（2026-10-20 決定，F4 前不改 audience.py）。
@@ -24,15 +24,14 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 from datetime import datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
-from types import ModuleType
 from typing import Any
 
 import demo_page  # demo/ 底下的共用外殼；直接執行或測試時 demo/ 都在 sys.path
+import page_data
 from radar_agent.caregiver import (
     CHANGE_AT_LEAST,
     CHANGE_RATIO,
@@ -61,14 +60,6 @@ CATEGORY = {"offline": "斷線", "silent": "資料逾時", "unreadable": "無法
 FAMILY_ELDER = "DEMO-ELDER-01"
 FAMILY_PLACE = f"{FAMILY_ELDER} 房間的浴廁"
 DAY = "2026-10-14"
-
-
-def _load_build() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("demo_build", HERE / "build.py")
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def _stamp(t: datetime) -> str:
@@ -612,9 +603,12 @@ def check_ui_text(registry: dict[str, dict[str, Any]] | None = None,
 
 
 def _period(data: dict[str, Any]) -> dict[str, Any]:
+    """頁面上的時段：取報告的 from／to（第一筆到最後一筆在線）；跨日時日期寫起訖，和報告開頭「10/13–10/14」一致。"""
     first, last = data["from"], data["to"]
-    return {"day": f"{int(first[5:7])}/{int(first[8:10])}", "from": first[11:16], "to": last[11:16],
-            "visits": len(data["visits"])}
+    day = f"{int(first[5:7])}/{int(first[8:10])}"
+    if last[:10] != first[:10]:
+        day += f"–{int(last[5:7])}/{int(last[8:10])}"
+    return {"day": day, "from": first[11:16], "to": last[11:16], "visits": len(data["visits"])}
 
 
 def trend_rule() -> str:
@@ -624,11 +618,11 @@ def trend_rule() -> str:
             f"（凌晨 {int(CHANGE_RATIO['dawn'] * 100)}%）以上，才寫「增加」或「減少」，否則寫「差不多」。")
 
 
-def scenario_data(build: Any, morning: list[dict[str, Any]], devices: list[tuple[str, list[dict[str, Any]]]],
+def scenario_data(morning: list[dict[str, Any]], devices: list[tuple[str, list[dict[str, Any]]]],
                   registry: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """一個情境（同一個模擬上午）下會變的部分：居服員、家屬、系統管理人員的裝置狀態。維修紀錄與後台是歷史統計，不隨情境變。"""
     summary = summarize(morning)
-    caregiver = build.demo_data(place=place_of(CARE_DEVICE, registry), records=morning)
+    caregiver = page_data.demo_data(place=place_of(CARE_DEVICE, registry), records=morning)
     days = caregiver["trend"]["days"]
     cards, orphans = incidents(caregiver["events"])
     caregiver.update({
@@ -639,7 +633,7 @@ def scenario_data(build: Any, morning: list[dict[str, Any]], devices: list[tuple
         "trend_rule": trend_rule(),
         "counted_days": [sum(d["visits"] is not None for d in days[:7]), sum(d["visits"] is not None for d in days[7:])],
     })
-    family_full = build.demo_data(place=FAMILY_PLACE, records=morning)
+    family_full = page_data.demo_data(place=FAMILY_PLACE, records=morning)
     family = {
         "source": "sim",  # 家屬畫面只能用模擬資料：現有資料是場域資料，依 audience.py 家屬不能看
         "elder": FAMILY_ELDER,
@@ -663,15 +657,14 @@ def scenario_data(build: Any, morning: list[dict[str, Any]], devices: list[tuple
 
 def dashboard_data() -> dict[str, Any]:
     """預設是「事情多的上午」；calm 是「平靜的上午」要換掉的部分，頁面依網址（#caregiver/calm）合併。"""
-    build = _load_build()
-    morning = read_records(REPO / "data" / "samples_demo" / "bathroom_morning.jsonl")
+    morning = read_records(page_data.SAMPLE)
     registry = load_registry()
     # 居服員畫面的句子會進照護紀錄：裝置沒有設定紀錄就不產生（不能出現「未登記地點雷達偵測到…」）
     if CARE_DEVICE not in registry:
         raise ValueError(f"{CARE_DEVICE} 沒有裝置設定紀錄，居服員畫面寫不出地點")
-    busy = scenario_data(build, morning, simulated_devices(morning), registry)
+    busy = scenario_data(morning, simulated_devices(morning), registry)
     calm_records = calm_morning(morning)
-    calm = scenario_data(build, calm_records, calm_devices(calm_records), registry)
+    calm = scenario_data(calm_records, calm_devices(calm_records), registry)
     fleet, tickets = load_maintenance()
     ops = ops_data(fleet, tickets)
     check_ui_text(registry, tickets)

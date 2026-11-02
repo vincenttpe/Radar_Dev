@@ -19,7 +19,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import re
 import shutil
@@ -29,30 +28,16 @@ import threading
 import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-from types import ModuleType
 from typing import Any
 
 import demo_page  # demo/ 底下的共用外殼；直接執行或測試時 demo/ 都在 sys.path
-from radar_agent.device_events import Summary, read_records, summarize
+import page_data
+from radar_agent.caregiver import handover_head, handover_text
+from radar_agent.device_events import Summary
 from radar_agent.ask import Question, match_question
 from radar_agent.event_ask import EVENT_QUESTIONS, Reply, answer_period, checked_answer
 from radar_agent.local_model import add_model_args, model_from_args
 from radar_agent.rewrite import Model, Rewritten, rewrite, rewrite_handover
-
-HERE = Path(__file__).resolve().parent
-
-
-def _load_build() -> ModuleType:
-    """demo/build.py 照檔案路徑載入：名稱 build 會和 PyPI 的 build 套件撞名。"""
-    spec = importlib.util.spec_from_file_location("demo_build", HERE / "build.py")
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-build = _load_build()
 
 HOST = "127.0.0.1"
 PORT = 8765
@@ -121,18 +106,19 @@ class Demo:
 
     def __init__(self, model: Model, *, stats: Stats | None = None) -> None:
         self.model = model
-        self.place: str = build.PLACE
-        self.summary: Summary = summarize(read_records(build.REPO / "data" / "samples_demo" / "bathroom_morning.jsonl"))
+        source = page_data.load()  # 模擬資料只讀一次：頁面與提問、比對共用同一份 Summary
+        self.place: str = source.place
+        self.summary: Summary = source.summary
         self.stats = stats or Stats()
-        data = build.demo_data()
+        data = page_data.page_data(source)
         data["live"] = {
             "model": model.name, "stats": self.stats.proc is not None,
-            # 比對用的原句先顯示，模型改寫好再補上右邊那欄，讀者不必乾等
-            "compare": {kind: self._rewrite(kind, None).text for kind in COMPARE_KINDS},
+            # 比對用的原句先顯示，模型改寫好再補上右邊那欄，讀者不必乾等；開頭與本文由這裡分好，頁面不自己切
+            "compare": {kind: self._parts(kind, self._rewrite(kind, None).text) for kind in COMPARE_KINDS},
             # 提問選單第 7 顆按鈕與答案開頭的註明：頁面不另寫一份
             "handover_question": HANDOVER_QUESTION.text, "handover_note": HANDOVER_NOTE,
         }
-        self.page = demo_page.page(build.HERE / "template.html", build.PLACEHOLDER, data).encode("utf-8")
+        self.page = demo_page.page(page_data.TEMPLATE, page_data.PLACEHOLDER, data).encode("utf-8")
 
     def ask(self, asked: str) -> dict[str, Any]:
         """模型從 DEMO_QUESTIONS 選一題。前 6 題的答案和 radar-ask 相同；交班重點回原句（沒經過模型），
@@ -165,6 +151,15 @@ class Demo:
             return rewrite(self.summary, place=self.place, model=model if self.summary.online else None)
         return rewrite_handover(self.summary, place=self.place, model=model)
 
+    def _parts(self, kind: str, text: str) -> dict[str, str]:
+        """text 分成固定在上、不交給模型的開頭（交班重點的地點時段與【重點】；沒有資料時整段都是）與比對的本文。"""
+        if kind != "handover":
+            return {"text": text, "head": "", "body": text}
+        head = handover_head(self.summary, place=self.place) if self.summary.online else \
+            handover_text(self.summary, place=self.place)
+        assert text.startswith(head), "交班重點的原句與改寫都以固定開頭起頭（rewrite.HANDOVER.head）"
+        return {"text": text, "head": head, "body": text[len(head):].removeprefix("\n")}
+
     def compare(self, kind: str) -> dict[str, Any]:
         """沒用模型與用模型的比對。沒通過檢查時 layer 是 template、text 是原句，rejected 寫原因，
         candidate 是模型實際寫的（測試版才給，頁面標「未採用」）；模型出錯或沒有呼叫模型時 candidate 是 None。"""
@@ -173,7 +168,7 @@ class Demo:
         # 有退回原因、卻沒有未採用的文字：模型逾時、出錯或沒有輸出，不是檢查擋下的，頁面要分開寫
         no_reply = bool(result.rejected) and result.candidate is None
         return {
-            "kind": kind, "text": result.text, "layer": result.layer, "model": result.model,
+            "kind": kind, **self._parts(kind, result.text), "layer": result.layer, "model": result.model,
             "prompt_version": result.prompt_version, "seconds": round(time.perf_counter() - started, 2),
             "rejected": list(result.rejected), "candidate": result.candidate, "no_reply": no_reply,
         }

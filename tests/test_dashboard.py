@@ -92,24 +92,29 @@ def test_family_view_is_simulated_and_has_no_caregiver_prompts_or_records(data):
     assert len(family["days"]) == 14
 
 
+def test_period_spanning_midnight_names_both_days(build):
+    """時段取報告的 from／to；跨日時日期寫起訖，和報告開頭「10/13–10/14」一致（2026-11-02）。"""
+    period = build._period({"from": "2026-10-13 23:50:00", "to": "2026-10-14 00:20:00", "visits": [[1, 2]]})
+    assert period == {"day": "10/13–10/14", "from": "23:50", "to": "00:20", "visits": 1}
+    same_day = build._period({"from": "2026-10-14 08:00:00", "to": "2026-10-14 11:59:00", "visits": []})
+    assert same_day["day"] == "10/14"
+
+
 def test_family_view_only_reads_the_simulated_morning(build, monkeypatch):
     """家屬畫面不能被拿去跑實測資料：dashboard_data 不接受資料路徑，demo_data 只拿到模擬上午（原樣或平靜版）。"""
     import inspect
 
+    import page_data
+
     assert not inspect.signature(build.dashboard_data).parameters
     seen = []
-    real = build._load_build
+    original = page_data.demo_data
 
-    def spy():
-        module = real()
-        original = module.demo_data
-        def demo_data(events=None, place=module.PLACE, records=None):
-            seen.append((events, {r["topic"] for r in records}))
-            return original(events, place, records)
-        module.demo_data = demo_data
-        return module
+    def demo_data(events=None, place=page_data.PLACE, records=None):
+        seen.append((events, {r["topic"] for r in records}))
+        return original(events, place, records)
 
-    monkeypatch.setattr(build, "_load_build", spy)
+    monkeypatch.setattr(page_data, "demo_data", demo_data)
     build.dashboard_data()
     assert seen and all(e is None and topics == {"radar10/DEMO-SIM-01"} for e, topics in seen)
 

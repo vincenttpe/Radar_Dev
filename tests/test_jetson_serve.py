@@ -291,6 +291,29 @@ def test_event_summary_can_be_compared_too(server):
     assert data["text"] == caregiver_text(demo.summary, place=demo.place) and data["candidate"] is None
 
 
+def test_comparison_returns_the_fixed_head_and_the_compared_body_separately(server):
+    """交班重點的開頭（地點時段、【重點】）不交給模型：服務分好 head 與 body，頁面不再依行數切（2026-11-02）。"""
+    from radar_agent.caregiver import caregiver_text, handover_head
+
+    demo, url = server(Echoing())
+    _, handover = _compare(url)
+    assert handover["layer"] == "model" and handover["head"] == handover_head(demo.summary, place=demo.place)
+    assert handover["body"] == caregiver_text(demo.summary, place=demo.place)
+    assert handover["text"] == f"{handover['head']}\n{handover['body']}"
+    _, summary = _compare(url, kind="summary")
+    assert (summary["head"], summary["body"]) == ("", summary["text"])
+
+
+def test_without_data_the_whole_handover_is_the_head(server):
+    from radar_agent.caregiver import handover_text
+    from radar_agent.device_events import summarize
+
+    demo, url = server(Echoing())
+    demo.summary = summarize([])
+    _, data = _compare(url)
+    assert (data["head"], data["body"]) == (handover_text(demo.summary, place=demo.place), "")
+
+
 def test_unknown_comparison_is_404(server):
     _, url = server(PickFirst())
     assert _compare(url, kind="kg")[0] == 404

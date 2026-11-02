@@ -472,9 +472,9 @@ async function chatHandover(answer) {
     refill(pending, ["沒有改寫結果。"], "連不上這台 Jetson 上的服務");
     return;
   }
-  const body = text => text.split("\n").slice(2);  // 前兩行（地點與時段、【重點】）不經過模型，上一則已列
+  // 開頭（地點與時段、【重點】）不經過模型，上一則已列：服務分好 head 與 body，這裡只列 body
   const took = `${r.model} · ${r.seconds.toFixed(1)} 秒`;
-  if (r.layer === "model") refill(pending, body(r.text), `經過在地模型改寫 · ${took} · 已比對數字與時刻；意思請對照上一則原句`);
+  if (r.layer === "model") refill(pending, r.body.split("\n"), `經過在地模型改寫 · ${took} · 已比對數字與時刻；意思請對照上一則原句`);
   else if (r.no_reply) refill(pending, ["沒有改寫結果。"], `${took} · 在地模型沒有回應（${r.rejected.join("、")}）`);
   else if (r.candidate) {
     refill(pending, ["未採用（沒通過檢查，讀者看到的是上一則原句）：", ...r.candidate.split("\n")], `${took} · 沒通過檢查：${r.rejected.join("、")}`);
@@ -483,7 +483,7 @@ async function chatHandover(answer) {
 }
 if (LIVE) {
   const handoverButton = el("button", null, LIVE.handover_question); handoverButton.type = "button";
-  handoverButton.onclick = () => { say("reader", [LIVE.handover_question]); chatHandover(`${LIVE.handover_note}\n${LIVE.compare.handover}`); };
+  handoverButton.onclick = () => { say("reader", [LIVE.handover_question]); chatHandover(`${LIVE.handover_note}\n${LIVE.compare.handover.text}`); };
   $("ask-menu").append(handoverButton); askButtons.push(handoverButton);
   $("src-note").textContent = `非真實裝置紀錄；裝置名稱 DEMO-SIM-01，沒有任何長者資料。句子由範本產生；打字提問由這台 Jetson 上的在地模型（${LIVE.model}）選題；提問不寫進本服務的紀錄。`;
   $("ask-hint").textContent = "打字提問由這台 Jetson 上的在地模型對到下面其中一題，先問「您是想問……嗎？」，按「對」才顯示答案。答案是固定句型，不是模型寫的。也可以直接點題目。";
@@ -511,24 +511,19 @@ if (LIVE) {
 }
 
 // 沒用模型／用模型的比對（測試版，2026-10-29）：左邊規則產生的原句，右邊在地模型改寫，讓人逐句對照。
-// 交班重點的前兩行（地點與時段、【重點】）固定在上；事件摘要整段都比。沒通過檢查的模型輸出也列出並標「未採用」：
+// 交班重點的開頭（地點與時段、【重點】）固定在上；事件摘要整段都比。沒通過檢查的模型輸出也列出並標「未採用」：
 // 讀者正式看到的仍是左邊的原句。檢查擋不到所有意思上的偏移（docs/21「已知限制」），所以模型版一定和原句一起顯示
 let cmp = null;  // 服務回的比對結果；null 表示還沒按或改寫中
 let cmpKind = null;   // 正在比對哪一段：summary 或 handover
 let compareRun = 0;  // 每按一次或重播一次加一：舊的請求晚回來就丟掉，不畫到重播中的畫面上
 const paras = (box, text) => box.replaceChildren(...(text ? text.split("\n").map(line => el("p", null, line)) : []));
-const splitHead = text => {
-  if (cmpKind !== "handover") return ["", text];
-  const parts = text.split("\n");
-  return [parts.slice(0, 2).join("\n"), parts.slice(2).join("\n")];
-};
 function clearCompare(meta) {
   paras($("compare-head"), ""); paras($("compare-orig"), ""); paras($("compare-model"), "");
   $("compare-cols").hidden = true; $("compare-tag").hidden = true; $("compare-meta").textContent = meta;
 }
 function paintCompare(pending) {
   if (cmp && cmp.fatal) { clearCompare(cmp.error); return; }  // 原句本身沒過檢查：什麼都不顯示
-  const [head, body] = splitHead(LIVE.compare[cmpKind]);
+  const { head, body } = LIVE.compare[cmpKind];  // 開頭與本文由服務分好（jetson_serve.Demo._parts）
   paras($("compare-head"), head); paras($("compare-orig"), body);
   $("compare-cols").hidden = !body;  // 沒有收到資料時只有前兩行，沒有可以對照的內容
   const model = $("compare-model"), meta = $("compare-meta"), tag = $("compare-tag");
@@ -538,7 +533,7 @@ function paintCompare(pending) {
   if (!cmp) { paras(model, ""); meta.textContent = ""; return; }
   const took = cmp.seconds != null ? ` · ${cmp.seconds.toFixed(1)} 秒` : "";
   if (cmp.layer === "model") {
-    paras(model, splitHead(cmp.text)[1]);
+    paras(model, cmp.body);
     meta.textContent = `在地模型改寫 · ${cmp.model}${took} · 已比對數字與時刻；意思請對照原句`;
   } else if (cmp.layer === "error") {
     paras(model, "沒有改寫結果。"); meta.textContent = cmp.error;
