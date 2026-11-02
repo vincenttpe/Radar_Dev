@@ -57,11 +57,25 @@
 | 欄位 | 說明 |
 |---|---|
 | `job_id` | Dashboard 自己的編號，傳回結果時帶回 |
-| `kind` | `report`（報告）或 `ask`（打字提問）；之後才加 `trend` |
+| `kind` | `report`（報告）、`ask`（打字提問）或 `pick`（在選單上點題）；之後才加 `trend` |
 | `device` | 裝置代號（不是 MAC） |
 | `place` | 地點名稱，會寫進文字；不放長者姓名 |
 | `from`、`to` | 範圍含開始、不含結束；格式 `YYYY-MM-DD HH:MM:SS`，和紀錄一樣不帶時區（A49） |
 | `question` | 只有 `ask` 有：使用者打的提問原文（最多 100 字） |
+| `question_id` | 只有 `pick` 有：選單上的題號，例如 `visits`（見下面「提問的兩種方式」） |
+
+### 提問的兩種方式（2026-11-02 使用者說明）
+
+Dashboard 依登入 ID 判斷要交給哪一台 Jetson，把那個機構的裝置事件交給 Jetson（②）。提問有兩種送法：
+
+| 使用者在 Dashboard 上 | 需求 | Jetson 回 | Dashboard 顯示 |
+|---|---|---|---|
+| 在選單上點一題 | `pick` 加 `question_id` | `event-ask-v0`：固定句型的答案，不經過模型 | 直接顯示 `answer` |
+| 打字問 | `ask` 加 `question` | `event-ask-v0`：在地模型把提問歸類到選單的一題，同一次就附上確認句 `confirm` 和答案 `answer` | 先顯示 `confirm`（「您是想問……嗎？」）；按「對」才顯示 `answer`，按「不對」就顯示 `menu` 讓使用者點題 |
+| 打字問，但歸類不到任何一題 | `ask` | `question`、`answer` 都是 `null`，附上 `retry_message` 與 `menu` | 照原文顯示 `retry_message`（「沒有對應到固定問題。請換個說法再問一次，或從選單選一題。」）和 `menu` |
+
+- 確認只要一次往返：答案和確認句一起回，使用者按「對」就能馬上看到答案，不必再等 Jetson 一輪（2026-11-02 決定）。
+- 提示句 `retry_message` 由本 repo 產生、檢查用語，Dashboard 照原文顯示，不自己寫句子（2026-11-02 決定）。
 
 ## ② 取裝置事件：`GET /api/v1/devices/{device}/records?from=…&to=…&cursor=…`
 
@@ -94,7 +108,7 @@
 
 | `status` | 意思 | `result` |
 |---|---|---|
-| `done` | 產生了文字 | `caregiver-report-v0` 或 `event-ask-v0` 的 JSON，原樣顯示 |
+| `done` | 產生了文字 | 報告是 `caregiver-report-v0`，提問與點題是 `event-ask-v0`，原樣顯示 |
 | `rejected` | 文字沒通過輸出檢查，不交出任何文字 | `null`；原因在 `problems`，畫面寫「報告沒有產生」，不要自己補字 |
 | `failed` | 取資料失敗等，沒辦法產生 | `null`；原因在 `problems` |
 

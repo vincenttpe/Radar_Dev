@@ -111,8 +111,9 @@ def test_cli_json_keeps_the_event_ask_v0_fields_and_six_question_menu(capsys):
     """Dashboard 讀的 event-ask-v0：欄位與 6 題選單固定（2026-11-02 提問流程改吃選單時鎖住，不能跟著 Demo 變）。"""
     code, out, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--pick", "falls", "--json")
     data = json.loads(out)
-    assert code == 0 and set(data) == {"schema", "question", "confirm", "answer", "menu", "model", "prompt_version",
-                                       "seconds", "from", "to", "rejected", "text_layer"}
+    assert code == 0 and set(data) == {"schema", "question", "confirm", "answer", "retry_message", "menu", "model",
+                                       "prompt_version", "seconds", "from", "to", "rejected", "text_layer"}
+    assert data["retry_message"] is None
     assert (data["schema"], data["text_layer"], data["model"], data["prompt_version"]) == (
         "event-ask-v0", "template", None, None)
     assert [m["id"] for m in data["menu"]] == ["falls", "calls", "longstay", "visits", "offline", "alerts"]
@@ -262,3 +263,15 @@ def test_prompt_version_is_bumped_when_the_prompt_or_menu_changes():
 
     assert (EVENT_MENU.prompt_version, menu_digest(EVENT_MENU)) == ("event-prompt-v1", "e8fa8590ffbc5d73"), \
         "EVENT_QUESTIONS 或 ask.build_prompt 改了：升 event_ask.PROMPT_VERSION，再更新這裡的版本與雜湊"
+
+
+def test_an_unmatched_question_comes_back_with_a_retry_message_that_passes_the_wording_check(capsys):
+    """對不到題目時，提示句由本 repo 產生，Dashboard 照原文顯示（2026-11-02 決定）。"""
+    from radar_agent.event_ask import RETRY_MESSAGE
+    from radar_agent.output_check import wording_problems
+
+    code, out, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--question", "今天天氣如何", "--cmd", "echo 0", "--json")
+    data = json.loads(out)
+    assert code == 0 and (data["question"], data["answer"]) == (None, None)
+    assert data["retry_message"] == RETRY_MESSAGE == "沒有對應到固定問題。請換個說法再問一次，或從選單選一題。"
+    assert wording_problems(RETRY_MESSAGE) == [] and len(data["menu"]) == 6

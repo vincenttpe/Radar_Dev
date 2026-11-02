@@ -1,7 +1,7 @@
 """照 docs/23 API 草案寫的假 Dashboard：只聽 127.0.0.1，資料是模擬上午（data/samples_demo/），內部試跑與測試用。
 
 讓 Jetson 端的連線程式（radar_agent.dashboard_link）在真實 Dashboard 約定之前，就能走一遍
-「取需求 → 分頁取裝置事件 → 產生 → 傳回」。啟動時佇列裡有三筆需求（報告、提問、範圍比資料長的報告），
+「取需求 → 分頁取裝置事件 → 產生 → 傳回」。啟動時佇列裡有四筆需求（報告、打字提問、點題、範圍比資料長的報告），
 Jetson 傳回的結果印在終端機。不是給 Dashboard 照抄的實作，只示範草案的請求與回應長什麼樣子。
 
     python demo/fake_dashboard.py            # → http://127.0.0.1:8770，token 是 demo-token
@@ -32,6 +32,9 @@ JOBS: list[dict[str, Any]] = [
      "from": "2026-10-14 08:00:00", "to": "2026-10-14 12:00:00"},
     {"job_id": "j-2", "kind": "ask", "device": DEVICE, "place": page_data.PLACE,
      "from": "2026-10-14 08:00:00", "to": "2026-10-14 12:00:00", "question": "早上有人跌倒嗎"},
+    # 讀者在選單上點題（不經過模型）
+    {"job_id": "j-4", "kind": "pick", "device": DEVICE, "place": page_data.PLACE,
+     "from": "2026-10-14 08:00:00", "to": "2026-10-14 12:00:00", "question_id": "visits"},
     # 要到 14:00、資料只到 11:59：傳回時 complete 是 false，畫面要寫「資料到幾點」
     {"job_id": "j-3", "kind": "report", "device": DEVICE, "place": page_data.PLACE,
      "from": "2026-10-14 11:00:00", "to": "2026-10-14 14:00:00"},

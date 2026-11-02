@@ -123,6 +123,7 @@ Dashboard 的 Logs 頁已經能依時間篩選、匯出 NDJSON（2026-10-23 截�
 | `question` | 對到的題目 `{id, text}`；對不到時是 `null` |
 | `confirm` | 「您是想問「……」嗎？」 |
 | `answer` | 答案，開頭寫出涵蓋的時段（例如「1 號廁所 10/14 08:00–11:59：」）；對不到題目或答案沒通過檢查時是 `null` |
+| `retry_message` | 對不到題目時給讀者的提示，照原文顯示；對到題目時是 `null`（2026-11-02 新增） |
 | `menu` | 全部六題 `{id, text}`，對不到時讓照護人員自己點 |
 | `model`、`prompt_version` | 用了哪個模型、哪一版 prompt（含選單；事件提問是 `event-prompt-v1`，2026-10-28 起，之前記成 `ask-v0`） |
 | `seconds` | 模型對應花的秒數 |
@@ -133,7 +134,7 @@ Dashboard 的 Logs 頁已經能依時間篩選、匯出 NDJSON（2026-10-23 截�
 
 1. 照護人員在輸入框打字送出。
 2. 有 `question`：先顯示 `confirm`，按「是」才顯示 `answer`；按「不是」就顯示 `menu`。
-3. 沒有 `question`：直接顯示 `menu`。點選單時改呼叫 `radar-ask ... --pick 題目id --json`，不經過模型。
+3. 沒有 `question`：顯示 `retry_message` 與 `menu`。點選單時改送 `pick` 需求（`docs/23`「提問的兩種方式」；命令列是 `radar-ask ... --pick 題目id --json`），不經過模型。
 4. 答案旁固定標出 `model` 與 `seconds`，例如「在地模型 Gemma 4 E4B · 1.2 秒」，並標出 `from`–`to`。
 5. 「在 Jetson 本機執行、提問與資料不出場域」照部署設定顯示：Dashboard 端設一個開關，實際部署在 Jetson 上才打開（2026-10-19 決定），不要寫死。
 

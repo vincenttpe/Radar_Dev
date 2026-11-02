@@ -37,6 +37,8 @@ EVENT_QUESTIONS: tuple[Question, ...] = (
     Question("alerts", "有哪些警報？要怎麼處理？"),
 )
 _BY_ID = {q.id: q for q in EVENT_QUESTIONS}
+# 對不到題目時給讀者的提示（2026-11-02 決定由本 repo 產生，Dashboard 照原文顯示，不自己寫句子）
+RETRY_MESSAGE = "沒有對應到固定問題。請換個說法再問一次，或從選單選一題。"
 
 
 def answer(question_id: str, summary: Summary, *, place: str) -> str:
@@ -120,6 +122,7 @@ class Reply:
             "question": {"id": q.id, "text": q.text} if q else None,
             "confirm": confirm_text(q) if q else None,
             "answer": self.answer,
+            "retry_message": RETRY_MESSAGE if q is None else None,
             "menu": [{"id": m.id, "text": m.text} for m in menu.questions],
             "model": self.match.model,
             "prompt_version": self.match.prompt_version,

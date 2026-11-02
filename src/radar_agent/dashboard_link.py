@@ -26,14 +26,15 @@ from typing import Any, Protocol
 
 from radar_agent.caregiver import OutputRejected, report_data
 from radar_agent.device_events import summarize
-from radar_agent.event_ask import ask_events
+from radar_agent.event_ask import EVENT_QUESTIONS, ask_events, pick
 from radar_agent.local_model import add_model_args, model_from_args
 from radar_agent.rewrite import Model
 from radar_agent.time_range import in_range, parse_bound
 
 TOKEN_ENV = "RADAR_DASHBOARD_TOKEN"
 POLL_SECONDS = 5.0  # 暫定（docs/23）：延遲以模型秒數為主，輪詢間隔不是瓶頸
-KINDS = ("report", "ask")  # 第一階段只做報告與提問；趨勢要 14 天資料，之後再加
+# 第一階段：報告、打字提問（ask，在地模型選題號）、在選單上點題（pick，不經過模型）；趨勢要 14 天資料，之後再加
+KINDS = ("report", "ask", "pick")
 # 只有本機的假 Dashboard 可以用 http；其他一律 HTTPS（docs/adr/0009）
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 MAX_PAGES = 1000  # 一段時間最多取幾頁：Dashboard 一直回同一個 next_cursor 時不會無限迴圈
@@ -48,7 +49,7 @@ CLOCK_FLOOR = datetime(2026, 11, 1, tzinfo=UTC)
 
 @dataclass(frozen=True)
 class Job:
-    """一筆需求（docs/23 ①）。question 只有 kind 為 ask 時才有。"""
+    """一筆需求（docs/23 ①）。question 只有 kind 為 ask 時才有，question_id 只有 kind 為 pick 時才有。"""
 
     job_id: str
     kind: str
@@ -57,6 +58,7 @@ class Job:
     start: str
     end: str
     question: str | None = None
+    question_id: str | None = None
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Job:
@@ -71,10 +73,13 @@ class Job:
             raise ValueError("提問不是文字")
         if data["kind"] == "ask" and not (question or "").strip():
             raise ValueError("提問需求沒有提問")
+        question_id = data.get("question_id")
+        if data["kind"] == "pick" and question_id not in {q.id for q in EVENT_QUESTIONS}:
+            raise ValueError("點題需求的題號不在選單裡")
         parse_bound(str(data["from"]))
         parse_bound(str(data["to"]))
         return cls(str(data["job_id"]), data["kind"], str(data["device"]), str(data["place"]),
-                   str(data["from"]), str(data["to"]), question)
+                   str(data["from"]), str(data["to"]), question, question_id if data["kind"] == "pick" else None)
 
 
 @dataclass
@@ -184,6 +189,8 @@ def handle(data: dict[str, Any], dashboard: Dashboard, model: Model | None) -> d
     try:
         if job.kind == "report":
             body.update(status="done", result=report_data(summary, place=job.place))
+        elif job.kind == "pick":  # 讀者在選單上點題：不經過模型，直接回固定句型的答案
+            body.update(status="done", result=pick(job.question_id or "", summary, place=job.place).data())
         else:
             body.update(status="done", result=ask_events(job.question or "", summary, place=job.place, model=model).data())
     except OutputRejected as e:  # 沒通過輸出檢查：不交出任何文字（radar-caregiver 也一樣）
@@ -262,7 +269,7 @@ def run(dashboard: Dashboard, model: Model | None, *, interval: float = POLL_SEC
 
 
 def _log(line: str) -> None:
-    with contextlib.suppress(OSError):  # stderr 斷了（例如 BrokenPipe）也不讓服務停掉
+    with contextlib.suppress(OSError, ValueError):  # stderr 斷了（BrokenPipe）或被關閉（ValueError）也不讓服務停掉
         print(f"{time.strftime('%H:%M:%S')} {line}", file=sys.stderr, flush=True)
 
 
@@ -270,7 +277,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Jetson 主動向 Dashboard 取需求、產生文字後傳回（docs/23 草案，還沒和 Dashboard 約定）")
     ap.add_argument("--base", required=True, help="Dashboard 的網址（HTTPS；本機的假 Dashboard 可用 http://127.0.0.1:…）")
     ap.add_argument("--interval", type=float, default=POLL_SECONDS, help=f"沒有需求時隔幾秒再問，預設 {POLL_SECONDS:g}")
-    ap.add_argument("--once", action="store_true", help="把目前佇列裡的需求處理完就結束（試跑用）")
+    ap.add_argument("--once", action="store_true",
+                    help="把目前佇列裡的需求處理完就結束（試跑用；遇到沒有編號的需求或 Dashboard 連不上時也會提早結束）")
     add_model_args(ap, required=False)
     args = ap.parse_args(sys.argv[1:] if argv is None else argv)
     now = datetime.now(UTC)
