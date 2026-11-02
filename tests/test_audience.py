@@ -4,7 +4,7 @@
 """
 import pytest
 from test_caregiver import timeline
-from test_rewrite import FakeModel
+from fakes import FakeModel
 
 from radar_agent import kg_rules
 from radar_agent.audience import check_audience

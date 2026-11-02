@@ -2,6 +2,9 @@
 
 事件用 model_eval 的模擬題組（E2 疑似跌倒、回覆沒事；E6 裝置斷線一段），不含真實資料。
 """
+from fakes import FakeModel
+
+from radar_agent.local_model import EchoModel
 from radar_agent.care_record import care_record
 from radar_agent.caregiver import event_notes
 from radar_agent.model_eval import PLACE, event_cases
@@ -11,18 +14,6 @@ CASES = {c.id: c.source for c in event_cases()}
 
 def draft(case: str) -> str:
     return "\n".join(n.record for n in event_notes(CASES[case], PLACE))
-
-
-class Scripted:
-    name = "scripted"
-
-    def __init__(self, reply: str):
-        self.reply = reply
-        self.prompts: list[str] = []
-
-    def __call__(self, prompt: str) -> str:
-        self.prompts.append(prompt)
-        return self.reply
 
 
 def test_without_a_model_the_record_is_the_one_line_per_event_draft():
@@ -35,15 +26,15 @@ GOOD_E2 = "09:06 於1 號廁所，雷達偵測到疑似跌倒，語音詢問 10 
 
 
 def test_model_rewrite_that_keeps_every_fact_is_adopted():
-    model = Scripted(GOOD_E2)
+    model = FakeModel(GOOD_E2)
     out = care_record(CASES["E2"], place=PLACE, model=model)
-    assert (out.layer, out.text, out.model, out.rejected) == ("model", GOOD_E2, "scripted", ())
+    assert (out.layer, out.text, out.model, out.rejected) == ("model", GOOD_E2, "fake-0.1", ())
     assert out.prompt_version == "record-v0"
     assert draft("E2") in model.prompts[0]
 
 
 def rejected(case: str, reply: str) -> tuple[str, ...]:
-    out = care_record(CASES[case], place=PLACE, model=Scripted(reply))
+    out = care_record(CASES[case], place=PLACE, model=FakeModel(reply))
     assert out.layer == "template" and out.text == draft(case)
     return out.rejected
 
@@ -76,42 +67,28 @@ def test_too_long_falls_back():
     assert any(r.startswith("長度") for r in rejected("E2", GOOD_E2 + "，" * 200))
 
 
-class Broken:
-    name = "broken"
-
-    def __call__(self, prompt: str) -> str:
-        raise TimeoutError
-
-
 def test_model_error_falls_back():
-    out = care_record(CASES["E2"], place=PLACE, model=Broken())
+    out = care_record(CASES["E2"], place=PLACE, model=FakeModel(error=TimeoutError()))
     assert (out.layer, out.rejected) == ("template", ("模型錯誤：TimeoutError",))
 
 
 def test_no_events_means_no_record_and_no_model_call():
-    model = Scripted("不該被用到")
+    model = FakeModel("不該被用到")
     out = care_record(CASES["E9"], place=PLACE, model=model)
     assert (out.text, out.layer) == ("", "template")
     assert model.prompts == []
 
 
 def test_institution_sample_is_given_to_the_model_as_a_style_example():
-    model = Scripted(GOOD_E2)
+    model = FakeModel(GOOD_E2)
     care_record(CASES["E2"], place=PLACE, model=model, style="【時間】事件經過。處置：……")
     assert "【時間】事件經過。處置：……" in model.prompts[0]
-
-
-class Echo:
-    name = "echo"
-
-    def __call__(self, prompt: str) -> str:
-        return prompt.rsplit("原文：\n", 1)[-1]
 
 
 def test_copying_the_draft_is_adopted_for_every_simulated_case():
     """草稿本身要通過檢查；否則模型怎麼寫都會被退回。"""
     for case, summary in CASES.items():
-        out = care_record(summary, place=PLACE, model=Echo())
+        out = care_record(summary, place=PLACE, model=EchoModel())
         assert out.rejected == (), (case, out.rejected)
 
 
@@ -122,7 +99,7 @@ def test_empty_model_output_falls_back():
 def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
     """紀錄只記 prompt_version；照護紀錄的 prompt 或採用的檢查改了卻沒升版，就分不出一筆退回是哪一套規則（原則 3）。
     2026-11-02 起規則清單寫在 care_record.RECORD.rules，這裡不另外手列。"""
-    from test_rewrite import kind_digest
+    from fingerprints import kind_digest
 
     from radar_agent.care_record import RECORD
 
@@ -132,7 +109,7 @@ def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
 
 def test_the_style_sample_only_changes_the_prompt():
     """機構格式樣本只是寫法示範：放進 prompt，版本與檢查不變。"""
-    model = Scripted(GOOD_E2)
+    model = FakeModel(GOOD_E2)
     out = care_record(CASES["E2"], place=PLACE, model=model, style="（去識別的格式樣本）")
     assert "（去識別的格式樣本）" in model.prompts[0] and draft("E2") in model.prompts[0]
     assert (out.layer, out.prompt_version) == ("model", "record-v0")

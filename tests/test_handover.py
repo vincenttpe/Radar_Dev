@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 from test_caregiver import timeline
-from test_rewrite import FakeModel, kind_digest
+from fakes import FakeModel
+from fingerprints import kind_digest
 
 from radar_agent.caregiver import caregiver_text, handover_text, highlights
 from radar_agent.device_events import read_records, summarize

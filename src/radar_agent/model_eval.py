@@ -35,15 +35,14 @@ from typing import Any
 
 from radar_agent import kg_rules
 from radar_agent.ask import PROMPT_VERSION as ASK_PROMPT_VERSION
-from radar_agent.ask import Match, Question, match_question
+from radar_agent.ask import Match, Menu, Question, match_question
 from radar_agent.care_record import care_record
 from radar_agent.caregiver import event_notes
 # 模型類別搬到 local_model.py；這裡保留匯入，舊的匯入路徑（測試、文件）照常可用
 from radar_agent.local_model import CommandModel, EchoModel, HttpChatModel, add_model_args, model_from_args  # noqa: F401
 from radar_agent.text_metrics import bleu, rouge_1, rouge_l
 from radar_agent.device_events import Summary, summarize
-from radar_agent.event_ask import EVENT_QUESTIONS
-from radar_agent.event_ask import PROMPT_VERSION as EVENT_PROMPT_VERSION
+from radar_agent.event_ask import DEMO_MENU, EVENT_MENU
 from radar_agent.kg_rules import Assessment
 from radar_agent.rewrite import Rewritten, rewrite
 
@@ -154,13 +153,13 @@ def all_cases() -> list[Case]:
 
 # 提問對應的題組：固定問題清單（照 demo/kg_build.py 居服員與家屬的題目）與讀者可能的打法。
 # expected 為 None 的是清單沒有、應該回 0 的提問（醫療問題、閒聊）。
-ASK_MENU: list[Question] = [
+ASK_MENU = Menu((
     Question("walk", "這週走路的狀況怎麼樣？"),
     Question("how", "步速是怎麼算出來的？"),
     Question("others", "起身和平衡的狀況呢？"),
     Question("advice", "可以怎麼陪伴活動？"),
     Question("compare", "和上週比起來呢？"),
-]
+), ASK_PROMPT_VERSION)
 
 
 @dataclass(frozen=True)
@@ -245,14 +244,25 @@ EVENT_ASK_CASES: list[AskCase] = [
     AskCase("V35", "幫我寫一份交班紀錄", None),
 ]
 
+# Jetson 內部 Demo 的 7 題選單（event_ask.DEMO_MENU，2026-11-02）：多了第 7 題之後，原本 6 題的問法也可能被誤對到
+# 交班重點，所以 V1–V34 照樣測；V35 在這份選單裡對到交班重點（2026-10-30 決定）。H 開頭是交班的問法。
+DEMO_ASK_CASES: list[AskCase] = [
+    *(AskCase("V35", c.asked, "handover") if c.id == "V35" else c for c in EVENT_ASK_CASES),
+    AskCase("H1", "交接報告", "handover"),
+    AskCase("H2", "幫我整理交班重點", "handover"),
+    AskCase("H3", "交班重點", "handover"),
+    AskCase("H4", "下一班要注意什麼", "handover"),
+    AskCase("H5", "幫我做交班", "handover"),
+    AskCase("H6", "整理一下這班的狀況給下一班", "handover"),
+]
 
-def evaluate_asks(model: Any, cases: list[AskCase], *, menu: list[Question] | None = None,
+
+def evaluate_asks(model: Any, cases: list[AskCase], *, menu: Menu = ASK_MENU,
                   clock: Callable[[], float] = time.perf_counter) -> tuple[str, list[AskResult]]:
-    questions = ASK_MENU if menu is None else menu
     results = []
     for case in cases:
         started = clock()
-        match = match_question(case.asked, questions, model=model)
+        match = match_question(case.asked, menu, model=model)
         results.append(AskResult(case, match, clock() - started))
     return model.name, results
 
@@ -396,6 +406,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--show", action="store_true", help="印出被採用的模型輸出")
     ap.add_argument("--questions", action="store_true", help="改量提問對應（打字提問對到哪一個固定問題）")
     ap.add_argument("--event-questions", action="store_true", help="改量事件提問（radar-ask 的題目）")
+    ap.add_argument("--demo-questions", action="store_true", help="改量 Jetson 內部 Demo 的 7 題提問（多了交班重點）")
     ap.add_argument("--records", action="store_true", help="改量照護紀錄改寫")
     ap.add_argument("--references", help="--records 用：參考紀錄 JSON（{題號: 紀錄}），有它才算 BLEU、ROUGE")
     ap.add_argument("--style", help="--records 用：機構紀錄格式樣本（文字檔，需先去識別）")
@@ -408,14 +419,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.reasoning_effort is not None:  # 開不開思維鏈結果差很多，報告上要看得出這次用了什麼設定
         print(f"設定：reasoning_effort={args.reasoning_effort}")
-    if args.questions:  # 印出提示詞版本：選單改過時，評估結果才分得出量的是哪一版
-        print(f"提示詞版本：{ASK_PROMPT_VERSION}")
-        print(report_asks(evaluate_asks(model, ASK_CASES)))
-        return 0
-    if args.event_questions:
-        print(f"提示詞版本：{EVENT_PROMPT_VERSION}")
-        print(report_asks(evaluate_asks(model, EVENT_ASK_CASES, menu=EVENT_QUESTIONS)))
-        return 0
+    # 印出提示詞版本：選單改過時，評估結果才分得出量的是哪一版
+    for flag, menu, ask_cases in ((args.questions, ASK_MENU, ASK_CASES), (args.event_questions, EVENT_MENU, EVENT_ASK_CASES),
+                                  (args.demo_questions, DEMO_MENU, DEMO_ASK_CASES)):
+        if flag:
+            print(f"提示詞版本：{menu.prompt_version}")
+            print(report_asks(evaluate_asks(model, ask_cases, menu=menu)))
+            return 0
     if args.records:
         refs = json.loads(Path(args.references).read_text(encoding="utf-8")) if args.references else None
         style = Path(args.style).read_text(encoding="utf-8") if args.style else None

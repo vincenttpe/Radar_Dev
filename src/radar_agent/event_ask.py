@@ -16,26 +16,26 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from radar_agent.ask import Match, Question, match_question
+from radar_agent.ask import Match, Menu, Question, match_question
 from radar_agent.caregiver import SUMMARY_TOPICS, period_head, topic_sentences
 from radar_agent.device_events import Summary, read_records, summarize
 from radar_agent.local_model import add_model_args, model_from_args
 from radar_agent.output_check import check_output
-from radar_agent.rewrite import Model
+from radar_agent.rewrite import Model, rewrite_handover
 
 SCHEMA = "event-ask-v0"
 # 提示詞（ask.build_prompt）加上 EVENT_QUESTIONS 的版本，記進每次提問的紀錄（prompt_version）。
 # 改了 EVENT_QUESTIONS 或 ask.build_prompt 都要升版：v1 是 2026-10-28 longstay 題目加上「久待警報有幾次」
 PROMPT_VERSION = "event-prompt-v1"
 
-EVENT_QUESTIONS: list[Question] = [
+EVENT_QUESTIONS: tuple[Question, ...] = (
     Question("falls", "有沒有人跌倒？"),
     Question("calls", "有沒有人主動呼救？"),
     Question("longstay", "有沒有人待太久？久待警報有幾次？"),
     Question("visits", "用了幾次？最久待多久？"),
     Question("offline", "裝置有沒有斷線？"),
     Question("alerts", "有哪些警報？要怎麼處理？"),
-]
+)
 _BY_ID = {q.id: q for q in EVENT_QUESTIONS}
 
 
@@ -54,6 +54,52 @@ def confirm_text(question: Question) -> str:
     return f"您是想問「{question.text}」嗎？"
 
 
+# 一題的答案：(文字, 沒通過的原因)。文字是 None 時不顯示答案，原因寫在 rejected
+Answer = Callable[[Question, Summary, str], tuple[str | None, tuple[str, ...]]]
+
+
+@dataclass(frozen=True)
+class EventMenu(Menu):
+    """事件提問的一份選單：題目與 prompt 版本（Menu），加上輸出格式名稱與「答案從哪來」（2026-11-02）。"""
+
+    schema: str
+    answer: Answer
+
+
+def checked_answer(question: Question, summary: Summary, place: str) -> tuple[str | None, tuple[str, ...]]:
+    text = answer(question.id, summary, place=place)
+    problems = check_output(text, summary, place=place)
+    return (None, tuple(problems)) if problems else (text, ())
+
+
+EVENT_MENU = EventMenu(EVENT_QUESTIONS, PROMPT_VERSION, SCHEMA, checked_answer)
+
+
+# ── Jetson 內部 Demo 的 7 題選單（docs/21）：多一題「交班重點」────────────
+# 只在 Jetson 內部 Demo（2026-10-30 決定）；radar-ask 與 Dashboard 仍是上面的 6 題。2026-11-02 從 demo/jetson_serve.py
+# 搬來，model_eval 才能用同一份選單評估（--demo-questions）。「幫我寫一份交班紀錄」也對到這一題，答案開頭註明不是正式紀錄。
+# 題目或 ask.build_prompt 改了要升 DEMO_PROMPT_VERSION（tests/test_jetson_serve.py 會檢查）
+# 題目文字就是確認句裡的「您是想問『幫我整理交班重點』嗎？」。只寫「交班重點」實測有 2 題對錯題（2026-10-30）
+HANDOVER_QUESTION = Question("handover", "幫我整理交班重點")
+HANDOVER_NOTE = "以下是交班重點，不是機構的正式交班紀錄。"
+DEMO_PROMPT_VERSION = "jetson-demo-ask-v0"
+DEMO_SCHEMA = "jetson-demo-ask-v0"  # 選單 7 題、多了 handover，和 Dashboard 用的 event-ask-v0 不同
+
+
+def _demo_answer(question: Question, summary: Summary, place: str) -> tuple[str | None, tuple[str, ...]]:
+    """前 6 題和 radar-ask 相同；交班重點回原句（沒經過模型），頁面再另外拿模型改寫的版本並排比對。
+    原句沒通過輸出檢查時不交出文字、寫出原因，和前 6 題一致。"""
+    if question.id != HANDOVER_QUESTION.id:
+        return checked_answer(question, summary, place)
+    try:
+        return f"{HANDOVER_NOTE}\n{rewrite_handover(summary, place=place).text}", ()
+    except ValueError as e:
+        return None, (str(e),)
+
+
+DEMO_MENU = EventMenu((*EVENT_QUESTIONS, HANDOVER_QUESTION), DEMO_PROMPT_VERSION, DEMO_SCHEMA, _demo_answer)
+
+
 @dataclass(frozen=True)
 class Reply:
     """一次提問的結果。刻意不存讀者打的原文（可能有姓名），只記對到哪一題。"""
@@ -64,15 +110,16 @@ class Reply:
     problems: tuple[str, ...] = ()
     # 答案涵蓋的時間：題目不解析「今天早上」這類時段，畫面要標出答案是哪一段資料（2026-10-19 決定）
     period: tuple[str, str] | None = None
+    menu: EventMenu = EVENT_MENU  # 預設是 radar-ask 與 Dashboard 的 6 題
 
     def data(self) -> dict[str, Any]:
-        q = self.match.question
+        q, menu = self.match.question, self.menu
         return {
-            "schema": SCHEMA,
+            "schema": menu.schema,
             "question": {"id": q.id, "text": q.text} if q else None,
             "confirm": confirm_text(q) if q else None,
             "answer": self.answer,
-            "menu": [{"id": m.id, "text": m.text} for m in EVENT_QUESTIONS],
+            "menu": [{"id": m.id, "text": m.text} for m in menu.questions],
             "model": self.match.model,
             "prompt_version": self.match.prompt_version,
             "seconds": round(self.seconds, 2),
@@ -83,12 +130,6 @@ class Reply:
         }
 
 
-def checked_answer(question: Question, summary: Summary, *, place: str) -> tuple[str | None, tuple[str, ...]]:
-    text = answer(question.id, summary, place=place)
-    problems = check_output(text, summary, place=place)
-    return (None, tuple(problems)) if problems else (text, ())
-
-
 def answer_period(summary: Summary) -> tuple[str, str] | None:
     """答案涵蓋的時間（第一筆在線到最後一筆在線）；沒有收到資料時是 None。Jetson 內部 Demo 也用。"""
     if not summary.online:
@@ -96,29 +137,30 @@ def answer_period(summary: Summary) -> tuple[str, str] | None:
     return f"{summary.online[0].start:%Y-%m-%d %H:%M:%S}", f"{summary.online[-1].end:%Y-%m-%d %H:%M:%S}"
 
 
-def ask_events(asked: str, summary: Summary, *, place: str, model: Model | None,
+def ask_events(asked: str, summary: Summary, *, place: str, model: Model | None, menu: EventMenu = EVENT_MENU,
                clock: Callable[[], float] = time.perf_counter) -> Reply:
+    """模型從 menu 選一題，答案由 menu.answer 產生。radar-ask 用 6 題的 EVENT_MENU，Jetson 內部 Demo 用 DEMO_MENU。"""
     started = clock()
-    match = match_question(asked, EVENT_QUESTIONS, model=model, prompt_version=PROMPT_VERSION)
+    match = match_question(asked, menu, model=model)
     seconds = clock() - started
     if match.question is None:
-        return Reply(match, None, seconds, period=answer_period(summary))
-    text, problems = checked_answer(match.question, summary, place=place)
-    return Reply(match, text, seconds, problems, answer_period(summary))
+        return Reply(match, None, seconds, period=answer_period(summary), menu=menu)
+    text, problems = menu.answer(match.question, summary, place)
+    return Reply(match, text, seconds, problems, answer_period(summary), menu)
 
 
 def pick(question_id: str, summary: Summary, *, place: str) -> Reply:
     """讀者直接從選單點題目：不經過模型。"""
     q = _BY_ID[question_id]
-    text, problems = checked_answer(q, summary, place=place)
-    return Reply(Match(q), text, 0.0, problems, answer_period(summary))
+    text, problems = checked_answer(q, summary, place)
+    return Reply(Match(q), text, 0.0, problems, answer_period(summary), EVENT_MENU)
 
 
 def _text(reply: Reply) -> str:
     q = reply.match.question
     if q is None:
         reasons = "、".join(reply.match.rejected)
-        menu = "\n".join(f"{i}. {m.text}" for i, m in enumerate(EVENT_QUESTIONS, start=1))
+        menu = "\n".join(f"{i}. {m.text}" for i, m in enumerate(reply.menu.questions, start=1))
         return f"沒有對應到固定問題（{reasons}）。請從選單選一題：\n{menu}"
     head = confirm_text(q)
     if reply.match.model:

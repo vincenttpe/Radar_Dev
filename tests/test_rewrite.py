@@ -2,13 +2,12 @@
 
 模型以「prompt → 文字」的假模型代替（外部服務的邊界，REVIEW.md 3.5）；範本、檢查都用真的。
 """
-import ast
-import hashlib
-import inspect
-import textwrap
 
 import pytest
 from test_caregiver import timeline
+
+from fakes import FakeModel
+from fingerprints import kind_digest
 
 from radar_agent import kg_rules
 from radar_agent.caregiver import caregiver_text
@@ -19,21 +18,6 @@ PLACE = "1 號廁所"
 ALL_ONLINE = summarize(timeline("09:00:00", "09:30:00", [("09:05:00", "09:13:00"), ("09:20:00", "09:21:30")]))
 # 範本：1 號廁所 10/14：有人使用 2 次，最長一次 8 分鐘。\n沒有跌倒警報、主動呼救或久待警報。
 GOOD = "1 號廁所在 10/14 有人使用 2 次，最久一次待了 8 分鐘；沒有跌倒警報、主動呼救，也沒有久待警報。"
-
-
-class FakeModel:
-    """回固定文字，或丟出指定的例外；記下收到的 prompt。"""
-
-    name = "fake-0.1"
-
-    def __init__(self, reply: str = "", error: Exception | None = None):
-        self.reply, self.error, self.prompts = reply, error, []
-
-    def __call__(self, prompt: str) -> str:
-        self.prompts.append(prompt)
-        if self.error is not None:
-            raise self.error
-        return self.reply
 
 
 def test_without_a_model_the_template_is_used():
@@ -150,31 +134,6 @@ def test_a_rejected_rewrite_keeps_what_the_model_wrote_as_candidate():
 @pytest.mark.parametrize("model", [FakeModel(GOOD), FakeModel(""), FakeModel(error=TimeoutError())])
 def test_candidate_is_empty_when_adopted_or_when_the_model_wrote_nothing(model):
     assert rewrite(ALL_ONLINE, place=PLACE, model=model).candidate is None
-
-
-def rule_digest(*parts: object) -> str:
-    """prompt 與採用檢查的指紋：字串照原樣，函式取語法樹還原的程式碼（不含註解、docstring 與排版）。
-
-    用 ast.unparse 而不是 ast.dump：ast.dump 的輸出在 3.11、3.12、3.13 之間不同（CI 跑 3.11 與 3.12）。
-    output_check 的 check_output、wording_problems 不在指紋裡：報告與提問也共用，改了不代表改寫規則變了。
-    """
-    texts = []
-    for part in parts:
-        if callable(part):
-            tree = ast.parse(textwrap.dedent(inspect.getsource(part)))
-            for node in ast.walk(tree):
-                if (isinstance(node, ast.FunctionDef) and node.body and isinstance(node.body[0], ast.Expr)
-                        and isinstance(node.body[0].value, ast.Constant) and isinstance(node.body[0].value.value, str)):
-                    node.body = node.body[1:] or [ast.Pass()]
-            texts.append(ast.unparse(tree))
-        else:
-            texts.append(repr(part))
-    return hashlib.sha256("\n".join(texts).encode("utf-8")).hexdigest()[:16]
-
-
-def kind_digest(kind) -> str:
-    """一種文字的改寫規則指紋：prompt 加上 kind.rules 列出的程式與常數（規則清單只在 RewriteKind 寫一次）。"""
-    return rule_digest(kind.prompt("{原句}"), *kind.rules)
 
 
 def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():

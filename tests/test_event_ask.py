@@ -3,31 +3,22 @@
 事件用 Demo 模擬資料（data/samples_demo/bathroom_morning.jsonl）與 model_eval 的模擬題組，不含真實資料。
 答案句型於 2026-10-19 確認；用語一改這裡就會失敗。
 """
-import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
+from fakes import FakeModel
+from fingerprints import menu_digest
+
 from radar_agent.device_events import read_records, summarize
-from radar_agent.ask import build_prompt
-from radar_agent.event_ask import EVENT_QUESTIONS, PROMPT_VERSION, answer, ask_events, main, pick
+from radar_agent.event_ask import EVENT_QUESTIONS, answer, ask_events, main, pick
 from radar_agent.model_eval import EVENT_ASK_CASES, PLACE, event_cases
 from radar_agent.output_check import check_output
 
 DEMO = Path(__file__).resolve().parents[1] / "data" / "samples_demo" / "bathroom_morning.jsonl"
 SUMMARY = summarize(read_records(DEMO))
 CASES = {c.id: c.source for c in event_cases()}
-
-
-class Scripted:
-    def __init__(self, reply: str, name: str = "scripted"):
-        self.reply, self.name = reply, name
-        self.prompts: list[str] = []
-
-    def __call__(self, prompt: str) -> str:
-        self.prompts.append(prompt)
-        return self.reply
 
 
 def test_falls_answer_states_disconnection_instead_of_claiming_none():
@@ -64,17 +55,17 @@ def test_quiet_period_says_so():
 
 
 def test_model_picks_a_number_and_the_answer_comes_from_the_facts():
-    model = Scripted("3")
+    model = FakeModel("3")
     reply = ask_events("有人待很久嗎", SUMMARY, place="1 號廁所", model=model)
     data = reply.data()
     assert data["question"]["id"] == "longstay" and data["confirm"] == "您是想問「有沒有人待太久？久待警報有幾次？」嗎？"
     assert data["answer"].startswith("1 號廁所 10/14 08:00–11:59：在線期間久待警報 1 次（10:45）。")
-    assert (data["model"], data["prompt_version"], data["rejected"]) == ("scripted", "event-prompt-v1", [])
+    assert (data["model"], data["prompt_version"], data["rejected"]) == ("fake-0.1", "event-prompt-v1", [])
     assert "有人待很久嗎" not in json.dumps(data, ensure_ascii=False), "不保存讀者打的原文"
 
 
 def test_model_writing_its_own_answer_is_not_used():
-    reply = ask_events("有人跌倒嗎", SUMMARY, place="1 號廁所", model=Scripted("沒有人跌倒"))
+    reply = ask_events("有人跌倒嗎", SUMMARY, place="1 號廁所", model=FakeModel("沒有人跌倒"))
     assert (reply.answer, reply.data()["question"]) == (None, None)
     assert reply.data()["rejected"] == ["模型回答不是單一編號"]
     assert len(reply.data()["menu"]) == len(EVENT_QUESTIONS)
@@ -114,6 +105,18 @@ def test_cli_with_a_command_model_and_json(capsys):
     code, out, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--question", "有人跌倒嗎", "--cmd", "echo 1", "--json")
     data = json.loads(out)
     assert code == 0 and data["question"]["id"] == "falls" and data["model"] == "echo 1"
+
+
+def test_cli_json_keeps_the_event_ask_v0_fields_and_six_question_menu(capsys):
+    """Dashboard 讀的 event-ask-v0：欄位與 6 題選單固定（2026-11-02 提問流程改吃選單時鎖住，不能跟著 Demo 變）。"""
+    code, out, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--pick", "falls", "--json")
+    data = json.loads(out)
+    assert code == 0 and set(data) == {"schema", "question", "confirm", "answer", "menu", "model", "prompt_version",
+                                       "seconds", "from", "to", "rejected", "text_layer"}
+    assert (data["schema"], data["text_layer"], data["model"], data["prompt_version"]) == (
+        "event-ask-v0", "template", None, None)
+    assert [m["id"] for m in data["menu"]] == ["falls", "calls", "longstay", "visits", "offline", "alerts"]
+    assert (data["from"], data["to"]) == ("2026-10-14 08:00:00", "2026-10-14 11:59:55")
 
 
 def test_cli_refuses_models_from_china(capsys):
@@ -255,6 +258,7 @@ def test_every_question_is_a_summary_topic():
 
 def test_prompt_version_is_bumped_when_the_prompt_or_menu_changes():
     """紀錄只記 prompt_version；選單或提示詞改了卻沒升版，就分不出模型當時看到哪一版。"""
-    digest = hashlib.sha256(build_prompt("{提問}", EVENT_QUESTIONS).encode("utf-8")).hexdigest()[:16]
-    assert (PROMPT_VERSION, digest) == ("event-prompt-v1", "e8fa8590ffbc5d73"), \
+    from radar_agent.event_ask import EVENT_MENU
+
+    assert (EVENT_MENU.prompt_version, menu_digest(EVENT_MENU)) == ("event-prompt-v1", "e8fa8590ffbc5d73"), \
         "EVENT_QUESTIONS 或 ask.build_prompt 改了：升 event_ask.PROMPT_VERSION，再更新這裡的版本與雜湊"
