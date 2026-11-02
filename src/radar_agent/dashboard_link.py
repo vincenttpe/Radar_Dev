@@ -10,6 +10,7 @@ token 從環境變數讀，不進 repo、不寫進 log。改這裡屬單向門�
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import sys
@@ -36,6 +37,9 @@ KINDS = ("report", "ask")  # 第一階段只做報告與提問；趨勢要 14 �
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 MAX_PAGES = 1000  # 一段時間最多取幾頁：Dashboard 一直回同一個 next_cursor 時不會無限迴圈
 RETRY_CODES = (408, 429)  # 4xx 裡只有逾時與太多請求值得再送；其他 4xx 是 Dashboard 明確不收
+# 一筆結果最多補送幾次（每輪一次，間隔 POLL_SECONDS，約 1 分鐘）：Dashboard 一直異常時丟掉這筆、記下來，
+# 讓後面的需求能繼續；那筆需求靠 Dashboard 的逾時重發再做一次（docs/23「要確認」）
+MAX_RETRIES = 12
 # 這個版本寫成的時間：系統時間比它早，多半是開機後還沒 NTP 校時（很多 Jetson 載板沒有 RTC 電池），
 # 這時 TLS 會以「憑證還沒生效」失敗，先停下來講清楚
 CLOCK_FLOOR = datetime(2026, 11, 1, tzinfo=UTC)
@@ -70,6 +74,14 @@ class Job:
         parse_bound(str(data["to"]))
         return cls(str(data["job_id"]), data["kind"], str(data["device"]), str(data["place"]),
                    str(data["from"]), str(data["to"]), question)
+
+
+@dataclass
+class Unsent:
+    """還沒送到 Dashboard 的一筆結果，和已經補送過幾次。"""
+
+    body: dict[str, Any]
+    tries: int = 0
 
 
 @dataclass(frozen=True)
@@ -115,13 +127,16 @@ class HttpDashboard:
         handlers: list[Any] = [_NoRedirect()] + ([urllib.request.ProxyHandler({})] if local else [])
         self._opener = urllib.request.build_opener(*handlers)
 
-    def _call(self, method: str, path: str, body: dict[str, Any] | None = None) -> tuple[int, Any]:
+    def _call(self, method: str, path: str, body: dict[str, Any] | None = None, *, parse: bool = True) -> tuple[int, Any]:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else None
         headers = {**self._headers, **({"Content-Type": "application/json"} if data is not None else {})}
         req = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
-        with self._opener.open(req, timeout=self.timeout) as resp:  # 4xx、5xx 丟 HTTPError（OSError）
-            raw = resp.read()
-            return resp.status, json.loads(raw) if raw else None
+        try:
+            with self._opener.open(req, timeout=self.timeout) as resp:  # 3xx、4xx、5xx 丟 HTTPError（OSError）
+                raw = resp.read()
+                return resp.status, json.loads(raw) if raw and parse else None
+        except http.client.HTTPException as e:  # 回應被截斷、狀態列壞掉：和連不上一樣，下一輪再試
+            raise OSError(f"Dashboard 的回應不完整：{type(e).__name__}") from e
 
     def next_job(self) -> dict[str, Any] | None:
         status, data = self._call("GET", "/api/v1/jetson/jobs/next")
@@ -145,7 +160,8 @@ class HttpDashboard:
         raise ValueError(f"裝置事件超過 {MAX_PAGES} 頁還沒取完")
 
     def post_result(self, job_id: str, body: dict[str, Any]) -> None:
-        self._call("POST", f"/api/v1/jetson/jobs/{urllib.parse.quote(job_id, safe='')}/result", body)
+        # 收到 2xx 就算送到，不解析回應內容（docs/23 ③：成功回 204）
+        self._call("POST", f"/api/v1/jetson/jobs/{urllib.parse.quote(job_id, safe='')}/result", body, parse=False)
 
 
 def handle(data: dict[str, Any], dashboard: Dashboard, model: Model | None) -> dict[str, Any]:
@@ -176,32 +192,36 @@ def handle(data: dict[str, Any], dashboard: Dashboard, model: Model | None) -> d
     return body
 
 
-def _send(dashboard: Dashboard, body: dict[str, Any], unsent: list[dict[str, Any]], log: Callable[[str], None]) -> bool:
-    """傳回一筆結果。連不上、5xx、408、429 留在 unsent 下一輪再送（只在記憶體），回 False；
-    送到了，或 Dashboard 明確不收（其他 4xx，丟掉並記下來）都回 True，不擋住後面的需求。"""
+def _send(dashboard: Dashboard, item: Unsent, unsent: list[Unsent], log: Callable[[str], None]) -> bool:
+    """傳回一筆結果。連不上、5xx、408、429 放回 unsent 下一輪再送（只在記憶體），回 False；
+    送到了、Dashboard 明確不收（其他 4xx）、或已補送 MAX_RETRIES 次，都回 True（後兩者丟掉並記下來），不擋住後面的需求。"""
+    job_id = item.body["job_id"]
     try:
-        dashboard.post_result(body["job_id"], body)
+        dashboard.post_result(job_id, item.body)
         return True
     except urllib.error.HTTPError as e:
         if 400 <= e.code < 500 and e.code not in RETRY_CODES:  # Dashboard 明確不收（例如已逾時、查無此需求）：再送也沒用
-            log(f"{body['job_id']} 結果 Dashboard 不收（HTTP {e.code}），丟掉")
+            log(f"{job_id} 結果 Dashboard 不收（HTTP {e.code}），丟掉")
             return True
         error: Exception = e
     except (OSError, ValueError) as e:
         error = e
-    unsent.append(body)
-    log(f"{body['job_id']} 結果沒送出（{type(error).__name__}），下一輪再送")
+    if item.tries >= MAX_RETRIES:
+        log(f"{job_id} 結果補送 {MAX_RETRIES} 次還沒送到（{type(error).__name__}），丟掉；等 Dashboard 逾時重發")
+        return True
+    unsent.append(Unsent(item.body, item.tries + 1))
+    log(f"{job_id} 結果沒送出（{type(error).__name__}），下一輪再送")
     return False
 
 
 def run_once(dashboard: Dashboard, model: Model | None, *, log: Callable[[str], None],
-             unsent: list[dict[str, Any]] | None = None) -> bool:
+             unsent: list[Unsent] | None = None) -> bool:
     """先補送上一輪沒送出的結果，再處理一筆需求；沒有需求回 False。log 只記編號、種類、結果與秒數，不記提問原文。
     補送失敗時不取新需求，所以 unsent 最多只有一筆，不會越積越多。"""
     unsent = [] if unsent is None else unsent
-    for body in [*unsent]:
-        unsent.remove(body)
-        if not _send(dashboard, body, unsent, log):
+    for item in [*unsent]:
+        unsent.remove(item)
+        if not _send(dashboard, item, unsent, log):
             return False  # Dashboard 還連不上：先不取新需求，等下一輪
     data = dashboard.next_job()
     if data is None:
@@ -212,7 +232,7 @@ def run_once(dashboard: Dashboard, model: Model | None, *, log: Callable[[str], 
     started = time.perf_counter()
     body = handle(data, dashboard, model)
     if body["job_id"]:
-        _send(dashboard, body, unsent, log)
+        _send(dashboard, Unsent(body), unsent, log)
     else:  # 沒有編號就傳不回去：只記下來，不再重試同一筆
         log("收到沒有 job_id 的需求，無法傳回結果")
     log(f"{body['job_id'] or '-'} {data.get('kind')} {body['status']} {time.perf_counter() - started:.1f} 秒")
@@ -223,13 +243,15 @@ def run(dashboard: Dashboard, model: Model | None, *, interval: float = POLL_SEC
         log: Callable[[str], None], sleep: Callable[[float], None] = time.sleep,
         keep_going: Callable[[], bool] = lambda: True) -> None:
     """一直輪詢：有需求就連著處理，沒有就等 interval 秒。連不上 Dashboard 時記下來、等一下再試，不停下來。"""
-    unsent: list[dict[str, Any]] = []
+    unsent: list[Unsent] = []
     while keep_going():
         try:
             if run_once(dashboard, model, log=log, unsent=unsent):
                 continue
-        except (OSError, ValueError) as e:  # 網路斷了、Dashboard 回錯誤碼或不是 JSON
+        except OSError as e:  # 網路斷了、Dashboard 回錯誤碼、回應不完整
             log(f"連不上 Dashboard：{type(e).__name__}")
+        except ValueError as e:  # 回應不是 JSON 或格式不對
+            log(f"Dashboard 回應異常：{type(e).__name__}")
         sleep(interval)
 
 
@@ -253,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
         model = model_from_args(args)
         dashboard = HttpDashboard(args.base, os.environ.get(TOKEN_ENV, ""))
         if args.once:
-            unsent: list[dict[str, Any]] = []
+            unsent: list[Unsent] = []
             while run_once(dashboard, model, log=_log, unsent=unsent):
                 pass
             return 0 if not unsent else 1

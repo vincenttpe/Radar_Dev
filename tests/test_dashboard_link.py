@@ -279,7 +279,7 @@ class Flaky(Memory):
 def test_a_result_that_could_not_be_sent_is_sent_on_the_next_round():
     link, lines, unsent = Flaky(), [], []
     assert run_once(link, None, log=lines.append, unsent=unsent)
-    assert [b["job_id"] for b in unsent] == ["j-9"] and link.posted == []
+    assert [u.body["job_id"] for u in unsent] == ["j-9"] and link.posted == []
     assert lines[0] == "j-9 結果沒送出（ConnectionResetError），下一輪再送"
     assert not run_once(link, None, log=lines.append, unsent=unsent)
     assert unsent == [] and link.posted == ["j-9"]
@@ -292,7 +292,7 @@ def test_while_the_dashboard_is_unreachable_no_new_job_is_taken():
     assert run_once(link, None, log=lines.append, unsent=unsent)
     for _ in range(3):
         assert not run_once(link, None, log=lines.append, unsent=unsent)
-    assert [b["job_id"] for b in unsent] == ["j-1"] and [j["job_id"] for j in link.jobs] == ["j-2"]
+    assert [u.body["job_id"] for u in unsent] == ["j-1"] and [j["job_id"] for j in link.jobs] == ["j-2"]
 
 
 class Refusing(Flaky):
@@ -320,7 +320,7 @@ def test_a_result_the_dashboard_refuses_is_dropped_and_the_next_job_goes_ahead()
 def test_a_temporary_refusal_is_sent_again(code):
     link, lines, unsent = Refusing(code), [], []
     assert run_once(link, None, log=lines.append, unsent=unsent)
-    assert [b["job_id"] for b in unsent] == ["j-1"]
+    assert [u.body["job_id"] for u in unsent] == ["j-1"]
 
 
 def test_a_job_that_is_not_an_object_is_skipped_and_the_loop_goes_on():
@@ -355,6 +355,62 @@ def test_complete_must_be_a_real_true(monkeypatch):
     monkeypatch.setattr(link, "_call", lambda method, path, body=None: (
         200, {"records": [], "next_cursor": None, "complete": "false"}))
     assert link.records("D", "2026-10-14 08:00:00", "2026-10-14 09:00:00").complete is False
+
+
+class _Response:
+    """假的 HTTP 回應：給 HttpDashboard._call 用。"""
+
+    def __init__(self, raw, status=200, error=None):
+        self.raw, self.status, self.error = raw, status, error
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def read(self):
+        if self.error:
+            raise self.error
+        return self.raw
+
+
+def test_a_truncated_response_counts_as_unreachable(monkeypatch):
+    """回應傳到一半斷掉（http.client 的錯誤不是 OSError）：一樣當成連不上，下一輪再試，服務不停。"""
+    import http.client
+
+    link = HttpDashboard("http://127.0.0.1:9", "t")
+    monkeypatch.setattr(link._opener, "open", lambda req, timeout: _Response(b"", error=http.client.IncompleteRead(b"")))
+    with pytest.raises(OSError, match="回應不完整"):
+        link.next_job()
+    lines, rounds = [], iter([True, False])
+    run(link, None, log=lines.append, sleep=lambda s: None, keep_going=lambda: next(rounds))
+    assert lines == ["連不上 Dashboard：OSError"]
+
+
+def test_a_result_is_sent_once_the_dashboard_answers_2xx_whatever_the_body(monkeypatch):
+    """傳回結果時 Dashboard 回 200 加上「OK」：算送到，不解析內容，不會一直重送。"""
+    link = HttpDashboard("http://127.0.0.1:9", "t")
+    monkeypatch.setattr(link._opener, "open", lambda req, timeout: _Response(b"OK"))
+    link.post_result("j-1", {"job_id": "j-1"})
+
+
+def test_a_reply_that_is_not_json_is_logged_as_an_odd_reply(monkeypatch):
+    link = HttpDashboard("http://127.0.0.1:9", "t")
+    monkeypatch.setattr(link._opener, "open", lambda req, timeout: _Response(b"<html>"))
+    lines, rounds = [], iter([True, False])
+    run(link, None, log=lines.append, sleep=lambda s: None, keep_going=lambda: next(rounds))
+    assert lines == ["Dashboard 回應異常：JSONDecodeError"]
+
+
+def test_a_result_is_dropped_after_the_retry_limit_so_new_jobs_go_ahead(monkeypatch):
+    monkeypatch.setattr(dashboard_link, "MAX_RETRIES", 2)
+    link, lines, unsent = Refusing(503), [], []
+    assert run_once(link, None, log=lines.append, unsent=unsent)  # j-1 第一次沒送出
+    assert not run_once(link, None, log=lines.append, unsent=unsent)  # 補送第 1 次也失敗：先不取新需求
+    assert run_once(link, None, log=lines.append, unsent=unsent)  # 補送第 2 次也失敗：丟掉，接著做 j-2
+    assert "j-1 結果補送 2 次還沒送到（HTTPError），丟掉；等 Dashboard 逾時重發" in lines
+    assert link.posted == ["j-1", "j-1", "j-1", "j-2"] and [u.body["job_id"] for u in unsent] == ["j-2"]
 
 
 def test_cli_refuses_to_start_before_the_clock_is_set(monkeypatch, capsys):
