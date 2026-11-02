@@ -9,7 +9,11 @@ import re
 
 import pytest
 
+from test_caregiver import overlapping_alerts
+
 from radar_agent.caregiver import main as caregiver_main
+from radar_agent.caregiver import report_data
+from radar_agent.device_events import alert_outcomes, summarize
 from radar_agent.event_ask import main as ask_main
 
 
@@ -59,17 +63,13 @@ def test_incidents_keep_device_state_and_human_state_apart(data):
 
 
 def test_incidents_follow_the_report_pairing_instead_of_pairing_again(build):
-    """警報 09:00、09:05，解除 09:06、09:07：報告文字說 09:00 沒有解除，看板也要這樣（2026-11-02 之前看板會配給 09:00）。"""
-    from radar_agent.caregiver import report_data
-    from radar_agent.device_events import summarize
-    from test_caregiver import _fall, _resolved, timeline
-
-    records = [*timeline("08:59:00", "09:10:00"),
-               _fall("09:00:00", "radar", "timeout", delaysec=10), _fall("09:05:00", "radar", "timeout", delaysec=10),
-               _resolved("09:06:00", "noNeedHelp"), _resolved("09:07:00", "noNeedHelp")]
-    cards, orphans = build.incidents(report_data(summarize(records), place="1 號廁所")["events"])
-    assert [(c["label"], c["cleared"] and c["cleared"]["label"]) for c in cards] == [("09:00", None), ("09:05", "09:06")]
-    assert orphans == [{"label": "09:07", "title": "回覆沒事"}], "配不到警報的解除不能丟掉"
+    """看板的「已解除」要和報告文字用的 alert_outcomes 一致（2026-11-02 之前看板自己配，會把 09:06 配給 09:00）。"""
+    summary = summarize(overlapping_alerts())
+    outcomes = alert_outcomes(summary)
+    cards, orphans = build.incidents(report_data(summary, place="1 號廁所")["events"])
+    assert [(c["label"], c["cleared"] and c["cleared"]["label"]) for c in cards] == [
+        (f"{a.time:%H:%M}", r and f"{r.time:%H:%M}") for a, r in outcomes.pairs]
+    assert [o["label"] for o in orphans] == [f"{r.time:%H:%M}" for r in outcomes.unpaired], "配不到警報的解除不能丟掉"
 
 
 def test_family_view_is_simulated_and_has_no_caregiver_prompts_or_records(data):

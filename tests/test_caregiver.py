@@ -671,12 +671,19 @@ def test_check_rejects_other_ways_of_saying_none_when_the_device_went_offline(te
 
 # ── 結構化輸出帶出警報與解除的配對（2026-11-02）：看板照 clears 組事件卡，不自己再配一次 ──────────
 
+def overlapping_alerts() -> list[dict]:
+    """警報 09:00、09:05，解除 09:06、09:07：兩則警報重疊時的配對反例（tests/test_dashboard.py 也用）。"""
+    return [*timeline("08:59:00", "09:10:00"),
+            _fall("09:00:00", "radar", "timeout", delaysec=10), _fall("09:05:00", "radar", "timeout", delaysec=10),
+            _resolved("09:06:00", "noNeedHelp"), _resolved("09:07:00", "noNeedHelp")]
+
+
 def test_each_resolution_says_which_alert_it_clears_with_the_same_pairing_as_the_text():
-    """警報 09:00、09:05，解除 09:06、09:07：09:06 配給 09:05（下一則警報前的第一筆），09:00 沒有解除，09:07 找不到警報。"""
-    records = [*timeline("08:59:00", "09:10:00"),
-               _fall("09:00:00", "radar", "timeout", delaysec=10), _fall("09:05:00", "radar", "timeout", delaysec=10),
-               _resolved("09:06:00", "noNeedHelp"), _resolved("09:07:00", "noNeedHelp")]
-    data = report_data(summarize(records), place="1 號廁所")
+    """09:06 配給 09:05（下一則警報前的第一筆），09:00 沒有解除，09:07 找不到警報；報告文字也這樣寫。"""
+    summary = summarize(overlapping_alerts())
+    data = report_data(summary, place="1 號廁所")
+    text = caregiver_report(summary, place="1 號廁所")
+    assert "09:00 語音詢問 10 秒未獲回應，資料中沒有解除紀錄" in text and "另有語音回覆沒事 1 次（09:07）" in text
     rows = [(e["id"], e["label"], e["level"], e.get("clears")) for e in data["events"]]
     assert rows == [("e1", "09:00", "urgent", None), ("e2", "09:05", "urgent", None),
                     ("e3", "09:06", "resolved", "e2"), ("e4", "09:07", "resolved", None)]

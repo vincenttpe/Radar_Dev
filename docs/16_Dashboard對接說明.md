@@ -98,7 +98,7 @@ Dashboard 的 Logs 頁已經能依時間篩選、匯出 NDJSON（2026-10-23 截�
 | `counts.longstay` | 久待警報 | 數字卡 |
 | `counts.offline` | 斷線時段 `[[開始, 結束], ...]` | 時間軸上標灰 |
 | `counts.ended_offline` | 資料結束前斷線的時間（之後沒再連上）；沒有就是 `null` | 時間軸上從這裡標灰到結尾 |
-| `events[]` | 每個事件一則：`id`（`e1` 起依序編號）、`at` 時間、`label` 顯示用時間（斷線是起訖）、`level`、`title`、`prompt` 處置提示、`record` 照護紀錄草稿。`level` 為 `resolved` 的另有 `clears`：解除的是哪一則警報的 `id`，`null` 是找不到對應的警報（2026-11-02 新增，和報告文字用同一套配對，Dashboard 照著組卡片，不要自己配） | 通知卡片；`record` 給「複製到照護紀錄」 |
+| `events[]` | 每個事件一則：`id`（`e1` 起依序編號）、`at` 時間、`label` 顯示用時間（斷線是起訖）、`level`、`title`、`prompt` 處置提示、`record` 照護紀錄草稿。`level` 為 `resolved` 的另有 `clears`：解除的是哪一則警報的 `id`，`null` 是找不到對應的警報（包括警報與解除之間有斷線：斷線期間狀況不明，不配對）（2026-11-02 新增，和報告文字用同一套配對，Dashboard 照著組卡片，不要自己配） | 通知卡片；`record` 給「複製到照護紀錄」 |
 | `text_layer` | 文字來源，目前都是 `template`（固定範本） | 小字標示 |
 
 `level` 決定顏色：`urgent` 立即到場、`check` 前往查看、`resolved` 警報解除、`device` 裝置問題。

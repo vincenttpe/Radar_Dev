@@ -10,7 +10,7 @@ import argparse
 import json
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from itertools import pairwise
@@ -296,23 +296,24 @@ class EventNote:
 def _fall_note(alert: FallAlert, place: str) -> EventNote:
     when = f"{alert.time:%H:%M}"
     if alert.mode == "speech":
-        return EventNote(alert.time, "長者主動呼救，請立即到場。", f"{when} {place}偵測到主動呼救。")
+        return EventNote(alert.time, "長者主動呼救，請立即到場。", f"{when} {place}偵測到主動呼救。", source=alert)
     if alert.mode == "fusion":
         return EventNote(
-            alert.time, "長者回覆需要協助，請立即到場。", f"{when} {place}雷達偵測到疑似跌倒，長者語音回覆需要協助。"
+            alert.time, "長者回覆需要協助，請立即到場。", f"{when} {place}雷達偵測到疑似跌倒，長者語音回覆需要協助。",
+            source=alert,
         )
     if alert.mode == "radar" and alert.trigger == "timeout":
         waited = f" {alert.delay_s} 秒" if alert.delay_s is not None else ""
         return EventNote(
-            alert.time, "請立即到場確認。", f"{when} {place}雷達偵測到疑似跌倒，語音詢問{waited}未獲回應。"
+            alert.time, "請立即到場確認。", f"{when} {place}雷達偵測到疑似跌倒，語音詢問{waited}未獲回應。", source=alert
         )
     # 規格外的來源組合：不猜是哪一種，一律當成要到場確認
-    return EventNote(alert.time, "請立即到場確認。", f"{when} {place}跌倒警報。")
+    return EventNote(alert.time, "請立即到場確認。", f"{when} {place}跌倒警報。", source=alert)
 
 
 def event_notes(summary: Summary, place: str) -> list[EventNote]:
     """每個事件一則：跌倒警報、警報解除、久待警報、裝置斷線，依時間排列。"""
-    notes = [replace(_fall_note(a, place), source=a) for a in summary.fall_alerts]
+    notes = [_fall_note(a, place) for a in summary.fall_alerts]
     for r in summary.resolutions:
         when = f"{r.time:%H:%M}"
         if r.trigger == "noNeedHelp":
@@ -459,6 +460,8 @@ def report_data(summary: Summary, *, place: str) -> dict[str, Any]:
     if problems:
         raise OutputRejected(problems)
     notes = event_notes(summary, place)
+    # 用物件身分對應：alert_outcomes 回傳的是 summary 裡同一批 FallAlert／Resolution（只重新排序，不複製）；
+    # 內容相同的兩筆警報用 == 會分不出來
     ids = {id(n.source): f"e{i}" for i, n in enumerate(notes, 1) if n.source is not None}
     # 解除配給哪一則警報：和報告文字、輸出檢查用同一個 alert_outcomes；配不到是 null（找不到對應的警報）
     cleared = {id(r): ids[id(a)] for a, r in alert_outcomes(summary).pairs if r is not None}
