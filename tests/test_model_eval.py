@@ -10,6 +10,7 @@ from itertools import count
 from typing import ClassVar
 
 import pytest
+from fakes import FakeModel
 from test_ask import menu_digest
 
 from radar_agent.caregiver import caregiver_text, event_notes
@@ -206,7 +207,6 @@ def test_cli(server, capsys):
 # ── 提問對應（ask.match_question）────────────────────────
 
 
-
 class Oracle:
     """照題組的標準答案回答：每題都對。"""
 
@@ -217,13 +217,6 @@ class Oracle:
         expected = next(c.expected for c in ASK_CASES if c.asked == asked)
         ids = [q.id for q in ASK_MENU.questions]
         return str(ids.index(expected) + 1) if expected else "0"
-
-
-class AlwaysFirst:
-    name = "always-1"
-
-    def __call__(self, prompt: str) -> str:
-        return "1"
 
 
 def test_ask_cases_point_at_menu_questions_and_include_off_topic_ones():
@@ -241,7 +234,7 @@ def test_perfect_model_scores_every_ask():
 
 def test_wrong_question_is_counted_separately_from_no_match():
     """對錯題比沒對應到嚴重：讀者若沒看清楚就按確認，會拿到別題的答案。"""
-    run = evaluate_asks(AlwaysFirst(), ASK_CASES, clock=ticking(0.5))
+    run = evaluate_asks(FakeModel("1", name="always-1"), ASK_CASES, clock=ticking(0.5))
     first = ASK_MENU.questions[0].id
     wrong = sum(1 for c in ASK_CASES if c.expected != first)
     text = report_asks(run)
@@ -263,7 +256,6 @@ def test_cli_questions(capsys):
 
 
 # ── 照護紀錄改寫（care_record）與 LLM 文字指標 ─────────────
-
 
 
 def test_record_cases_are_the_simulated_cases_that_have_events():
