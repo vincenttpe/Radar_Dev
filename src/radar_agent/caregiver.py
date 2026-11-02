@@ -10,7 +10,7 @@ import argparse
 import json
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from itertools import pairwise
@@ -290,6 +290,7 @@ class EventNote:
     prompt: str   # 處置提示
     record: str   # 照護紀錄草稿
     span: str = ""  # 處置提示前面標的時間；空的就用 time 的 HH:MM（斷線標起訖）
+    source: FallAlert | Resolution | None = None  # 這則提示來自哪一筆警報或解除；結構化輸出用它標出配對
 
 
 def _fall_note(alert: FallAlert, place: str) -> EventNote:
@@ -311,13 +312,15 @@ def _fall_note(alert: FallAlert, place: str) -> EventNote:
 
 def event_notes(summary: Summary, place: str) -> list[EventNote]:
     """每個事件一則：跌倒警報、警報解除、久待警報、裝置斷線，依時間排列。"""
-    notes = [_fall_note(a, place) for a in summary.fall_alerts]
+    notes = [replace(_fall_note(a, place), source=a) for a in summary.fall_alerts]
     for r in summary.resolutions:
         when = f"{r.time:%H:%M}"
         if r.trigger == "noNeedHelp":
-            notes.append(EventNote(r.time, "長者回覆沒事，警報已解除；可視情況前往關心。", f"{when} 長者語音回覆沒事，警報解除。"))
+            notes.append(EventNote(
+                r.time, "長者回覆沒事，警報已解除；可視情況前往關心。", f"{when} 長者語音回覆沒事，警報解除。", source=r
+            ))
         elif r.trigger == "standUp":
-            notes.append(EventNote(r.time, "已偵測到起身，警報已解除。", f"{when} 偵測到長者起身，警報解除。"))
+            notes.append(EventNote(r.time, "已偵測到起身，警報已解除。", f"{when} 偵測到長者起身，警報解除。", source=r))
     for t in summary.longstay_alerts:
         notes.append(EventNote(t, "停留超過設定時間，請前往查看。", f"{t:%H:%M} {place}停留超過設定時間（久待警報）。"))
     for a, b in zip(summary.online, summary.online[1:], strict=False):
@@ -455,13 +458,20 @@ def report_data(summary: Summary, *, place: str) -> dict[str, Any]:
     problems = check_output(caregiver_report(summary, place=place), summary, place=place)
     if problems:
         raise OutputRejected(problems)
+    notes = event_notes(summary, place)
+    ids = {id(n.source): f"e{i}" for i, n in enumerate(notes, 1) if n.source is not None}
+    # 解除配給哪一則警報：和報告文字、輸出檢查用同一個 alert_outcomes；配不到是 null（找不到對應的警報）
+    cleared = {id(r): ids[id(a)] for a, r in alert_outcomes(summary).pairs if r is not None}
     events = []
-    for note in event_notes(summary, place):
+    for i, note in enumerate(notes, 1):
         level, title = note_kind(note.prompt)
-        events.append({
-            "at": _stamp(note.time), "label": note.span or f"{note.time:%H:%M}", "level": level, "title": title,
-            "prompt": note.prompt, "record": note.record,
-        })
+        event: dict[str, str | None] = {
+            "id": f"e{i}", "at": _stamp(note.time), "label": note.span or f"{note.time:%H:%M}", "level": level,
+            "title": title, "prompt": note.prompt, "record": note.record,
+        }
+        if level == "resolved":
+            event["clears"] = cleared.get(id(note.source))
+        events.append(event)
     online = summary.online
     falls, calls = falls_and_calls(summary)
     return {

@@ -54,16 +54,22 @@ def test_incidents_keep_device_state_and_human_state_apart(data):
     assert [(c["label"], c["title"], c["cleared"] and c["cleared"]["label"]) for c in cards] == [
         ("08:32", "跌倒警報", "08:32"), ("09:16", "跌倒警報", "09:19"),
         ("10:03", "主動呼救", "10:05"), ("10:45", "久待警報", None)]
-    assert [c["id"] for c in cards] == ["e1", "e2", "e3", "e4"]
+    assert [c["id"] for c in cards] == ["e1", "e3", "e5", "e7"], "事件卡的 id 就是報告 events[] 的 id"
     assert cards[1]["cleared"]["cause"] == "偵測到起身" and data["caregiver"]["orphans"] == []
 
 
-def test_incidents_never_pair_a_resolution_with_a_longstay(build):
-    events = [{"at": "a", "label": "10:00", "level": "check", "title": "久待警報", "prompt": "p"},
-              {"at": "b", "label": "10:01", "level": "resolved", "title": "起身解除", "prompt": "q"}]
-    cards, orphans = build.incidents(events)
-    assert cards[0]["cleared"] is None
-    assert orphans == [{"label": "10:01", "title": "起身解除"}], "配不到警報的解除不能丟掉"
+def test_incidents_follow_the_report_pairing_instead_of_pairing_again(build):
+    """警報 09:00、09:05，解除 09:06、09:07：報告文字說 09:00 沒有解除，看板也要這樣（2026-11-02 之前看板會配給 09:00）。"""
+    from radar_agent.caregiver import report_data
+    from radar_agent.device_events import summarize
+    from test_caregiver import _fall, _resolved, timeline
+
+    records = [*timeline("08:59:00", "09:10:00"),
+               _fall("09:00:00", "radar", "timeout", delaysec=10), _fall("09:05:00", "radar", "timeout", delaysec=10),
+               _resolved("09:06:00", "noNeedHelp"), _resolved("09:07:00", "noNeedHelp")]
+    cards, orphans = build.incidents(report_data(summarize(records), place="1 號廁所")["events"])
+    assert [(c["label"], c["cleared"] and c["cleared"]["label"]) for c in cards] == [("09:00", None), ("09:05", "09:06")]
+    assert orphans == [{"label": "09:07", "title": "回覆沒事"}], "配不到警報的解除不能丟掉"
 
 
 def test_family_view_is_simulated_and_has_no_caregiver_prompts_or_records(data):

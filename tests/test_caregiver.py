@@ -667,3 +667,25 @@ def test_check_rejects_other_ways_of_saying_none_when_the_device_went_offline(te
     assert check_output(text, summarize(records), place="1 號廁所") == [
         "裝置有斷線，不能寫「沒有跌倒警報／主動呼救／久待警報」這類句子而不註明在線期間"
     ]
+
+
+# ── 結構化輸出帶出警報與解除的配對（2026-11-02）：看板照 clears 組事件卡，不自己再配一次 ──────────
+
+def test_each_resolution_says_which_alert_it_clears_with_the_same_pairing_as_the_text():
+    """警報 09:00、09:05，解除 09:06、09:07：09:06 配給 09:05（下一則警報前的第一筆），09:00 沒有解除，09:07 找不到警報。"""
+    records = [*timeline("08:59:00", "09:10:00"),
+               _fall("09:00:00", "radar", "timeout", delaysec=10), _fall("09:05:00", "radar", "timeout", delaysec=10),
+               _resolved("09:06:00", "noNeedHelp"), _resolved("09:07:00", "noNeedHelp")]
+    data = report_data(summarize(records), place="1 號廁所")
+    rows = [(e["id"], e["label"], e["level"], e.get("clears")) for e in data["events"]]
+    assert rows == [("e1", "09:00", "urgent", None), ("e2", "09:05", "urgent", None),
+                    ("e3", "09:06", "resolved", "e2"), ("e4", "09:07", "resolved", None)]
+    assert all("clears" not in e for e in data["events"] if e["level"] != "resolved")
+
+
+def test_a_resolution_after_a_disconnection_clears_nothing():
+    """和報告文字一樣：警報與解除之間斷線就不配對（2026-10-29 決定）。"""
+    records = [*timeline("09:00:00", "09:03:00"), _fall("09:01:00", "radar", "timeout", delaysec=10),
+               rec("09:03:05", "offline"), *timeline("09:10:00", "09:12:00"), _resolved("09:11:00", "standUp")]
+    events = report_data(summarize(records), place="1 號廁所")["events"]
+    assert [e.get("clears") for e in events if e["level"] == "resolved"] == [None]

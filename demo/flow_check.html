@@ -62,6 +62,7 @@ details summary:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
   },
   &quot;events&quot;: [
     {
+      &quot;id&quot;: &quot;e1&quot;,
       &quot;at&quot;: &quot;2026-10-14 08:32:10&quot;,
       &quot;label&quot;: &quot;08:32&quot;,
       &quot;level&quot;: &quot;urgent&quot;,
@@ -70,14 +71,17 @@ details summary:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
       &quot;record&quot;: &quot;08:32 1 號廁所雷達偵測到疑似跌倒，語音詢問 10 秒未獲回應。&quot;
     },
     {
+      &quot;id&quot;: &quot;e2&quot;,
       &quot;at&quot;: &quot;2026-10-14 08:32:40&quot;,
       &quot;label&quot;: &quot;08:32&quot;,
       &quot;level&quot;: &quot;resolved&quot;,
       &quot;title&quot;: &quot;回覆沒事&quot;,
       &quot;prompt&quot;: &quot;長者回覆沒事，警報已解除；可視情況前往關心。&quot;,
-      &quot;record&quot;: &quot;08:32 長者語音回覆沒事，警報解除。&quot;
+      &quot;record&quot;: &quot;08:32 長者語音回覆沒事，警報解除。&quot;,
+      &quot;clears&quot;: &quot;e1&quot;
     },
     {
+      &quot;id&quot;: &quot;e3&quot;,
       &quot;at&quot;: &quot;2026-10-14 09:16:20&quot;,
       &quot;label&quot;: &quot;09:16&quot;,
       &quot;level&quot;: &quot;urgent&quot;,
@@ -86,12 +90,14 @@ details summary:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
       &quot;record&quot;: &quot;09:16 1 號廁所雷達偵測到疑似跌倒，長者語音回覆需要協助。&quot;
     },
     {
+      &quot;id&quot;: &quot;e4&quot;,
       &quot;at&quot;: &quot;2026-10-14 09:19:30&quot;,
       &quot;label&quot;: &quot;09:19&quot;,
       &quot;level&quot;: &quot;resolved&quot;,
       &quot;title&quot;: &quot;起身解除&quot;,
       &quot;prompt&quot;: &quot;已偵測到起身，警報已解除。&quot;,
-      &quot;record&quot;: &quot;09:19 偵測到長者起身，警報解除。&quot;
+      &quot;record&quot;: &quot;09:19 偵測到長者起身，警報解除。&quot;,
+      &quot;clears&quot;: &quot;e3&quot;
     }
   ],
   &quot;text_layer&quot;: &quot;template&quot;
@@ -122,6 +128,7 @@ details summary:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
   },
   &quot;events&quot;: [
     {
+      &quot;id&quot;: &quot;e1&quot;,
       &quot;at&quot;: &quot;2026-10-14 10:45:00&quot;,
       &quot;label&quot;: &quot;10:45&quot;,
       &quot;level&quot;: &quot;check&quot;,
@@ -130,6 +137,7 @@ details summary:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
       &quot;record&quot;: &quot;10:45 1 號廁所停留超過設定時間（久待警報）。&quot;
     },
     {
+      &quot;id&quot;: &quot;e2&quot;,
       &quot;at&quot;: &quot;2026-10-14 11:10:00&quot;,
       &quot;label&quot;: &quot;11:10–11:25&quot;,
       &quot;level&quot;: &quot;device&quot;,
@@ -165,6 +173,7 @@ details summary:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
   },
   &quot;events&quot;: [
     {
+      &quot;id&quot;: &quot;e1&quot;,
       &quot;at&quot;: &quot;2026-10-14 11:10:00&quot;,
       &quot;label&quot;: &quot;11:10–11:25&quot;,
       &quot;level&quot;: &quot;device&quot;,
