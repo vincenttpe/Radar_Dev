@@ -48,6 +48,7 @@ DOORS: dict[str, tuple[str, ...]] = {
         "src/radar_agent/field_data.py",  # 實測資料的遮罩與輸出位置限制
         "src/radar_agent/local_model.py",  # 把讀者打的提問送進在地模型（只能是本機或區網）
         "demo/jetson_serve.py",  # Jetson 內部 Demo：網頁上打的提問經這個本機服務送進在地模型
+        "demo/page_data.py",  # Demo 頁面讀實測資料前的 MAC 檢查、實測資料版頁面的輸出位置限制
         "src/radar_agent/device_events.py",  # 讀取裝置事件紀錄檔、整理出造訪與警報
     ),
     "事件格式": ("schemas/", "src/radar_agent/event_validation.py"),
