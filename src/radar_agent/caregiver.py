@@ -190,8 +190,13 @@ def no_data(summary: Summary) -> str:
     真的沒收到紀錄寫「沒有收到資料」；收到了但一筆都讀不懂，照實寫幾筆無法判讀：資料其實收到了，
     資訊人員該查的是格式而不是裝置或網路（REVIEW.md 3.1；2026-11-02 使用者在 #57 選 b）。
     不寫「收到的 N 筆都」：伺服器下的指令、完全重複的紀錄也是收到的，但不在 N 裡。
+    只收到裝置斷線（offline）的紀錄時，那筆讀得懂、但不算在線時段：寫斷線的時間，不寫「之後狀況不明」，
+    因為之前同樣沒有資料（2026-11-02 使用者在 #62 決定）。
     """
     unreadable = len(summary.unreadable) + len(summary.unknown_events)
+    if summary.ended_offline is not None:
+        also = f"，另有 {unreadable} 筆紀錄無法判讀" if unreadable else ""
+        return f"只收到裝置斷線的紀錄（{summary.ended_offline:%H:%M}）{also}，無法判斷"
     if unreadable:
         return f"沒有讀得懂的資料，{unreadable} 筆紀錄無法判讀，無法判斷"
     return "沒有收到資料，無法判斷"
@@ -537,8 +542,8 @@ class DayCount:
 
 @dataclass(frozen=True)
 class Trend:
-    recent: list[DayCount]   # 最後 7 天，依日期
-    before: list[DayCount]   # 再往前 7 天
+    recent: list[DayCount]   # 最後 7 天，依日期；紀錄的時間全部讀不懂時是空的
+    before: list[DayCount]   # 再往前 7 天；同上
     unplaced: int            # 時間讀不懂、分不到哪一天的紀錄
 
 
@@ -552,10 +557,11 @@ def _day_count(day: date, summary: Summary | None) -> DayCount:
 
 
 def usage_trend(records: list[dict[str, Any]]) -> Trend | None:
-    """依最後一天往前切兩週；完全沒有可分日的紀錄時回傳 None。"""
+    """依最後一天往前切兩週。完全沒有紀錄時回傳 None；有紀錄但時間全部讀不懂時，
+    回傳沒有任何一天、只帶 unplaced 筆數的 Trend，不把筆數丟掉（2026-11-02 使用者在 #63 決定）。"""
     days, unplaced = summarize_days(records)
     if not days:
-        return None
+        return Trend([], [], len(unplaced)) if unplaced else None
     last = max(days)
     window = [last - timedelta(days=13 - i) for i in range(14)]
     counts = [_day_count(d, days.get(d)) for d in window]
@@ -587,6 +593,9 @@ def _md(d: date) -> str:
 def trend_text(trend: Trend | None, *, place: str) -> str:
     if trend is None:
         return f"【使用趨勢】{place}：沒有收到資料，無法判斷。"
+    if not trend.recent:
+        # 使用趨勢沒有【重點】那一行，所以句子裡要寫出該通知誰（#63）
+        return f"【使用趨勢】{place}：沒有讀得懂的資料，{trend.unplaced} 筆紀錄時間無法判讀，無法判斷，請通知資訊人員。"
     r, b = trend.recent, trend.before
     lines = [f"【使用趨勢】{place} {_md(r[0].day)}–{_md(r[-1].day)} 與前一週（{_md(b[0].day)}–{_md(b[-1].day)}）比較："]
     rows = [("每日使用次數", "visits"), (f"凌晨（00:00–0{DAWN_END_HOUR}:00）使用次數", "dawn")]

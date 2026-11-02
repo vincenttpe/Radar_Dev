@@ -85,6 +85,39 @@ def test_records_that_are_all_unreadable_are_not_reported_as_no_data():
     )
 
 
+# 只收到裝置斷線（offline）的紀錄：讀得懂，但沒有在線時段（2026-11-02 使用者在 #62 決定的句子）
+OFFLINE_ONLY = [raw("09:00:00", {"event": "offline"}), raw("09:00:05", {"event": "offline"})]
+
+
+def test_offline_only_says_only_the_disconnection_was_received():
+    """斷線紀錄讀得懂：不能寫「沒有收到資料」，也不寫「之後狀況不明」（09:00 以前同樣沒有資料，#62）。"""
+    summary = summarize(OFFLINE_ONLY)
+    assert caregiver_report(summary, place="1 號廁所") == (
+        "【重點】只收到裝置斷線的紀錄（09:00），無法判斷，請通知資訊人員。\n\n"
+        "【事件摘要】\n1 號廁所：只收到裝置斷線的紀錄（09:00），無法判斷。"
+    )
+    data = report_data(summary, place="1 號廁所")
+    assert data["summary"] == "1 號廁所：只收到裝置斷線的紀錄（09:00），無法判斷。"
+
+
+def test_offline_with_unreadable_records_lists_both():
+    summary = summarize(OFFLINE_ONLY + ALL_UNREADABLE)
+    assert caregiver_report(summary, place="1 號廁所") == (
+        "【重點】只收到裝置斷線的紀錄（09:00），另有 2 筆紀錄無法判讀，無法判斷，請通知資訊人員。\n\n"
+        "【事件摘要】\n1 號廁所：只收到裝置斷線的紀錄（09:00），另有 2 筆紀錄無法判讀，無法判斷。"
+    )
+
+
+def test_output_check_refuses_no_data_when_a_disconnection_was_received():
+    summary = summarize(OFFLINE_ONLY)
+    assert check_output("1 號廁所：沒有收到資料，無法判斷。", summary, place="1 號廁所") == [
+        "收到了裝置斷線的紀錄，不能寫「沒有收到資料」"
+    ]
+    assert check_output("1 號廁所：沒有讀得懂的資料，無法判斷。", summary, place="1 號廁所") == [
+        "收到了讀得懂的裝置斷線紀錄，不能寫「沒有讀得懂的資料」"
+    ]
+
+
 def test_report_data_for_dashboard_says_records_were_unreadable():
     """dashboard_link 交給 Dashboard 的 report_data 用同一套句子（#57）。"""
     data = report_data(summarize(ALL_UNREADABLE), place="1 號廁所")
@@ -205,6 +238,8 @@ def test_check_flags_zero_falls_when_device_was_offline():
 def _scenarios():
     yield summarize([])
     yield summarize(ALL_UNREADABLE)
+    yield summarize(OFFLINE_ONLY)
+    yield summarize(OFFLINE_ONLY + ALL_UNREADABLE)
     yield summarize(timeline("09:00:00", "09:10:00"))
     yield summarize(timeline("09:00:00", "09:30:00", ONLINE_TWO_VISITS))
     yield summarize(timeline("09:00:00", "09:10:00", [("09:02:00", "09:03:00")]) + timeline("09:40:00", "09:50:00"))
