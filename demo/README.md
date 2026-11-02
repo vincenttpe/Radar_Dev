@@ -7,6 +7,7 @@
 | `prototype.html` | 產生出來的頁面，直接用瀏覽器開；不連網也能顯示（字型會改用系統字型） |
 | `template.html` | 頁面的版面、樣式與互動；改畫面請改這裡 |
 | `build.py` | 跑 `radar-caregiver` 的同一套函式，把輸出放進 `template.html`，產生 `prototype.html` |
+| `page_data.py` | Demo 頁面共用的資料：樣本路徑、實測資料的 MAC 檢查與輸出位置檢查、頁面資料（`demo_data()`）。原型頁、看板、Jetson 內部 Demo、流程確認頁都直接匯入它（2026-11-02） |
 | `dashboard.html`、`dashboard_template.html`、`dashboard_build.py` | 四種角色（居服員、家屬、系統管理人員、維運後台）的 Dashboard 試做頁（模擬資料），評估要不要在官網之外提供更順手的介面；`python demo/dashboard_build.py` 產生，網址加 `#caregiver`、`#family`、`#admin`、`#ops` 切換（後面加 `/calm` 是「平靜的上午」情境），評估方式見 `docs/17_介面易用性評估.md`。系統管理人員可以一鍵回報裝置問題（回報單自動帶入遠端判斷需要的資訊）；裝置地點查 `device_registry.json`（模擬的裝置設定紀錄）；維修紀錄與維運後台（`#ops`）用 `maintenance_sim.json`（模擬） |
 | `usability_kit.html`、`usability_kit.py` | 真人試測用紙（可列印，A4 共 6 頁）：主持人記錄表與受測者的 SUS 問卷；任務與題目從 `docs/17_介面易用性評估.md` 讀，`python demo/usability_kit.py` 產生 |
 | `flow_check.html`、`flow_build.py` | 流程確認頁（模擬資料，內部用）：測試看板暫代官網 Dashboard，依序列出 ① 請求（API 草案）→ ② 範圍內的資料 → ③ `radar-caregiver --json --from --to` 的原始輸出 → ④ 照原文顯示（仿官網 Devices 頁：Alerts 放處置提示、裝置卡片放事件摘要，不放數字卡），並列出待決事項；`python demo/flow_build.py` 產生，說明見 `docs/16_Dashboard對接說明.md`「流程確認頁」 |

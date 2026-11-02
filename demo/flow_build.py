@@ -24,15 +24,15 @@ import json
 from pathlib import Path
 from typing import Any
 
+import page_data
 from radar_agent.caregiver import main as caregiver_main
 from radar_agent.device_events import HEARTBEAT_GAP, parse_timestamp, read_records
-from radar_agent.field_data import MAC_LIKE, check_out_dir
 from radar_agent.time_range import in_range, parse_bound
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
-SAMPLE = REPO / "data" / "samples_demo" / "bathroom_morning.jsonl"
-SAMPLE_PLACE = "1 號廁所"
+SAMPLE = page_data.SAMPLE
+SAMPLE_PLACE = page_data.PLACE
 OUT = HERE / "flow_check.html"
 FIELD_OUT = REPO / "outputs" / "flow_field.html"
 
@@ -211,16 +211,15 @@ if __name__ == "__main__":
     ap.add_argument("--range", nargs=2, action="append", metavar=("FROM", "TO"), help="實測資料版的時間範圍，可以給多次")
     args = ap.parse_args()
     if args.events:
-        if MAC_LIKE.search(args.events.read_text(encoding="utf-8")):
-            raise SystemExit(f"錯誤：{args.events} 裡還有像 MAC 的字串，請先用 radar-field-data mask 遮罩")
-        if not args.range:
-            raise SystemExit("錯誤：實測資料版要用 --range 指定時間範圍")
-        problem = check_out_dir(FIELD_OUT.parent)
-        if problem:
-            raise SystemExit(f"錯誤：{problem}")
+        try:
+            page_data.check_masked(args.events)
+            if not args.range:
+                raise ValueError("實測資料版要用 --range 指定時間範圍")
+            out = page_data.field_out(FIELD_OUT)
+        except ValueError as e:
+            raise SystemExit(f"錯誤：{e}") from e
         ranges = [(f"{a}–{b[11:] if b[:10] == a[:10] else b}", a, b) for a, b in args.range]
-        FIELD_OUT.parent.mkdir(exist_ok=True)
-        FIELD_OUT.write_text(page(build(args.events.resolve(), args.place, ranges), field=True), encoding="utf-8")
+        out.write_text(page(build(args.events.resolve(), args.place, ranges), field=True), encoding="utf-8")
         print(f"寫入 {FIELD_OUT}（實測資料，不要 commit、不要發布）")
     else:
         OUT.write_text(page(build()), encoding="utf-8")
