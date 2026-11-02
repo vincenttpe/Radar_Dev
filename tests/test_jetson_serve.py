@@ -314,6 +314,12 @@ def test_without_data_the_whole_handover_is_the_head(server):
     assert (data["head"], data["body"]) == (handover_text(demo.summary, place=demo.place), "")
 
 
+def test_a_handover_that_does_not_start_with_the_fixed_head_is_not_cut(serve_mod, server):
+    demo, _ = server(Echoing())
+    with pytest.raises(ValueError, match="固定開頭對不上"):
+        demo._parts("handover", "不是交班重點的開頭")
+
+
 def test_unknown_comparison_is_404(server):
     _, url = server(PickFirst())
     assert _compare(url, kind="kg")[0] == 404

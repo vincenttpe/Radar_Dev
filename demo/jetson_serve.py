@@ -157,12 +157,14 @@ class Demo:
             return {"text": text, "head": "", "body": text}
         head = handover_head(self.summary, place=self.place) if self.summary.online else \
             handover_text(self.summary, place=self.place)
-        assert text.startswith(head), "交班重點的原句與改寫都以固定開頭起頭（rewrite.HANDOVER.head）"
+        if not text.startswith(head):  # 原句與改寫都以固定開頭起頭（rewrite.HANDOVER.head）；對不上就不能切
+            raise ValueError("交班重點的開頭和固定開頭對不上")
         return {"text": text, "head": head, "body": text[len(head):].removeprefix("\n")}
 
     def compare(self, kind: str) -> dict[str, Any]:
         """沒用模型與用模型的比對。沒通過檢查時 layer 是 template、text 是原句，rejected 寫原因，
-        candidate 是模型實際寫的（測試版才給，頁面標「未採用」）；模型出錯或沒有呼叫模型時 candidate 是 None。"""
+        candidate 是模型實際寫的（測試版才給，頁面標「未採用」）；模型出錯或沒有呼叫模型時 candidate 是 None。
+        head 是固定在上、不交給模型的開頭（只有交班重點有），body 是並排比對的本文；text 是兩者接起來的全文。"""
         started = time.perf_counter()
         result = self._rewrite(kind, self.model)
         # 有退回原因、卻沒有未採用的文字：模型逾時、出錯或沒有輸出，不是檢查擋下的，頁面要分開寫
