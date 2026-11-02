@@ -85,6 +85,13 @@ def test_records_that_are_all_unreadable_are_not_reported_as_no_data():
     )
 
 
+def test_report_data_for_dashboard_says_records_were_unreadable():
+    """dashboard_link 交給 Dashboard 的 report_data 用同一套句子（#57）。"""
+    data = report_data(summarize(ALL_UNREADABLE), place="1 號廁所")
+    assert data["highlights"] == "【重點】沒有讀得懂的資料，2 筆紀錄無法判讀，無法判斷，請通知資訊人員。"
+    assert data["summary"] == "1 號廁所：沒有讀得懂的資料，2 筆紀錄無法判讀，無法判斷。"
+
+
 def test_output_check_refuses_no_data_when_records_were_unreadable():
     summary = summarize(ALL_UNREADABLE)
     assert check_output("1 號廁所：沒有收到資料，無法判斷。", summary, place="1 號廁所") == [
