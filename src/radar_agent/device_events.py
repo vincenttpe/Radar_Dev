@@ -159,8 +159,9 @@ def summarize(records: list[dict[str, Any]]) -> Summary:
             summary.unknown_events.append(record)
         if event == "error":
             summary.errors.append((when, str(payload.get("message", ""))))
-        if "params" in payload and settings_ok:  # 形狀不對的設定不採用，事件照常計算（漏掉跌倒比不採用一筆設定嚴重，2026-11-02）
-            summary.setting_changes.append(SettingChange(when, payload["params"].get("sys.config", {})))
+        # 形狀不對的設定已在上面列進 unknown_events、不採用；事件照常計算（漏掉跌倒比不採用一筆設定嚴重，2026-11-02）
+        if (config := _sys_config(payload)) is not None:
+            summary.setting_changes.append(SettingChange(when, config))
         if event == "fall":
             if not fall_active:
                 mode, trigger, delay = payload.get("mode"), payload.get("trigger"), payload.get("delaysec")
@@ -301,12 +302,17 @@ def readable_payload(payload: Any) -> bool:
     return event is None or isinstance(event, str)
 
 
+def _sys_config(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """裝置回報的 params.sys.config；有 params 但沒有 sys.config 時是 {}。沒有 params，或形狀不對，就回傳 None。"""
+    params = payload.get("params")
+    config = params.get("sys.config", {}) if isinstance(params, dict) else None
+    return config if isinstance(config, dict) else None
+
+
 def _settings_readable(payload: dict[str, Any]) -> bool:
-    """有 params 時，它和裡面的 sys.config 都要是物件；不是就不採用這筆設定，事件照常計算並列為要請人確認（2026-11-02）。"""
-    if "params" not in payload:
-        return True
-    params = payload["params"]
-    return isinstance(params, dict) and isinstance(params.get("sys.config", {}), dict)
+    """有 params 時，它和裡面的 sys.config 都要是物件；不是就不採用這筆設定，事件照常計算並列為要請人確認
+    （2026-11-02 使用者在 PR #54 選 b；PR #53 原本是整筆列為無法判讀）。"""
+    return "params" not in payload or _sys_config(payload) is not None
 
 
 def read_records(path: Path) -> list[dict[str, Any]]:

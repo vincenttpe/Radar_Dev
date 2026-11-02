@@ -367,19 +367,20 @@ def test_a_job_that_is_not_an_object_is_skipped_and_the_loop_goes_on():
 
 
 def test_settings_in_the_wrong_shape_are_listed_as_unreadable_and_the_report_still_comes_back():
-    """payload.params 是清單：device_events 把那一筆列為無法判讀（2026-11-02），報告照樣產生，不再失敗。"""
+    """payload.params 是清單：設定不採用、事件照常計算，報告照樣產生並提醒「無法判讀」（REVIEW.md 3.1，2026-11-02）。"""
     odd = [*RECORDS[:3], {**RECORDS[3], "payload": {**RECORDS[3]["payload"], "params": [1]}}, *RECORDS[4:]]
     body = handle(JOB, Memory(records=odd), None)
-    assert body["status"] == "done" and "另有 1 筆紀錄無法判讀" in body["result"]["summary"]
+    assert (body["status"], body["problems"]) == ("done", [])
+    assert "另有 1 筆紀錄無法判讀" in body["result"]["highlights"]
 
 
 def test_an_unexpected_error_while_summarizing_fails_the_job_instead_of_stopping(monkeypatch):
-    """整理裝置事件時的意料外錯誤：一樣傳回 failed、只寫錯誤種類（最後防線）。"""
-    def boom(records):
-        raise AttributeError("x")
+    """整理裝置事件時意料外的錯誤：一樣傳回 failed，只寫錯誤種類（最後防線）。"""
+    def broken(records):
+        raise AttributeError("不該帶出的內容")
 
-    monkeypatch.setattr(dashboard_link, "summarize", boom)
-    body = handle(JOB, Memory(), None)
+    monkeypatch.setattr(dashboard_link, "summarize", broken)
+    body = handle(JOB, Memory(records=RECORDS), None)
     assert body["status"] == "failed" and body["problems"] == ["整理裝置事件時發生錯誤：AttributeError"]
 
 

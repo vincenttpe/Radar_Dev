@@ -218,6 +218,14 @@ def test_an_event_that_is_not_text_makes_the_record_unreadable_instead_of_crashi
     assert summary.unreadable == [odd] and summary.unknown_events == []
 
 
+def test_params_without_sys_config_is_still_a_setting_change():
+    report = {"timestamp": "2026-10-13 10:00:10", "topic": TOPIC, "resolution": None,
+              "payload": {"params": {}}}
+    summary = summarize([rec("10:00:00", "absence"), report])
+    assert summary.unreadable == []
+    assert [(c.time, c.values) for c in summary.setting_changes] == [(t("10:00:10"), {})]
+
+
 def test_unknown_event_counts_as_heartbeat_but_is_listed():
     """裝置送了沒列在規格裡的 event：裝置還在線，但要列出來請人確認（docs/05 A3）。"""
     odd = rec("10:00:05", "jumping")
