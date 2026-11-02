@@ -391,6 +391,7 @@ def test_handover_question_whose_template_fails_its_check_shows_no_text_and_says
     code, data = _ask(url, "交接報告")
     assert code == 200 and data["question"]["id"] == "handover" and data["answer"] is None
     assert any("範本沒通過輸出檢查" in r for r in data["rejected"])
+    assert data["notice"] == "這一題的答案暫時無法顯示，請通知資訊人員。"
 
 
 def test_page_carries_the_handover_button_text_and_note(serve_mod, server):
