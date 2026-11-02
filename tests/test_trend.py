@@ -139,6 +139,18 @@ def test_no_data_at_all_says_cannot_judge():
     assert trend_text(usage_trend([]), place="1 號廁所") == "【使用趨勢】1 號廁所：沒有收到資料，無法判斷。"
 
 
+UNREADABLE_TIME = [{"timestamp": "昨天", "topic": TOPIC, "resolution": None, "payload": {"event": "absence"}},
+                   {"timestamp": "13/10/2026", "topic": TOPIC, "resolution": None, "payload": {"event": "absence"}}]
+
+
+def test_records_whose_time_is_all_unreadable_are_not_reported_as_no_data():
+    """收到了但時間全部讀不懂、分不到哪一天：照實寫筆數，不寫「沒有收到資料」（2026-11-02 使用者在 #63 決定的句子）。"""
+    trend = usage_trend(UNREADABLE_TIME)
+    text = trend_text(trend, place="1 號廁所")
+    assert text == "【使用趨勢】1 號廁所：沒有讀得懂的資料，2 筆紀錄時間無法判讀，無法判斷，請通知資訊人員。"
+    assert check_trend(text, trend, place="1 號廁所") == []
+
+
 def test_check_flags_a_number_not_in_the_statistics_and_medical_wording():
     trend = usage_trend(two_weeks([SIX] * 14))
     text = trend_text(trend, place="1 號廁所")
@@ -176,6 +188,23 @@ def test_cli_trend_with_a_medical_word_in_the_place_prints_nothing(tmp_path, cap
     assert main([str(path), "--place", "治療室", "--trend"]) == 1
     out, err = capsys.readouterr()
     assert out == "" and "治療" in err
+
+
+def test_check_trend_refuses_no_data_when_times_were_unreadable():
+    trend = usage_trend(UNREADABLE_TIME)
+    assert check_trend("【使用趨勢】1 號廁所：沒有收到資料，無法判斷。", trend, place="1 號廁所") == [
+        "有 2 筆紀錄時間無法判讀，資料其實收到了，不能寫「沒有收到資料」"
+    ]
+    assert check_trend("【使用趨勢】1 號廁所：沒有收到資料，無法判斷。", usage_trend([]), place="1 號廁所") == []
+
+
+def test_cli_trend_json_with_only_unreadable_times(tmp_path, capsys):
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps(UNREADABLE_TIME, ensure_ascii=False), encoding="utf-8")
+    assert main([str(path), "--place", "1 號廁所", "--trend", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["lines"] == ["【使用趨勢】1 號廁所：沒有讀得懂的資料，2 筆紀錄時間無法判讀，無法判斷，請通知資訊人員。"]
+    assert data["days"] == []
 
 
 def test_cli_trend_json_has_the_same_lines_and_marks_days_left_out(two_week_demo, capsys):

@@ -39,6 +39,10 @@ def _facts(source: Summary | Assessment, place: str) -> set[Decimal]:
             len(source.no_need_help_replies), len(source.longstay_alerts), len(source.interrupted_visits),
             len(source.errors), len(source.unreadable) + len(source.unknown_events),
         ]
+        if not source.online:
+            # 只收到斷線紀錄時分開寫「其中 N 筆的設定無法判讀，另有 M 筆紀錄無法判讀」（#62）；
+            # 有在線時段時只寫總筆數，不放寬，寫錯的筆數照樣擋（#65 第二輪審查）
+            counts += [len(source.unreadable), len(source.unknown_events)]
         allowed |= {Decimal(c) for c in counts}
         times = [a.time for a in source.fall_alerts] + source.longstay_alerts + [w for w, _ in source.errors]
         times += [r.time for r in source.resolutions]
@@ -104,10 +108,21 @@ def check_output(text: str, source: Summary | Assessment, *, place: str = "") ->
             problems.append("裝置有斷線，不能寫「沒有跌倒警報／主動呼救／久待警報」這類句子而不註明在線期間")
         if "裝置都在線" in text:
             problems.append("裝置有斷線，不能寫「裝置都在線」")
-    if isinstance(source, Summary) and "沒有收到資料" in text:
-        # 收到了但讀不懂，不是沒收到（2026-11-02 使用者在 #57 選 b）
-        unreadable = len(source.unreadable) + len(source.unknown_events)
+    if isinstance(source, Summary):
+        problems += _received_but_called_missing(text, source)
+    return problems
+
+
+def _received_but_called_missing(text: str, source: Summary) -> list[str]:
+    """收到了紀錄，卻寫成沒收到或沒有讀得懂的（2026-11-02 使用者在 #57 選 b、在 #62 決定 offline 的句子）。"""
+    problems = []
+    unreadable = len(source.unreadable) + len(source.unknown_events)
+    if "沒有收到資料" in text:
         if unreadable:
             problems.append(f"有 {unreadable} 筆紀錄無法判讀，資料其實收到了，不能寫「沒有收到資料」")
+        if source.ended_offline is not None:
+            problems.append("收到了裝置斷線的紀錄，不能寫「沒有收到資料」")
+    if "沒有讀得懂的資料" in text and source.ended_offline is not None:
+        problems.append("收到了讀得懂的裝置斷線紀錄，不能寫「沒有讀得懂的資料」")
     return problems
 

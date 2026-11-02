@@ -43,6 +43,15 @@ def test_no_data_is_never_answered_as_nothing_happened():
         assert answer(q.id, CASES["E11"], place=PLACE) == f"{PLACE}：沒有收到資料，無法判斷。"
 
 
+def test_offline_only_is_answered_with_the_disconnection_time():
+    """只收到裝置斷線的紀錄：每一題都照實說（#62）。"""
+    summary = summarize([_rec("09:00:00", "offline")])
+    for q in EVENT_QUESTIONS:
+        text = answer(q.id, summary, place=PLACE)
+        assert text == f"{PLACE}：只收到裝置斷線的紀錄（09:00），無法判斷。"
+        assert check_output(text, summary, place=PLACE) == []
+
+
 def test_records_that_are_all_unreadable_are_not_answered_as_no_data():
     """收到了但一筆都讀不懂：每一題都照實說，不寫「沒有收到資料」（#57）。"""
     summary = summarize([{"timestamp": "昨天", "topic": T, "resolution": None, "payload": {"event": "absence"}}])
