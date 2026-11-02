@@ -111,9 +111,9 @@ def test_cli_json_keeps_the_event_ask_v0_fields_and_six_question_menu(capsys):
     """Dashboard 讀的 event-ask-v0：欄位與 6 題選單固定（2026-11-02 提問流程改吃選單時鎖住，不能跟著 Demo 變）。"""
     code, out, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--pick", "falls", "--json")
     data = json.loads(out)
-    assert code == 0 and set(data) == {"schema", "question", "confirm", "answer", "retry_message", "menu", "model",
+    assert code == 0 and set(data) == {"schema", "question", "confirm", "answer", "notice", "menu", "model",
                                        "prompt_version", "seconds", "from", "to", "rejected", "text_layer"}
-    assert data["retry_message"] is None
+    assert data["notice"] is None
     assert (data["schema"], data["text_layer"], data["model"], data["prompt_version"]) == (
         "event-ask-v0", "template", None, None)
     assert [m["id"] for m in data["menu"]] == ["falls", "calls", "longstay", "visits", "offline", "alerts"]
@@ -265,13 +265,33 @@ def test_prompt_version_is_bumped_when_the_prompt_or_menu_changes():
         "EVENT_QUESTIONS 或 ask.build_prompt 改了：升 event_ask.PROMPT_VERSION，再更新這裡的版本與雜湊"
 
 
-def test_an_unmatched_question_comes_back_with_a_retry_message_that_passes_the_wording_check(capsys):
-    """對不到題目時，提示句由本 repo 產生，Dashboard 照原文顯示（2026-11-02 決定）。"""
-    from radar_agent.event_ask import RETRY_MESSAGE
+@pytest.mark.parametrize("asked, model, notice", [
+    ("今天天氣如何", FakeModel("0"), "沒有對應到固定問題。請換個說法再問一次，或從選單選一題。"),
+    ("今天天氣如何", FakeModel("第一題"), "沒有對應到固定問題。請換個說法再問一次，或從選單選一題。"),
+    ("有人跌倒嗎", None, "目前無法用打字提問，請從選單選一題。"),
+    ("有人跌倒嗎", FakeModel(error=TimeoutError()), "目前無法用打字提問，請從選單選一題。"),
+    ("走" * 101, FakeModel("1"), "提問太長（超過 100 字），請縮短後再問，或從選單選一題。"),
+    ("  ", FakeModel("1"), "請輸入提問，或從選單選一題。"),
+])
+def test_without_an_answer_there_is_always_a_notice_saying_what_to_do(asked, model, notice):
+    """沒有答案時一定有一句提示，依原因不同（2026-11-02 決定）：換個說法也沒用的情況，不叫讀者重問。"""
     from radar_agent.output_check import wording_problems
 
-    code, out, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--question", "今天天氣如何", "--cmd", "echo 0", "--json")
-    data = json.loads(out)
-    assert code == 0 and (data["question"], data["answer"]) == (None, None)
-    assert data["retry_message"] == RETRY_MESSAGE == "沒有對應到固定問題。請換個說法再問一次，或從選單選一題。"
-    assert wording_problems(RETRY_MESSAGE) == [] and len(data["menu"]) == 6
+    data = ask_events(asked, SUMMARY, place="1 號廁所", model=model).data()
+    assert (data["question"], data["answer"], data["notice"]) == (None, None, notice)
+    assert wording_problems(notice) == [] and len(data["menu"]) == 6
+
+
+def test_a_matched_question_whose_answer_fails_the_check_says_it_cannot_be_shown():
+    """對到題目（或點了題），但答案沒通過輸出檢查：不叫讀者重問，請通知資訊人員。"""
+    for reply in (ask_events("有人跌倒嗎", SUMMARY, place="治療室", model=FakeModel("1")), pick("falls", SUMMARY, place="治療室")):
+        data = reply.data()
+        assert data["question"]["id"] == "falls" and data["answer"] is None
+        assert data["notice"] == "這一題的答案暫時無法顯示，請通知資訊人員。"
+
+
+def test_every_notice_passes_the_wording_check():
+    from radar_agent.event_ask import NOTICES
+    from radar_agent.output_check import wording_problems
+
+    assert all(wording_problems(text) == [] for text in NOTICES.values())

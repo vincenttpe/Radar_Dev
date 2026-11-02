@@ -64,7 +64,7 @@ def test_every_job_in_the_queue_is_answered_and_sent_back(dashboard):
     assert ask["answer"].startswith("1 號廁所 10/14 08:00–11:59：") and ask["confirm"] == "您是想問「有沒有人跌倒？」嗎？"
 
     picked = by_id["j-4"]["result"]  # 在選單上點題：不經過模型，答案和 radar-ask --pick 相同
-    assert (picked["question"]["id"], picked["model"], picked["retry_message"]) == ("visits", None, None)
+    assert (picked["question"]["id"], picked["model"], picked["notice"]) == ("visits", None, None)
     assert picked["answer"] == pick("visits", summarize(in_range(RECORDS, parse_bound("2026-10-14 08:00:00"),
                                                                  parse_bound("2026-10-14 12:00:00"))), place=PLACE).answer
 
@@ -138,6 +138,7 @@ JOB = {"job_id": "j-9", "kind": "report", "device": "DEMO-SIM-01", "place": PLAC
     ({**JOB, "to": "明天"}, "看不懂"),
     ({**JOB, "kind": "pick"}, "點題需求的題號不在選單裡"),
     ({**JOB, "kind": "pick", "question_id": "handover"}, "點題需求的題號不在選單裡"),
+    ({**JOB, "kind": "pick", "question_id": ["falls"]}, "點題需求的題號不在選單裡"),
 ])
 def test_a_malformed_job_fails_and_says_why(job, problem):
     body = handle(job, Memory(), None)

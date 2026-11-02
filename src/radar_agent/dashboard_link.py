@@ -74,7 +74,7 @@ class Job:
         if data["kind"] == "ask" and not (question or "").strip():
             raise ValueError("提問需求沒有提問")
         question_id = data.get("question_id")
-        if data["kind"] == "pick" and question_id not in {q.id for q in EVENT_QUESTIONS}:
+        if data["kind"] == "pick" and not (isinstance(question_id, str) and question_id in {q.id for q in EVENT_QUESTIONS}):
             raise ValueError("點題需求的題號不在選單裡")
         parse_bound(str(data["from"]))
         parse_bound(str(data["to"]))
