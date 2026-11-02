@@ -10,6 +10,7 @@ token 從環境變數讀，不進 repo、不寫進 log。改這裡屬單向門�
 from __future__ import annotations
 
 import argparse
+import contextlib
 import http.client
 import json
 import os
@@ -226,16 +227,19 @@ def run_once(dashboard: Dashboard, model: Model | None, *, log: Callable[[str], 
     data = dashboard.next_job()
     if data is None:
         return False
-    if not isinstance(data, dict):  # 不合草案：沒有編號可以傳回，記下來、略過，繼續取下一筆
+    if not isinstance(data, dict):  # 不合草案：沒有編號可以傳回，記下來、略過；回 False 先等一下再問，不會空轉
         log(f"Dashboard 回的需求不是物件（{type(data).__name__}），略過")
-        return True
+        return False
     started = time.perf_counter()
-    body = handle(data, dashboard, model)
-    if body["job_id"]:
-        _send(dashboard, Unsent(body), unsent, log)
-    else:  # 沒有編號就傳不回去：只記下來，不再重試同一筆
+    if not data.get("job_id"):
+        # 沒有編號就傳不回去：只記下來。Dashboard 沒有需求時回 200 加 {} 而不是 204 也會走到這裡，
+        # 回 False 先等一下再問，不會一直空轉
         log("收到沒有 job_id 的需求，無法傳回結果")
-    log(f"{body['job_id'] or '-'} {data.get('kind')} {body['status']} {time.perf_counter() - started:.1f} 秒")
+        return False
+    body = handle(data, dashboard, model)
+    _send(dashboard, Unsent(body), unsent, log)
+    kind = str(data.get("kind"))[:20]  # Dashboard 給的原值，只截短，不是提問原文
+    log(f"{body['job_id']} {kind} {body['status']} {time.perf_counter() - started:.1f} 秒")
     return True
 
 
@@ -258,7 +262,8 @@ def run(dashboard: Dashboard, model: Model | None, *, interval: float = POLL_SEC
 
 
 def _log(line: str) -> None:
-    print(f"{time.strftime('%H:%M:%S')} {line}", file=sys.stderr, flush=True)
+    with contextlib.suppress(OSError):  # stderr 斷了（例如 BrokenPipe）也不讓服務停掉
+        print(f"{time.strftime('%H:%M:%S')} {line}", file=sys.stderr, flush=True)
 
 
 def main(argv: list[str] | None = None) -> int:

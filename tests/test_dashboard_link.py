@@ -156,15 +156,29 @@ def test_records_outside_the_range_are_not_counted():
     assert body["result"] == expected
 
 
-def test_a_job_without_an_id_is_logged_and_not_sent_back():
+def test_a_job_without_an_id_is_logged_and_the_loop_waits_before_asking_again():
+    """沒有 job_id 傳不回去；Dashboard 沒有需求時回 200 加 {} 也是這樣：先等一下再問，不會空轉。"""
     lines = []
 
     class OneJob(Memory):
         def next_job(self):
             return {**JOB, "job_id": ""}
 
-    assert run_once(OneJob(), None, log=lines.append)
-    assert lines[0] == "收到沒有 job_id 的需求，無法傳回結果" and lines[1].startswith("- report failed ")
+    assert not run_once(OneJob(), None, log=lines.append)
+    assert lines == ["收到沒有 job_id 的需求，無法傳回結果"]
+
+
+@pytest.mark.parametrize("reply", [{}, []])
+def test_an_odd_empty_reply_does_not_spin_the_loop(reply):
+    """實測過：Dashboard 一直回 200 加 {} 或 []，舊版 1 秒內打了近千次請求。現在每次都先等 interval 再問。"""
+    sleeps, lines, rounds = [], [], iter([True] * 3 + [False])
+
+    class Odd(Memory):
+        def next_job(self):
+            return reply
+
+    run(Odd(), None, log=lines.append, sleep=sleeps.append, keep_going=lambda: next(rounds))
+    assert len(sleeps) == 3
 
 
 def test_job_keeps_the_fields_of_the_draft():
@@ -338,7 +352,7 @@ def test_a_job_that_is_not_an_object_is_skipped_and_the_loop_goes_on():
             lines.append(f"posted {job_id}")
 
     link = Odd()
-    assert run_once(link, None, log=lines.append)
+    assert not run_once(link, None, log=lines.append)
     assert lines == ["Dashboard 回的需求不是物件（list），略過"]
     assert run_once(link, None, log=lines.append) and "posted j-9" in lines
 
