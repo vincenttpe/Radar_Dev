@@ -70,8 +70,11 @@ def test_inspect_does_not_count_an_unreadable_event_as_some_kind_of_event():
     """event 是清單：和 radar-caregiver 同一個判斷，整筆讀不懂，不會算成某一種 event，也不會讓 inspect 停掉（2026-11-02）。"""
     odd = rec("09:00:05", "absence", device="X")
     odd["payload"]["event"] = ["fall"]
-    report = inspect([rec("09:00:00", "absence", device="X"), odd], "JSON 陣列")
-    assert "['fall']" not in report.events and report.events["absence"] == 1
+    no_event = rec("09:00:10", "absence", device="X")
+    del no_event["payload"]["event"]
+    report = inspect([rec("09:00:00", "absence", device="X"), odd, no_event], "JSON 陣列")
+    assert dict(report.events) == {"absence": 1, "無法判讀": 1, "沒有 event": 1}, "讀不懂的和沒有 event 的分兩欄"
+    assert "無法判讀 1" in report_text(report) and "沒有 event 1" in report_text(report)
 
 
 def test_inspect_counts_disconnections_the_same_way_as_summarize():

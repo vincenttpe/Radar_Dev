@@ -268,6 +268,7 @@ def test_prompt_version_is_bumped_when_the_prompt_or_menu_changes():
 @pytest.mark.parametrize("asked, model, notice", [
     ("今天天氣如何", FakeModel("0"), "沒有對應到固定問題。請換個說法再問一次，或從選單選一題。"),
     ("今天天氣如何", FakeModel("第一題"), "沒有對應到固定問題。請換個說法再問一次，或從選單選一題。"),
+    ("今天天氣如何", FakeModel("7"), "沒有對應到固定問題。請換個說法再問一次，或從選單選一題。"),  # 編號超出 6 題選單
     ("有人跌倒嗎", None, "目前無法用打字提問，請從選單選一題。"),
     ("有人跌倒嗎", FakeModel(error=TimeoutError()), "目前無法用打字提問，請從選單選一題。"),
     ("走" * 101, FakeModel("1"), "提問太長（超過 100 字），請縮短後再問，或從選單選一題。"),

@@ -218,11 +218,13 @@ def test_an_event_that_is_not_text_makes_the_record_unreadable_instead_of_crashi
     assert summary.unreadable == [odd] and summary.unknown_events == []
 
 
-def test_params_without_sys_config_is_still_a_setting_change():
+@pytest.mark.parametrize("params", [{}, {"sys.config": {}}])
+def test_params_without_settings_inside_is_still_a_setting_change(params):
+    """params 沒有 sys.config，或 sys.config 是空物件：形狀正確，算一筆（空的）設定，不列出請人確認。"""
     report = {"timestamp": "2026-10-13 10:00:10", "topic": TOPIC, "resolution": None,
-              "payload": {"params": {}}}
+              "payload": {"params": params}}
     summary = summarize([rec("10:00:00", "absence"), report])
-    assert summary.unreadable == []
+    assert summary.unreadable == [] and summary.unknown_events == []
     assert [(c.time, c.values) for c in summary.setting_changes] == [(t("10:00:10"), {})]
 
 

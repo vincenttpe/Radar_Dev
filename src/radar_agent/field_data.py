@@ -104,12 +104,16 @@ def inspect(records: list[dict[str, Any]], layout: str) -> Report:
         by_topic.setdefault(entry.topic, []).append(entry.record)
         report.first = when if report.first is None else min(report.first, when)
         report.last = when if report.last is None else max(report.last, when)
-        # 和 radar-caregiver 同一個判斷（device_events.readable_payload）：讀不懂的事件不當成某種 event 計數
-        event = payload.get("event") if readable_payload(payload) else None
-        if event == "fall" and isinstance(payload, dict):
+        # 和 radar-caregiver 同一個判斷（device_events.readable_payload）：讀不懂的事件另外列一欄，
+        # 不當成某種 event，也不和「沒有 event」（仍算心跳）混在一起
+        if not readable_payload(payload):
+            report.events["無法判讀"] += 1
+            continue
+        event = payload.get("event")
+        if event == "fall":
             report.events[f"fall（{payload.get('mode')}）"] += 1
         else:
-            report.events[str(event)] += 1
+            report.events["沒有 event" if event is None else str(event)] += 1
         if event == "presence":
             report.presence_by_hour[when.hour] += 1
     # 斷線和 radar-caregiver 用同一個定義：在線時段之間的空檔（超過 HEARTBEAT_GAP 沒有可判讀的資料，或裝置送出 offline）

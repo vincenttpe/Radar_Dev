@@ -1,6 +1,6 @@
 """提問對應：讀者打字提問，在地模型只選最接近的固定問題，不自己寫答案。只透過 ask.match_question() 驗證。"""
+import pytest
 from fakes import FakeModel
-
 
 from radar_agent.ask import Menu, Question, match_question
 
@@ -30,6 +30,13 @@ def test_each_ask_is_matched_on_its_own():
     first, second = (match_question("速度怎麼算的", MENU, model=model) for _ in range(2))
     assert (first.question, first.rejected) == (None, ("模型回答不是單一編號",))
     assert second.question == MENU.questions[1] and len(model.prompts) == 2
+
+
+@pytest.mark.parametrize("reply", [None, 2, ["2"]])
+def test_a_reply_that_is_not_text_counts_as_a_bad_format(reply):
+    """模型（或包住它的程式）回的不是文字：當成格式不合，不丟例外（2026-11-02）。"""
+    match = match_question("速度怎麼算的", MENU, model=FakeModel(reply))
+    assert (match.question, match.rejected, match.why) == (None, ("模型回答不是單一編號",), "no_fit")
 
 
 def test_zero_means_no_question_fits():

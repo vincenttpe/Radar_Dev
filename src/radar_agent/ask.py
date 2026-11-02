@@ -81,7 +81,7 @@ def match_question(asked: str, menu: Menu, *, model: Model | None) -> Match:
         reply = model(build_prompt(asked, questions))
     except Exception as e:  # 模型逾時、當掉都當作沒對應到，讓讀者改從選單點選
         return miss(f"模型錯誤：{type(e).__name__}", "model_error")
-    found = _REPLY.fullmatch(reply.strip())
+    found = _REPLY.fullmatch(reply.strip()) if isinstance(reply, str) else None  # 回的不是文字也當成格式不合
     if not found:
         return miss("模型回答不是單一編號")
     number = int(found.group(1))
