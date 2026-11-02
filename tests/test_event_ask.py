@@ -120,6 +120,20 @@ def test_cli_json_keeps_the_event_ask_v0_fields_and_six_question_menu(capsys):
     assert (data["from"], data["to"]) == ("2026-10-14 08:00:00", "2026-10-14 11:59:55")
 
 
+def test_cli_lists_a_record_whose_params_is_a_list_instead_of_failing(tmp_path, capsys):
+    """payload.params 是清單：設定不採用、事件照常計算，答案最後多一句無法判讀請人確認，不中斷（REVIEW.md 3.1；
+    PR #54 的做法，issue #56 補 radar-ask 這一層的測試）。"""
+    records = read_records(DEMO)
+    odd = {"timestamp": records[-1]["timestamp"], "topic": records[-1]["topic"], "resolution": None,
+           "payload": {"event": "absence", "params": [1]}}
+    path = tmp_path / "events.jsonl"
+    path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in [*records, odd]), encoding="utf-8")
+    _, expected, _ = _run(capsys, DEMO, "--place", "1 號廁所", "--pick", "falls", "--echo")
+    code, out, err = _run(capsys, path, "--place", "1 號廁所", "--pick", "falls", "--echo")
+    assert (code, err) == (0, "")
+    assert out == expected + "另有 1 筆紀錄無法判讀，請通知資訊人員。\n"
+
+
 def test_cli_refuses_models_from_china(capsys):
     code, _, err = _run(capsys, DEMO, "--place", "1 號廁所", "--question", "x", "--cmd", "ollama run qwen2.5:3b")
     assert code == 2 and "docs/adr/0003" in err
