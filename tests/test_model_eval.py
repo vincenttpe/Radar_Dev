@@ -16,7 +16,9 @@ from radar_agent.ask import PROMPT_VERSION as ASK_PROMPT_VERSION
 from radar_agent.ask import build_prompt
 from radar_agent.caregiver import caregiver_text, event_notes
 from radar_agent.device_events import Summary
+from radar_agent.event_ask import DEMO_MENU
 from radar_agent.model_eval import (
+    DEMO_ASK_CASES,
     EVENT_ASK_CASES,
     ASK_CASES,
     ASK_MENU,
@@ -215,7 +217,7 @@ class Oracle:
     def __call__(self, prompt: str) -> str:
         asked = prompt.rsplit("使用者的提問：", 1)[-1]
         expected = next(c.expected for c in ASK_CASES if c.asked == asked)
-        ids = [q.id for q in ASK_MENU]
+        ids = [q.id for q in ASK_MENU.questions]
         return str(ids.index(expected) + 1) if expected else "0"
 
 
@@ -227,7 +229,7 @@ class AlwaysFirst:
 
 
 def test_ask_cases_point_at_menu_questions_and_include_off_topic_ones():
-    ids = {q.id for q in ASK_MENU}
+    ids = {q.id for q in ASK_MENU.questions}
     assert len({c.id for c in ASK_CASES}) == len(ASK_CASES)
     assert all(c.expected is None or c.expected in ids for c in ASK_CASES)
     assert {c.expected for c in ASK_CASES} == ids | {None}, "每一題、以及「不該對應」都要有題目"
@@ -242,7 +244,7 @@ def test_perfect_model_scores_every_ask():
 def test_wrong_question_is_counted_separately_from_no_match():
     """對錯題比沒對應到嚴重：讀者若沒看清楚就按確認，會拿到別題的答案。"""
     run = evaluate_asks(AlwaysFirst(), ASK_CASES, clock=ticking(0.5))
-    first = ASK_MENU[0].id
+    first = ASK_MENU.questions[0].id
     wrong = sum(1 for c in ASK_CASES if c.expected != first)
     text = report_asks(run)
     assert f"正確 {len(ASK_CASES) - wrong}、對錯題 {wrong}、沒對應到 0" in text
@@ -251,7 +253,7 @@ def test_wrong_question_is_counted_separately_from_no_match():
 
 def test_ask_prompt_version_is_bumped_when_the_prompt_or_menu_changes():
     """紀錄只記 prompt_version；知識圖譜提問的選單或提示詞改了卻沒升版，就分不出模型當時看到哪一版。"""
-    digest = hashlib.sha256(build_prompt("{提問}", ASK_MENU).encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.sha256(build_prompt("{提問}", ASK_MENU.questions).encode("utf-8")).hexdigest()[:16]
     assert (ASK_PROMPT_VERSION, digest) == ("ask-v0", "cedf9111e4a66162"), \
         "ASK_MENU 或 ask.build_prompt 改了：升 ask.PROMPT_VERSION，再更新這裡的版本與雜湊"
 
@@ -316,6 +318,22 @@ def test_cli_event_questions(capsys):
     assert main(["--echo", "--event-questions"]) == 0
     out = capsys.readouterr().out
     assert out.startswith(f"提示詞版本：event-prompt-v1\n模型：echo　題數：{len(EVENT_ASK_CASES)}　正確 ")
+
+
+def test_cli_demo_questions(capsys):
+    assert main(["--echo", "--demo-questions"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith(f"提示詞版本：jetson-demo-ask-v0\n模型：echo　題數：{len(DEMO_ASK_CASES)}　正確 ")
+
+
+def test_demo_cases_reuse_the_six_question_cases_and_point_at_the_demo_menu():
+    """7 題選單：V1–V34 照原本的預期（多一題也不能把它們對到交班重點），V35 改對到交班重點，另加交班的問法。"""
+    ids = {q.id for q in DEMO_MENU.questions}
+    assert all(c.expected is None or c.expected in ids for c in DEMO_ASK_CASES)
+    by_id = {c.id: c for c in DEMO_ASK_CASES}
+    assert all(by_id[c.id] == c for c in EVENT_ASK_CASES if c.id != "V35")
+    assert by_id["V35"].expected == "handover" and len(DEMO_ASK_CASES) == len(by_id)
+    assert sum(c.expected == "handover" for c in DEMO_ASK_CASES) == 7
 
 
 def test_empty_command_counts_as_model_errors_instead_of_crashing(capsys):

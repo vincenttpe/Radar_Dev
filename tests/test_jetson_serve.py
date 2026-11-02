@@ -12,7 +12,7 @@ import urllib.request
 
 import pytest
 
-from radar_agent.event_ask import pick
+from radar_agent.event_ask import DEMO_MENU, DEMO_PROMPT_VERSION, HANDOVER_NOTE, pick
 
 
 @pytest.fixture(scope="module")
@@ -396,8 +396,8 @@ def test_handover_question_answers_with_the_handover_original_and_a_note(serve_m
     demo, url = server(PickHandover())
     code, data = _ask(url, "交接報告")
     assert code == 200 and data["question"]["id"] == "handover"
-    assert data["answer"] == f"{serve_mod.HANDOVER_NOTE}\n{handover_text(demo.summary, place=demo.place)}"
-    assert data["prompt_version"] == serve_mod.DEMO_ASK_PROMPT_VERSION
+    assert data["answer"] == f"{HANDOVER_NOTE}\n{handover_text(demo.summary, place=demo.place)}"
+    assert data["prompt_version"] == DEMO_PROMPT_VERSION
     assert (data["schema"], data["question"]["text"]) == ("jetson-demo-ask-v0", "幫我整理交班重點")
     assert [m["id"] for m in data["menu"]][-1] == "handover" and len(data["menu"]) == 7
 
@@ -407,7 +407,7 @@ def test_radar_ask_keeps_its_six_questions(serve_mod):
     from radar_agent.event_ask import EVENT_QUESTIONS
 
     assert len(EVENT_QUESTIONS) == 6 and "handover" not in {q.id for q in EVENT_QUESTIONS}
-    assert serve_mod.DEMO_QUESTIONS[:6] == EVENT_QUESTIONS
+    assert DEMO_MENU.questions[:6] == EVENT_QUESTIONS
 
 
 def test_demo_ask_prompt_version_is_bumped_when_the_prompt_or_menu_changes(serve_mod):
@@ -416,9 +416,9 @@ def test_demo_ask_prompt_version_is_bumped_when_the_prompt_or_menu_changes(serve
 
     from radar_agent.ask import build_prompt
 
-    digest = hashlib.sha256(build_prompt("{提問}", serve_mod.DEMO_QUESTIONS).encode("utf-8")).hexdigest()[:16]
-    assert (serve_mod.DEMO_ASK_PROMPT_VERSION, digest) == ("jetson-demo-ask-v0", "fb0409607c9c42ac"), \
-        "DEMO_QUESTIONS 或 ask.build_prompt 改了：升 DEMO_ASK_PROMPT_VERSION，再更新這裡的版本與雜湊"
+    digest = hashlib.sha256(build_prompt("{提問}", DEMO_MENU.questions).encode("utf-8")).hexdigest()[:16]
+    assert (DEMO_PROMPT_VERSION, digest) == ("jetson-demo-ask-v0", "fb0409607c9c42ac"), \
+        "event_ask.DEMO_MENU 的題目或 ask.build_prompt 改了：升 event_ask.DEMO_PROMPT_VERSION，再更新這裡的版本與雜湊"
 
 
 def test_handover_question_whose_template_fails_its_check_shows_no_text_and_says_why(server):
@@ -435,4 +435,4 @@ def test_page_carries_the_handover_button_text_and_note(serve_mod, server):
     with urllib.request.urlopen(url + "/") as resp:
         page = resp.read().decode("utf-8")
     assert '"handover_question": "幫我整理交班重點"' in page
-    assert json.dumps(serve_mod.HANDOVER_NOTE, ensure_ascii=False) in page
+    assert json.dumps(HANDOVER_NOTE, ensure_ascii=False) in page

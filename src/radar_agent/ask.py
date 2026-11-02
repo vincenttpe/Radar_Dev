@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from radar_agent.rewrite import Model
 
-# 提示詞（build_prompt）加上知識圖譜提問選單（目前是 model_eval.ASK_MENU）的版本；選單或 build_prompt 改了都要升版，紀錄才追得回模型當時看到什麼
+# 知識圖譜提問選單（model_eval.ASK_MENU）的版本：每份選單自己帶版本（Menu.prompt_version）
 PROMPT_VERSION = "ask-v0"
 # 暫定：提問長度上限。太長的提問多半不是在問選單上的問題，也白白吃掉 Jetson 的算力
 MAX_ASKED = 100
@@ -25,6 +25,17 @@ _REPLY = re.compile(r"(\d+)[.。]?")
 class Question:
     id: str
     text: str
+
+
+@dataclass(frozen=True)
+class Menu:
+    """讀者能問的一份固定問題清單，和它的 prompt 版本（2026-11-02 起題目與版本一起傳，不再分開）。
+
+    題目或 build_prompt 改了都要升 prompt_version，紀錄才追得回模型當時看到什麼；tests 依題目算 prompt 的指紋。
+    """
+
+    questions: tuple[Question, ...]
+    prompt_version: str
 
 
 @dataclass(frozen=True)
@@ -47,10 +58,10 @@ def build_prompt(asked: str, questions: Sequence[Question]) -> str:
     )
 
 
-def match_question(asked: str, questions: Sequence[Question], *, model: Model | None,
-                   prompt_version: str = PROMPT_VERSION) -> Match:
-    """把讀者的提問對應到 questions 其中一題；對應不到時 question 為 None，rejected 寫原因。
-    prompt_version 記進紀錄：用自己選單的呼叫端（例如事件提問）要傳自己的版本。"""
+def match_question(asked: str, menu: Menu, *, model: Model | None) -> Match:
+    """把讀者的提問對應到 menu 其中一題；對應不到時 question 為 None，rejected 寫原因。
+    menu.prompt_version 記進紀錄，分得出模型當時看到的是哪一份選單。"""
+    questions, prompt_version = menu.questions, menu.prompt_version
     asked = asked.strip()
     if not asked:
         return Match(None, rejected=("沒有輸入提問",))
