@@ -184,6 +184,16 @@ def test_unreadable_records_are_kept_as_is_and_skipped():
     assert [(p.start, p.end) for p in summary.online] == [(t("10:00:00"), t("10:00:00"))]
 
 
+@pytest.mark.parametrize("params", [[1], "sys.config", None, {"sys.config": [1]}, {"sys.config": "fallSwitch"}])
+def test_settings_in_the_wrong_shape_make_the_record_unreadable_instead_of_crashing(params):
+    """params 或 params["sys.config"] 不是物件：整筆列為無法判讀（REVIEW.md 3.1），不讓整份報告停掉（2026-11-02）。"""
+    odd = {"timestamp": "2026-10-13 10:00:05", "topic": TOPIC, "resolution": None,
+           "payload": {"event": "absence", "params": params}}
+    summary = summarize([rec("10:00:00", "absence"), odd, rec("10:00:10", "absence")])
+    assert summary.unreadable == [odd] and summary.setting_changes == []
+    assert [(p.start, p.end) for p in summary.online] == [(t("10:00:00"), t("10:00:10"))]
+
+
 def test_unknown_event_counts_as_heartbeat_but_is_listed():
     """裝置送了沒列在規格裡的 event：裝置還在線，但要列出來請人確認（docs/05 A3）。"""
     odd = rec("10:00:05", "jumping")
@@ -271,3 +281,18 @@ def test_timeline_sorts_and_sorts_out_every_record():
     assert line.commands == [(3, command)]
     assert line.no_topic == [(4, no_topic)]
     assert line.unreadable_time == [(5, bad_time)]
+
+
+def test_radar_caregiver_reports_a_record_with_settings_in_the_wrong_shape_as_unreadable(tmp_path, capsys):
+    """命令列層級：這種紀錄以前會讓 radar-caregiver 直接丟錯，現在報告照樣產生，並寫出有讀不懂的紀錄。"""
+    import json
+
+    from radar_agent.caregiver import main
+
+    odd = {"timestamp": "2026-10-13 10:00:05", "topic": TOPIC, "resolution": None,
+           "payload": {"event": "absence", "params": [1]}}
+    path = tmp_path / "odd.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in [rec("10:00:00", "absence"), odd, rec("10:00:10", "absence")]),
+                    encoding="utf-8")
+    assert main([str(path), "--place", "1 號廁所"]) == 0
+    assert "另有 1 筆紀錄無法判讀" in capsys.readouterr().out
