@@ -117,3 +117,22 @@ def test_copying_the_draft_is_adopted_for_every_simulated_case():
 
 def test_empty_model_output_falls_back():
     assert rejected("E2", "   ") == ("模型沒有輸出",)
+
+
+def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
+    """紀錄只記 prompt_version；照護紀錄的 prompt 或採用的檢查改了卻沒升版，就分不出一筆退回是哪一套規則（原則 3）。
+    2026-11-02 起規則清單寫在 care_record.RECORD.rules，這裡不另外手列。"""
+    from test_rewrite import kind_digest
+
+    from radar_agent.care_record import RECORD
+
+    assert (RECORD.version, kind_digest(RECORD)) == ("record-v0", "928a78cfdbb413e9"), \
+        "care_record.build_prompt 或採用的檢查改了：升 care_record.PROMPT_VERSION，再更新這裡的版本與雜湊"
+
+
+def test_the_style_sample_only_changes_the_prompt():
+    """機構格式樣本只是寫法示範：放進 prompt，版本與檢查不變。"""
+    model = Scripted(GOOD_E2)
+    out = care_record(CASES["E2"], place=PLACE, model=model, style="（去識別的格式樣本）")
+    assert "（去識別的格式樣本）" in model.prompts[0] and draft("E2") in model.prompts[0]
+    assert (out.layer, out.prompt_version) == ("model", "record-v0")

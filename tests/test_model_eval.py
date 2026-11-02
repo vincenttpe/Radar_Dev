@@ -89,6 +89,22 @@ def test_show_prints_adopted_output():
     assert "    建議：" not in report_text(run)
 
 
+def test_unadopted_model_output_never_reaches_the_report():
+    """未採用的模型文字（Rewritten.candidate）只給 Jetson 內部 Demo 並排比對，評估報告不印（2026-11-02 決定）。"""
+    class Unadopted:
+        name = "unadopted"
+
+        def __call__(self, prompt: str) -> str:
+            return "未採用的模型文字 999"
+
+    run = evaluate(Unadopted(), [c for c in all_cases() if c.id == "E1"])
+    assert run.results[0].out.candidate == "未採用的模型文字 999"
+    assert "未採用的模型文字" not in report_text(run, show=True)
+    records = evaluate_records(Unadopted(), [c for c in record_cases() if c.id == "E2"])
+    assert records.results[0].out.candidate == "未採用的模型文字 999"
+    assert "未採用的模型文字" not in report_records(records, None)
+
+
 @pytest.mark.parametrize("reason,kind", [
     ("漏掉範本裡的數字 3", "漏掉數字"), ("長度 300 字超過範本的 2 倍", "太長"),
     ("模型錯誤：TimeoutError", "模型錯誤"), ("數字 3 不在事實裡", "多出事實沒有的數字"),

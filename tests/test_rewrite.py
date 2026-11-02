@@ -141,6 +141,17 @@ def test_writing_none_as_zero_counts_falls_back():
     assert "範本沒有「0次」" in _fallback(ALL_ONLINE, reply)
 
 
+def test_a_rejected_rewrite_keeps_what_the_model_wrote_as_candidate():
+    """沒通過檢查時讀者看到範本，模型寫的另外留在 candidate（只給 Jetson 內部 Demo 標「未採用」）。"""
+    result = rewrite(ALL_ONLINE, place=PLACE, model=FakeModel(GOOD.replace("2 次", "3 次")))
+    assert (result.layer, result.candidate) == ("template", GOOD.replace("2 次", "3 次"))
+
+
+@pytest.mark.parametrize("model", [FakeModel(GOOD), FakeModel(""), FakeModel(error=TimeoutError())])
+def test_candidate_is_empty_when_adopted_or_when_the_model_wrote_nothing(model):
+    assert rewrite(ALL_ONLINE, place=PLACE, model=model).candidate is None
+
+
 def rule_digest(*parts: object) -> str:
     """prompt 與採用檢查的指紋：字串照原樣，函式取語法樹還原的程式碼（不含註解、docstring 與排版）。
 
@@ -161,14 +172,17 @@ def rule_digest(*parts: object) -> str:
     return hashlib.sha256("\n".join(texts).encode("utf-8")).hexdigest()[:16]
 
 
+def kind_digest(kind) -> str:
+    """一種文字的改寫規則指紋：prompt 加上 kind.rules 列出的程式與常數（規則清單只在 RewriteKind 寫一次）。"""
+    return rule_digest(kind.prompt("{原句}"), *kind.rules)
+
+
 def test_prompt_version_is_bumped_when_the_prompt_or_checks_change():
     """紀錄只記 prompt_version；prompt 或採用的檢查改了卻沒升版，就分不出一筆退回是哪一套規則（原則 3，PR #41）。"""
-    from radar_agent import rewrite as r
+    from radar_agent.rewrite import SUMMARY
 
-    digest = rule_digest(r.build_prompt("{範本}"), r.rewrite, r.checked_rewrite, r._kept_facts, r._quantities,
-                         r._kept_quantities, r._added_words,
-                         r._QUANTITY.pattern, r.REQUIRED_PHRASES, r.MAX_LENGTH_RATIO, r.ADDED_WORDS, r._NOT_PRONOUNS)
-    assert (PROMPT_VERSION, digest) == ("caregiver-v2", "eeb831052b5ed2ac"), \
+    digest = kind_digest(SUMMARY)
+    assert (SUMMARY.version, digest) == ("caregiver-v2", "2994142a6491506e"), \
         "rewrite.build_prompt 或採用的檢查改了：升 rewrite.PROMPT_VERSION，再更新這裡的版本與雜湊"
 
 

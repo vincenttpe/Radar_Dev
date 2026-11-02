@@ -116,22 +116,6 @@ class Stats:
             self.latest = parse_tegrastats(line) or self.latest
 
 
-class Recorder:
-    """包住模型，記下它最後一次的原始輸出：測試版要把沒通過檢查的輸出也列出來（標「未採用」）。
-
-    每次比對各包一個，多個請求同時進來也不會互相蓋掉。只記在記憶體、回給同一個請求，不寫進 log 或檔案。
-    """
-
-    def __init__(self, model: Model) -> None:
-        self.model, self.name = model, model.name
-        self.last: str | None = None
-
-    def __call__(self, prompt: str) -> str:
-        self.last = None
-        self.last = self.model(prompt)
-        return self.last
-
-
 class Demo:
     """頁面與提問共用的狀態：模擬資料的摘要、模型、Jetson 狀態。"""
 
@@ -184,17 +168,14 @@ class Demo:
     def compare(self, kind: str) -> dict[str, Any]:
         """沒用模型與用模型的比對。沒通過檢查時 layer 是 template、text 是原句，rejected 寫原因，
         candidate 是模型實際寫的（測試版才給，頁面標「未採用」）；模型出錯或沒有呼叫模型時 candidate 是 None。"""
-        recorder = Recorder(self.model)
         started = time.perf_counter()
-        result = self._rewrite(kind, recorder)
-        output = (recorder.last or "").strip()
-        rejected_output = output if result.layer == "template" and output else None
-        # 模型逾時、出錯或沒有輸出：不是檢查擋下的，頁面要分開寫（不靠比對退回原因的字串）
-        no_reply = result.layer == "template" and bool(result.rejected) and not output
+        result = self._rewrite(kind, self.model)
+        # 有退回原因、卻沒有未採用的文字：模型逾時、出錯或沒有輸出，不是檢查擋下的，頁面要分開寫
+        no_reply = bool(result.rejected) and result.candidate is None
         return {
             "kind": kind, "text": result.text, "layer": result.layer, "model": result.model,
             "prompt_version": result.prompt_version, "seconds": round(time.perf_counter() - started, 2),
-            "rejected": list(result.rejected), "candidate": rejected_output, "no_reply": no_reply,
+            "rejected": list(result.rejected), "candidate": result.candidate, "no_reply": no_reply,
         }
 
     def warm_up(self) -> str:
