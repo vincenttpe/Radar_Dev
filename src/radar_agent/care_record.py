@@ -12,6 +12,7 @@ from dataclasses import replace
 
 from radar_agent.caregiver import event_notes
 from radar_agent.device_events import Summary
+from radar_agent.kg_rules import Assessment
 from radar_agent.output_check import numbers
 from radar_agent.rewrite import Model, Rewritten, RewriteKind, checked_rewrite
 
@@ -70,9 +71,11 @@ def _prompt(draft: str) -> str:
     return build_prompt(draft, None)
 
 
-def _kept_record(draft: str, text: str, source: object) -> list[str]:  # 草稿就是事實來源，不另外比對 summary
+def _kept_record(draft: str, text: str, source: Summary | Assessment) -> list[str]:
+    # 草稿就是事實來源：check_output 已經用 summary 擋多出來的，這裡只比對草稿
     return _kept(draft, text)
 
 
 RECORD = RewriteKind(PROMPT_VERSION, _prompt, _kept_record,
-                     (care_record, checked_rewrite, _kept_record, _kept, _sentences, REQUIRED_PHRASES, MAX_LENGTH_RATIO))
+                     (care_record, checked_rewrite, build_prompt, _kept_record, _kept, _sentences, REQUIRED_PHRASES,
+                      MAX_LENGTH_RATIO))
