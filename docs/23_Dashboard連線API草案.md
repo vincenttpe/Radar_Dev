@@ -68,7 +68,8 @@
 ```json
 {"records": [{"timestamp": "2026-10-14 08:00:00", "topic": "radar10/DEMO-SIM-01", "resolution": null,
               "payload": {"event": "absence"}}],
- "next_cursor": "c-2", "received_until": "2026-10-14 11:59:55", "complete": true}
+ "next_cursor": "c-2", "received_until": "2026-10-14 11:59:55", "complete": true,
+ "settings": [{"since": "2026-10-14 00:00:00", "fallSwitch": true, "stillThreshold": 30}]}
 ```
 
 | 欄位 | 說明 |
@@ -76,11 +77,10 @@
 | `records` | 雲端格式 `{timestamp, topic, resolution, payload}`，和 Logs 頁匯出的 NDJSON 每一行相同 |
 | `next_cursor` | 還有下一頁就給，最後一頁是 `null`。Jetson 會一直取到 `null` |
 | `received_until` | Dashboard 收到這台裝置哪個時間點為止 |
-| `complete` | 這段時間的資料是否都到了。`false` 時，Jetson 照樣產生文字，並在傳回時附上 `received_until`，讓畫面寫「資料到幾點」 |
+| `complete` | 這段時間的資料是否都到了（要是 JSON 的 `true`／`false`；其他值一律當成沒到齊）。`false` 時，Jetson 照樣產生文字，並在傳回時附上 `received_until`，讓畫面寫「資料到幾點」 |
+| `settings` | 這段時間有效的偵測設定與變更時間，例如 `[{"since": "…", "fallSwitch": true, "stillThreshold": 30}]`：跌倒、久待警報有沒有開、久待門檻多少（A52）。**請 Dashboard 現在就準備**；這一版的 Jetson 還不讀，等「警報沒開時報告怎麼寫」決定後才用（警報沒開時，報告不能寫「0 次」） |
 
 範圍不合理、查無裝置時回錯誤碼（4xx），不要回空的 `records`：空的只代表這段時間真的沒有紀錄。
-
-| `settings` | 這段時間有效的偵測設定與變更時間，例如 `[{"since": "…", "fallSwitch": true, "stillThreshold": 30}]`：跌倒、久待警報有沒有開、久待門檻多少（A52）。**請 Dashboard 現在就準備**；這一版的 Jetson 還不讀，等「警報沒開時報告怎麼寫」決定後才用（警報沒開時，報告不能寫「0 次」） |
 
 `docs/16`「資料交換 API 草案」另列的 `model`、`firmware`、每筆 `id`、`received_at`，這一版的 Jetson 還不用；
 等 Radar60FL 確認後再加。
@@ -112,6 +112,7 @@
 | 雲端是 AWS、Azure、GCP 還是自建；有沒有現成的裝置身分機制（例如 AWS IoT Core、Azure IoT Hub） | B12 |
 | 身分驗證用每台一個 token（本草案），還是每台一張憑證、用 mTLS（雲端確認是哪一台在連線，私鑰可放 Orin 的 fTPM） | B12 |
 | 現場網路是 Wi-Fi、乙太網路還是 4G；是否只放行 443、要不要經 proxy | B11、B12 |
+| 同一個 `job_id` 的結果可能收到兩次（第一次其實送到了、只是回應沒傳回來，Jetson 會再送）：Dashboard 收到重複的結果要不出錯，以最後一次為準或忽略都可以 | 4-1 |
 
 ## Jetson 端的部署注意（之後上線時）
 
@@ -120,7 +121,8 @@
 | 系統時間 | 很多 Jetson 載板沒有 RTC 電池，斷電重開後時間會回到 1970，HTTPS 憑證會驗證失敗。開機先完成 NTP 校時再啟動；systemd 設 `After=time-sync.target` | 連線程式啟動時檢查時間，明顯不對就停下來並提示校時 |
 | 自動重啟 | systemd 設 `Restart=always`，程式掛掉後自動重啟 | 連不上 Dashboard 時程式本身不會停，等一下再試 |
 | 轉址 | 不跟轉址：轉址時 token 會一起帶去新位置 | 收到 3xx 當成錯誤，下一輪再試 |
-| 送不出去的結果 | 先留著，下一輪再送 | 只留在記憶體、最多 100 筆；程式重啟就沒了，Dashboard 那邊要有逾時重發（上面要確認的題目） |
+| 送不出去的結果 | 連不上、5xx、408、429 先留著下一輪再送；其他 4xx 是 Dashboard 明確不收（例如已逾時），丟掉並記下來，不擋住後面的需求 | 只留在記憶體；補送成功之前不取新需求，所以最多一筆。程式重啟就沒了，Dashboard 那邊要有逾時重發（上面要確認的題目） |
+| Dashboard 回的資料不合草案 | 這筆需求傳回 `failed` 並寫原因；連需求本身都不是物件就記下來、略過 | 服務不會因此停掉 |
 | CA 憑證 | 舊版 JetPack 的 `ca-certificates` 太舊時，連新的雲端端點會失敗 | 要納入更新範圍（B9、B11，維運決定） |
 | 遠端維運 | 不靠固定 IP 加開 port；用 Tailscale、WireGuard 或雲端的 secure tunnel | 目前用 AnyDesk；換不換由維運決定（B11、B12） |
 | 更新 | 程式與模型的更新要能驗證來源、能回滾 | 還沒有，屬維運（B9、B11） |

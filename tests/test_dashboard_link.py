@@ -4,6 +4,7 @@
 「取需求 → 分頁取裝置事件 → 產生 → 傳回」；資料是模擬上午，不連真實雲端。
 """
 import threading
+import urllib.error
 
 import fake_dashboard
 import pytest
@@ -284,19 +285,76 @@ def test_a_result_that_could_not_be_sent_is_sent_on_the_next_round():
     assert unsent == [] and link.posted == ["j-9"]
 
 
-def test_unsent_results_are_capped(monkeypatch):
-    monkeypatch.setattr(dashboard_link, "MAX_UNSENT", 1)
-    link, lines = Flaky(), []
-    link.fail = 99
-    unsent = [{**JOB, "job_id": "old"}]
-    assert not run_once(link, None, log=lines.append, unsent=unsent)
-    assert lines == ["old 結果沒送出（ConnectionResetError），下一輪再送"]
-    link.jobs = [dict(JOB)]
-    unsent.clear()
-    run_once(link, None, log=lines.append, unsent=unsent)
-    unsent.append({**JOB, "job_id": "older"})
-    run_once(link, None, log=lines.append, unsent=unsent)
-    assert any("留太久還沒送出，丟掉" in line for line in lines) and len(unsent) == 1
+def test_while_the_dashboard_is_unreachable_no_new_job_is_taken():
+    """補送失敗時先不取新需求：沒送出的結果不會越積越多，需求也留在 Dashboard 的佇列裡。"""
+    link, lines, unsent = Flaky(), [], []
+    link.fail, link.jobs = 99, [{**JOB, "job_id": "j-2"}, {**JOB, "job_id": "j-1"}]
+    assert run_once(link, None, log=lines.append, unsent=unsent)
+    for _ in range(3):
+        assert not run_once(link, None, log=lines.append, unsent=unsent)
+    assert [b["job_id"] for b in unsent] == ["j-1"] and [j["job_id"] for j in link.jobs] == ["j-2"]
+
+
+class Refusing(Flaky):
+    """傳回結果時 Dashboard 回指定的 HTTP 錯誤碼。"""
+
+    def __init__(self, code):
+        super().__init__()
+        self.code, self.jobs = code, [{**JOB, "job_id": "j-2"}, {**JOB, "job_id": "j-1"}]
+
+    def post_result(self, job_id, body):
+        self.posted.append(job_id)
+        raise urllib.error.HTTPError("http://x", self.code, "no", {}, None)
+
+
+def test_a_result_the_dashboard_refuses_is_dropped_and_the_next_job_goes_ahead():
+    """Dashboard 明確不收（例如 410 已逾時）：再送也沒用，丟掉並記下來，不擋住後面的需求。"""
+    link, lines, unsent = Refusing(410), [], []
+    assert run_once(link, None, log=lines.append, unsent=unsent)
+    assert run_once(link, None, log=lines.append, unsent=unsent)
+    assert unsent == [] and link.posted == ["j-1", "j-2"]
+    assert lines[0] == "j-1 結果 Dashboard 不收（HTTP 410），丟掉"
+
+
+@pytest.mark.parametrize("code", [408, 429, 503])
+def test_a_temporary_refusal_is_sent_again(code):
+    link, lines, unsent = Refusing(code), [], []
+    assert run_once(link, None, log=lines.append, unsent=unsent)
+    assert [b["job_id"] for b in unsent] == ["j-1"]
+
+
+def test_a_job_that_is_not_an_object_is_skipped_and_the_loop_goes_on():
+    lines = []
+
+    class Odd(Memory):
+        def __init__(self):
+            super().__init__()
+            self.queue = [["x"], dict(JOB)]
+
+        def next_job(self):
+            return self.queue.pop(0) if self.queue else None
+
+        def post_result(self, job_id, body):
+            lines.append(f"posted {job_id}")
+
+    link = Odd()
+    assert run_once(link, None, log=lines.append)
+    assert lines == ["Dashboard 回的需求不是物件（list），略過"]
+    assert run_once(link, None, log=lines.append) and "posted j-9" in lines
+
+
+def test_a_record_with_an_unexpected_shape_fails_the_job_instead_of_stopping():
+    """payload.params 是清單時，整理裝置事件會出錯（device_events 另外處理）：這裡一樣傳回 failed、只寫錯誤種類。"""
+    odd = [*RECORDS[:3], {**RECORDS[3], "payload": {**RECORDS[3]["payload"], "params": [1]}}]
+    body = handle(JOB, Memory(records=odd), None)
+    assert body["status"] == "failed" and body["problems"] == ["整理裝置事件時發生錯誤：AttributeError"]
+
+
+def test_complete_must_be_a_real_true(monkeypatch):
+    link = HttpDashboard("http://127.0.0.1:9", "t")
+    monkeypatch.setattr(link, "_call", lambda method, path, body=None: (
+        200, {"records": [], "next_cursor": None, "complete": "false"}))
+    assert link.records("D", "2026-10-14 08:00:00", "2026-10-14 09:00:00").complete is False
 
 
 def test_cli_refuses_to_start_before_the_clock_is_set(monkeypatch, capsys):
