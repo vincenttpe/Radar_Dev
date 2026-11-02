@@ -155,8 +155,9 @@ def summarize(records: list[dict[str, Any]]) -> Summary:
             summary.unknown_events.append(record)
         if event == "error":
             summary.errors.append((when, str(payload.get("message", ""))))
-        if "params" in payload:
-            summary.setting_changes.append(SettingChange(when, payload["params"].get("sys.config", {})))
+        # params 形狀不對的紀錄已在 _parse 列為無法判讀，這裡 config 只會是 None（沒有 params）或物件
+        if (config := _sys_config(payload)) is not None:
+            summary.setting_changes.append(SettingChange(when, config))
         if event == "fall":
             if not fall_active:
                 mode, trigger, delay = payload.get("mode"), payload.get("trigger"), payload.get("delaysec")
@@ -267,7 +268,7 @@ def timeline(records: list[dict[str, Any]]) -> Timeline:
 def _parse(
     records: list[dict[str, Any]], summary: Summary
 ) -> list[tuple[datetime, dict[str, Any], dict[str, Any]]]:
-    """summarize 用的時間軸：只收一台裝置，payload 不是物件的紀錄列為無法判讀。"""
+    """summarize 用的時間軸：只收一台裝置，payload 讀不懂的紀錄列為無法判讀（_readable_payload）。"""
     line = timeline(records)
     summary.duplicates_removed = line.duplicates
     device: str | None = None
@@ -280,12 +281,27 @@ def _parse(
     unreadable = line.no_topic + line.unreadable_time
     parsed = []
     for entry in line.entries:
-        if isinstance(entry.payload, dict):
+        if _readable_payload(entry.payload):
             parsed.append((entry.when, entry.payload, entry.record))
         else:
             unreadable.append((entry.index, entry.record))
     summary.unreadable = [r for _, r in sorted(unreadable, key=lambda ir: ir[0])]
     return parsed
+
+
+def _sys_config(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """裝置回報的 params.sys.config；有 params 但沒有 sys.config 時是 {}。沒有 params，或形狀不對，就回傳 None。"""
+    params = payload.get("params")
+    config = params.get("sys.config", {}) if isinstance(params, dict) else None
+    return config if isinstance(config, dict) else None
+
+
+def _readable_payload(payload: Any) -> bool:
+    """payload 是物件；有 params 時 params 與 params.sys.config 也都是物件。
+
+    形狀不對的整筆列為無法判讀，不中斷整份報告、也不算心跳（REVIEW.md 3.1）。
+    """
+    return isinstance(payload, dict) and ("params" not in payload or _sys_config(payload) is not None)
 
 
 def read_records(path: Path) -> list[dict[str, Any]]:

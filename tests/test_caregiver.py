@@ -265,6 +265,18 @@ def test_cli_lists_records_with_unreadable_fields_instead_of_failing(tmp_path, c
     assert out.endswith("另有 1 筆紀錄無法判讀，請通知資訊人員。\n")
 
 
+def test_cli_lists_a_record_whose_params_is_a_list_instead_of_failing(tmp_path, capsys):
+    """2026-11-02 審查 PR #51 時發現：params 是清單時整份報告以 AttributeError 中斷。"""
+    path = tmp_path / "events.jsonl"
+    odd = {"timestamp": "2026-10-14 09:10:01", "topic": TOPIC, "resolution": None,
+           "payload": {"event": "absence", "params": [1]}}
+    records = [*timeline("09:00:00", "09:10:00"), odd]
+    path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in records), encoding="utf-8")
+    code, out, err = _run(capsys, path, "--place", "1 號廁所")
+    assert (code, err) == (0, "")
+    assert out.endswith("另有 1 筆紀錄無法判讀，請通知資訊人員。\n")
+
+
 def test_cli_rejects_a_line_that_is_not_json_and_says_where(tmp_path, capsys):
     path = tmp_path / "events.jsonl"
     path.write_text(json.dumps(rec("09:00:00", "absence")) + "\n{壞掉\n", encoding="utf-8")
