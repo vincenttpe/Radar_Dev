@@ -413,6 +413,37 @@ def test_a_result_is_dropped_after_the_retry_limit_so_new_jobs_go_ahead(monkeypa
     assert link.posted == ["j-1", "j-1", "j-1", "j-2"] and [u.body["job_id"] for u in unsent] == ["j-2"]
 
 
+def test_an_unexpected_error_from_the_dashboard_never_stops_the_loop(monkeypatch):
+    """極深的巢狀 JSON 會讓 json.loads 丟 RecursionError：輪詢迴圈攔下所有意料外的錯誤，只記種類，服務不停。"""
+    link = HttpDashboard("http://127.0.0.1:9", "t")
+    deep = b"[" * 100000 + b"]" * 100000
+    monkeypatch.setattr(link._opener, "open", lambda req, timeout: _Response(deep))
+    lines, rounds = [], iter([True, True, False])
+    run(link, None, log=lines.append, sleep=lambda s: None, keep_going=lambda: next(rounds))
+    assert lines == ["意料外的錯誤：RecursionError，等一下再試"] * 2
+
+
+def test_a_truncated_reply_to_a_result_keeps_it_for_the_next_round(monkeypatch):
+    """傳回結果時回應被截斷：不知道 Dashboard 收到沒有，留著下一輪再送（Dashboard 要能接受重複，docs/23）。"""
+    import http.client
+
+    link = HttpDashboard("http://127.0.0.1:9", "t")
+    monkeypatch.setattr(link._opener, "open", lambda req, timeout: _Response(b"", error=http.client.IncompleteRead(b"")))
+    lines, unsent = [], []
+    item = dashboard_link.Unsent({"job_id": "j-1"})
+    assert not dashboard_link._send(link, item, unsent, lines.append)
+    assert [(u.body["job_id"], u.tries) for u in unsent] == [("j-1", 1)]
+    assert lines == ["j-1 結果沒送出（OSError），下一輪再送"]
+
+
+def test_cli_once_stops_with_a_reason_on_an_unexpected_error(dashboard, monkeypatch, capsys):
+    _, base = dashboard()
+    monkeypatch.setenv(dashboard_link.TOKEN_ENV, fake_dashboard.TOKEN)
+    monkeypatch.setattr(dashboard_link.HttpDashboard, "next_job", lambda self: (_ for _ in ()).throw(RecursionError()))
+    assert main(["--base", base, "--once"]) == 2
+    assert "意料外的錯誤 RecursionError" in capsys.readouterr().err
+
+
 def test_cli_refuses_to_start_before_the_clock_is_set(monkeypatch, capsys):
     """沒有 RTC 電池的 Jetson 開機後時間可能回到 1970：先校時，否則 HTTPS 憑證會驗證失敗。"""
     from datetime import UTC, datetime

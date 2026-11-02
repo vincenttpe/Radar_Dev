@@ -204,7 +204,7 @@ def _send(dashboard: Dashboard, item: Unsent, unsent: list[Unsent], log: Callabl
             log(f"{job_id} 結果 Dashboard 不收（HTTP {e.code}），丟掉")
             return True
         error: Exception = e
-    except (OSError, ValueError) as e:
+    except Exception as e:  # 連不上、回應不完整，或其他意料外的錯誤：這筆都留著下一輪再送，不會因此丟掉
         error = e
     if item.tries >= MAX_RETRIES:
         log(f"{job_id} 結果補送 {MAX_RETRIES} 次還沒送到（{type(error).__name__}），丟掉；等 Dashboard 逾時重發")
@@ -252,6 +252,8 @@ def run(dashboard: Dashboard, model: Model | None, *, interval: float = POLL_SEC
             log(f"連不上 Dashboard：{type(e).__name__}")
         except ValueError as e:  # 回應不是 JSON 或格式不對
             log(f"Dashboard 回應異常：{type(e).__name__}")
+        except Exception as e:  # 其他意料外的錯誤（例如極深的巢狀 JSON 造成 RecursionError）：服務不停，只記種類
+            log(f"意料外的錯誤：{type(e).__name__}，等一下再試")
         sleep(interval)
 
 
@@ -281,6 +283,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if not unsent else 1
     except (OSError, ValueError) as e:
         print(f"錯誤：{e}", file=sys.stderr)
+        return 2
+    except Exception as e:  # 試跑時遇到意料外的錯誤：結束並說明種類，不印內容
+        print(f"錯誤：意料外的錯誤 {type(e).__name__}", file=sys.stderr)
         return 2
     run(dashboard, model, interval=args.interval, log=_log)  # pragma: no cover  一直跑，由 Ctrl+C 或 systemd 停止
     return 0  # pragma: no cover
