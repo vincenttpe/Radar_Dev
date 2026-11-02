@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from radar_agent.ask import MAX_ASKED, Match, Menu, Question, match_question
-from radar_agent.caregiver import SUMMARY_TOPICS, period_head, topic_sentences
+from radar_agent.caregiver import SUMMARY_TOPICS, no_data, period_head, topic_sentences
 from radar_agent.device_events import Summary, read_records, summarize
 from radar_agent.local_model import add_model_args, model_from_args
 from radar_agent.output_check import check_output
@@ -55,7 +55,7 @@ def answer(question_id: str, summary: Summary, *, place: str) -> str:
     if question_id not in SUMMARY_TOPICS:
         raise KeyError(question_id)
     if not summary.online:
-        return f"{place}：沒有收到資料，無法判斷。"
+        return f"{place}：{no_data(summary)}。"
     lines = topic_sentences(question_id, summary, place)
     return "\n".join([period_head(summary, place, clock=True) + lines[0], *lines[1:]])
 
