@@ -155,8 +155,9 @@ def summarize(records: list[dict[str, Any]]) -> Summary:
             summary.unknown_events.append(record)
         if event == "error":
             summary.errors.append((when, str(payload.get("message", ""))))
-        if "params" in payload:
-            summary.setting_changes.append(SettingChange(when, payload["params"].get("sys.config", {})))
+        # params 形狀不對的紀錄已在 _parse 列為無法判讀，這裡 config 只會是 None（沒有 params）或物件
+        if (config := _sys_config(payload)) is not None:
+            summary.setting_changes.append(SettingChange(when, config))
         if event == "fall":
             if not fall_active:
                 mode, trigger, delay = payload.get("mode"), payload.get("trigger"), payload.get("delaysec")
@@ -288,17 +289,19 @@ def _parse(
     return parsed
 
 
+def _sys_config(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """裝置回報的 params.sys.config；有 params 但沒有 sys.config 時是 {}。沒有 params，或形狀不對，就回傳 None。"""
+    params = payload.get("params")
+    config = params.get("sys.config", {}) if isinstance(params, dict) else None
+    return config if isinstance(config, dict) else None
+
+
 def _readable_payload(payload: Any) -> bool:
-    """payload 是物件；有 params 時 params 也是物件，有 sys.config 時 sys.config 也是物件。
+    """payload 是物件；有 params 時 params 與 params.sys.config 也都是物件。
 
     形狀不對的整筆列為無法判讀，不中斷整份報告、也不算心跳（REVIEW.md 3.1）。
     """
-    if not isinstance(payload, dict):
-        return False
-    if "params" not in payload:
-        return True
-    params = payload["params"]
-    return isinstance(params, dict) and isinstance(params.get("sys.config", {}), dict)
+    return isinstance(payload, dict) and ("params" not in payload or _sys_config(payload) is not None)
 
 
 def read_records(path: Path) -> list[dict[str, Any]]:
