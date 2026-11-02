@@ -74,7 +74,7 @@ def pending(report: dict[str, Any], side: dict[str, Any], end: str) -> list[str]
                      "數字要能表示「無法判斷」（例如 null），屬於給讀者的輸出格式，待決。")
     if side["count"] and report["from"] is None:
         notes.append(f"Dashboard 有 {side['count']} 筆紀錄，回傳的文字卻沒有任何事件：本 repo 讀不懂這種格式"
-                     "（例如 Radar60FL，docs/05 A45；報告會寫「沒有讀得懂的資料」），要先確認格式。")
+                     "（例如 Radar60FL，docs/05 A45），要先確認格式。")
     last = side["last"]
     if last is not None and parse_bound(end) - parse_bound(last) > HEARTBEAT_GAP:
         notes.append(f"要的是到 {end[11:]}，資料只到 {last[11:]}；回傳的文字沒有寫出之後沒有資料，"
@@ -117,7 +117,9 @@ def board(s: dict[str, Any]) -> str:
     if not alerts:
         alerts = ([f'<li class="lv-device">{_e(r["summary"])}</li>'] if "無法判斷" in r["summary"]
                   else ['<li class="lv-none">沒有待處理的事件。</li>'])
-    until = f'資料到 {r["to"][5:10].replace("-", "/")} {r["to"][11:16]}' if r["to"] else "沒有收到資料"
+    # Dashboard 有給紀錄、報告卻沒有涵蓋時段：讀不懂，不是沒收到（#64）
+    missing = "沒有讀得懂的資料" if s["side"]["count"] else "沒有收到資料"
+    until = f'資料到 {r["to"][5:10].replace("-", "/")} {r["to"][11:16]}' if r["to"] else missing
     detail = "".join(f'<li><b>{_e(e["label"])}</b> {_e(e["prompt"])}<br><span class="hint">照護紀錄草稿：{_e(e["record"])}</span></li>'
                      for e in r["events"])
     card = (f'<div class="device"><p class="code">{_e(s["device"])}</p><p class="name">{_e(r["place"])}</p>'
