@@ -10,6 +10,8 @@ import textwrap
 import pytest
 from test_caregiver import timeline
 
+from fakes import FakeModel
+
 from radar_agent import kg_rules
 from radar_agent.caregiver import caregiver_text
 from radar_agent.device_events import summarize
@@ -19,21 +21,6 @@ PLACE = "1 號廁所"
 ALL_ONLINE = summarize(timeline("09:00:00", "09:30:00", [("09:05:00", "09:13:00"), ("09:20:00", "09:21:30")]))
 # 範本：1 號廁所 10/14：有人使用 2 次，最長一次 8 分鐘。\n沒有跌倒警報、主動呼救或久待警報。
 GOOD = "1 號廁所在 10/14 有人使用 2 次，最久一次待了 8 分鐘；沒有跌倒警報、主動呼救，也沒有久待警報。"
-
-
-class FakeModel:
-    """回固定文字，或丟出指定的例外；記下收到的 prompt。"""
-
-    name = "fake-0.1"
-
-    def __init__(self, reply: str = "", error: Exception | None = None):
-        self.reply, self.error, self.prompts = reply, error, []
-
-    def __call__(self, prompt: str) -> str:
-        self.prompts.append(prompt)
-        if self.error is not None:
-            raise self.error
-        return self.reply
 
 
 def test_without_a_model_the_template_is_used():

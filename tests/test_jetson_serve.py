@@ -12,6 +12,10 @@ import urllib.request
 
 import pytest
 
+from fakes import FakeModel
+from test_ask import menu_digest
+
+from radar_agent.local_model import EchoModel
 from radar_agent.event_ask import DEMO_MENU, DEMO_PROMPT_VERSION, HANDOVER_NOTE, pick
 
 
@@ -21,22 +25,6 @@ def serve_mod(repo):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-class PickFirst:
-    """假模型：一律回第 1 題（有沒有人跌倒）。"""
-
-    name = "fake-model"
-
-    def __call__(self, prompt: str) -> str:
-        return "1"
-
-
-class Broken:
-    name = "broken-model"
-
-    def __call__(self, prompt: str) -> str:
-        raise TimeoutError
 
 
 @pytest.fixture
@@ -73,7 +61,7 @@ def _ask(url, asked, headers=None):
 
 def test_only_listens_on_localhost(serve_mod):
     """實際綁定的位址是 loopback，不是 0.0.0.0 或對外網卡：同網段的電腦連不進來（docs/21「安全」）。"""
-    httpd = serve_mod.serve(serve_mod.Demo(PickFirst()), 0)
+    httpd = serve_mod.serve(serve_mod.Demo(FakeModel("1", name="fake-model")), 0)
     try:
         assert httpd.socket.getsockname()[0] == "127.0.0.1"
     finally:
@@ -81,7 +69,7 @@ def test_only_listens_on_localhost(serve_mod):
 
 
 def test_page_is_the_prototype_marked_live(server):
-    _, url = server(PickFirst())
+    _, url = server(FakeModel("1", name="fake-model"))
     with urllib.request.urlopen(url + "/") as resp:
         page = resp.read().decode("utf-8")
     assert '"live": {' in page and '"model": "fake-model"' in page
@@ -89,7 +77,7 @@ def test_page_is_the_prototype_marked_live(server):
 
 
 def test_typed_question_gets_the_same_answer_as_picking_it(server):
-    demo, url = server(PickFirst())
+    demo, url = server(FakeModel("1", name="fake-model"))
     code, data = _ask(url, "有人跌到嗎")
     assert code == 200
     assert data["question"]["id"] == "falls" and data["confirm"] == "您是想問「有沒有人跌倒？」嗎？"
@@ -98,14 +86,14 @@ def test_typed_question_gets_the_same_answer_as_picking_it(server):
 
 
 def test_model_failure_falls_back_to_the_menu(server):
-    _, url = server(Broken())
+    _, url = server(FakeModel(error=TimeoutError(), name="broken-model"))
     code, data = _ask(url, "有人跌倒嗎")
     assert code == 200 and data["question"] is None and data["answer"] is None
     assert data["rejected"] == ["模型錯誤：TimeoutError"]
 
 
 def test_typed_text_never_reaches_the_log(server, capsys):
-    _, url = server(PickFirst())
+    _, url = server(FakeModel("1", name="fake-model"))
     _ask(url, "王小明今天有跌倒嗎")
     err = capsys.readouterr().err
     assert "POST /api/ask 200" in err
@@ -113,7 +101,7 @@ def test_typed_text_never_reaches_the_log(server, capsys):
 
 
 def test_other_sites_cannot_send_questions(server):
-    _, url = server(PickFirst())
+    _, url = server(FakeModel("1", name="fake-model"))
     code, _ = _ask(url, "有人跌倒嗎", {"Origin": "http://evil.example"})
     assert code == 403
     code, _ = _ask(url, "有人跌倒嗎", {"Origin": url})
@@ -127,12 +115,12 @@ def test_other_sites_cannot_send_questions(server):
     (b'{"asked": "' + b"x" * 5000 + b'"}', 413),
 ])
 def test_bad_requests_are_refused(server, body, code):
-    _, url = server(PickFirst())
+    _, url = server(FakeModel("1", name="fake-model"))
     assert _post(url, body)[0] == code
 
 
 def test_unknown_paths_are_404(server):
-    _, url = server(PickFirst())
+    _, url = server(FakeModel("1", name="fake-model"))
     with pytest.raises(urllib.error.HTTPError) as e:
         urllib.request.urlopen(url + "/data/samples_demo/bathroom_morning.jsonl")
     assert e.value.code == 404
@@ -143,7 +131,7 @@ def test_unknown_paths_are_404(server):
 
 
 def test_stats_are_empty_without_tegrastats(server):
-    _, url = server(PickFirst())
+    _, url = server(FakeModel("1", name="fake-model"))
     with urllib.request.urlopen(url + "/api/stats") as resp:
         assert json.loads(resp.read()) == {"stats": None}
 
@@ -163,8 +151,8 @@ def test_cli_refuses_chinese_models(serve_mod, capsys):
 
 
 def test_warm_up_reports_success_and_failure(serve_mod):
-    assert serve_mod.Demo(PickFirst()).warm_up().startswith("暖機完成：")
-    failed = serve_mod.Demo(Broken()).warm_up()
+    assert serve_mod.Demo(FakeModel("1", name="fake-model")).warm_up().startswith("暖機完成：")
+    failed = serve_mod.Demo(FakeModel(error=TimeoutError(), name="broken-model")).warm_up()
     assert failed.startswith("暖機失敗") and "模型錯誤：TimeoutError" in failed
 
 
@@ -205,13 +193,13 @@ def test_cli_refuses_command_models(serve_mod, capsys):
 
 def test_page_does_not_claim_data_never_leaves(server):
     """「資料不出這台 Jetson」要等確認 Ollama 不記錄 prompt 才能寫（docs/21 待核對）。"""
-    _, url = server(PickFirst())
+    _, url = server(FakeModel("1", name="fake-model"))
     with urllib.request.urlopen(url + "/") as resp:
         assert "資料不出" not in resp.read().decode("utf-8")
 
 
 def test_query_string_on_ask_is_ignored(server):
-    _, url = server(PickFirst())
+    _, url = server(FakeModel("1", name="fake-model"))
     req = urllib.request.Request(url + "/api/ask?from=menu", data=json.dumps({"asked": "有人跌倒嗎"}).encode("utf-8"),
                                  method="POST", headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req) as resp:
@@ -230,7 +218,7 @@ def _compare(url, headers=None, kind="handover"):
 def test_page_carries_both_templates_to_show_before_the_model_finishes(server):
     from radar_agent.caregiver import caregiver_text, handover_text
 
-    demo, url = server(PickFirst())
+    demo, url = server(FakeModel("1", name="fake-model"))
     with urllib.request.urlopen(url + "/") as resp:
         page = resp.read().decode("utf-8")
     assert json.dumps(handover_text(demo.summary, place=demo.place), ensure_ascii=False) in page
@@ -240,7 +228,7 @@ def test_page_carries_both_templates_to_show_before_the_model_finishes(server):
 def test_handover_that_fails_the_check_keeps_the_template_and_says_why(server):
     from radar_agent.caregiver import handover_text
 
-    demo, url = server(PickFirst())  # 回「1」：數字、時間都漏掉
+    demo, url = server(FakeModel("1", name="fake-model"))  # 回「1」：數字、時間都漏掉
     code, data = _compare(url)
     assert code == 200 and data["layer"] == "template"
     assert data["text"] == handover_text(demo.summary, place=demo.place)
@@ -249,43 +237,34 @@ def test_handover_that_fails_the_check_keeps_the_template_and_says_why(server):
 
 
 def test_handover_model_errors_keep_the_template(server):
-    _, url = server(Broken())
+    _, url = server(FakeModel(error=TimeoutError(), name="broken-model"))
     code, data = _compare(url)
     assert code == 200 and data["layer"] == "template" and data["rejected"] == ["模型錯誤：TimeoutError"]
     assert data["candidate"] is None and data["no_reply"] is True  # 模型出錯：沒有輸出可以列，頁面寫「沒有回應」
 
 
 def test_other_sites_cannot_trigger_a_handover(server):
-    _, url = server(PickFirst())
+    _, url = server(FakeModel("1", name="fake-model"))
     assert _compare(url, {"Origin": "http://evil.example"})[0] == 403
 
 
 def test_handover_whose_template_fails_its_check_answers_500_with_the_reason(server):
-    demo, url = server(PickFirst())
+    demo, url = server(FakeModel("1", name="fake-model"))
     demo.place = "治療室"  # 「治療」是不能出現的用語：原句沒通過輸出檢查，不交出任何文字
     code, data = _compare(url)
     assert code == 500 and "範本沒通過輸出檢查" in data["error"]
 
 
 def test_refused_ask_still_says_question(server):
-    _, url = server(PickFirst())
+    _, url = server(FakeModel("1", name="fake-model"))
     code, data = _ask(url, "有人跌倒嗎", {"Origin": "http://evil.example"})
     assert code == 403 and data["error"] == "只接受這個頁面送出的提問"
-
-
-class Echoing:
-    """假模型：照抄 prompt 裡「原文：」後面的文字（一定通過檢查）。"""
-
-    name = "echoing"
-
-    def __call__(self, prompt: str) -> str:
-        return prompt.rsplit("原文：\n", 1)[-1]
 
 
 def test_event_summary_can_be_compared_too(server):
     from radar_agent.caregiver import caregiver_text
 
-    demo, url = server(Echoing())
+    demo, url = server(EchoModel())
     code, data = _compare(url, kind="summary")
     assert code == 200 and (data["kind"], data["layer"]) == ("summary", "model")
     assert data["text"] == caregiver_text(demo.summary, place=demo.place) and data["candidate"] is None
@@ -295,7 +274,7 @@ def test_comparison_returns_the_fixed_head_and_the_compared_body_separately(serv
     """交班重點的開頭（地點時段、【重點】）不交給模型：服務分好 head 與 body，頁面不再依行數切（2026-11-02）。"""
     from radar_agent.caregiver import caregiver_text, handover_head
 
-    demo, url = server(Echoing())
+    demo, url = server(EchoModel())
     _, handover = _compare(url)
     assert handover["layer"] == "model" and handover["head"] == handover_head(demo.summary, place=demo.place)
     assert handover["body"] == caregiver_text(demo.summary, place=demo.place)
@@ -308,39 +287,39 @@ def test_without_data_the_whole_handover_is_the_head(server):
     from radar_agent.caregiver import handover_text
     from radar_agent.device_events import summarize
 
-    demo, url = server(Echoing())
+    demo, url = server(EchoModel())
     demo.summary = summarize([])
     _, data = _compare(url)
     assert (data["head"], data["body"]) == (handover_text(demo.summary, place=demo.place), "")
 
 
 def test_a_handover_that_does_not_start_with_the_fixed_head_is_not_cut(serve_mod, server):
-    demo, _ = server(Echoing())
+    demo, _ = server(EchoModel())
     with pytest.raises(ValueError, match="固定開頭對不上"):
         demo._parts("handover", "不是交班重點的開頭")
 
 
 def test_unknown_comparison_is_404(server):
-    _, url = server(PickFirst())
+    _, url = server(FakeModel("1", name="fake-model"))
     assert _compare(url, kind="kg")[0] == 404
 
 
 def test_rejected_event_summary_rewrite_is_returned_as_candidate(server):
     from radar_agent.caregiver import caregiver_text
 
-    demo, url = server(PickFirst())  # 回「1」：數字都漏掉
+    demo, url = server(FakeModel("1", name="fake-model"))  # 回「1」：數字都漏掉
     code, data = _compare(url, kind="summary")
     assert code == 200 and (data["layer"], data["candidate"]) == ("template", "1")
     assert data["text"] == caregiver_text(demo.summary, place=demo.place)
 
 
 def test_other_sites_cannot_trigger_a_summary_comparison(server):
-    _, url = server(PickFirst())
+    _, url = server(FakeModel("1", name="fake-model"))
     assert _compare(url, {"Origin": "http://evil.example"}, kind="summary")[0] == 403
 
 
 def test_comparison_paths_need_the_compare_prefix(server):
-    _, url = server(PickFirst())
+    _, url = server(FakeModel("1", name="fake-model"))
     req = urllib.request.Request(url + "/summary", data=b"", method="POST")
     with pytest.raises(urllib.error.HTTPError) as e:
         urllib.request.urlopen(req)
@@ -350,50 +329,31 @@ def test_comparison_paths_need_the_compare_prefix(server):
 def test_event_summary_without_data_is_not_sent_to_the_model(server):
     from radar_agent.device_events import summarize
 
-    demo, url = server(Broken())  # 被呼叫就丟例外
+    demo, url = server(FakeModel(error=TimeoutError(), name="broken-model"))  # 被呼叫就丟例外
     demo.summary = summarize([])
     code, data = _compare(url, kind="summary")
     assert code == 200 and (data["layer"], data["rejected"], data["no_reply"]) == ("template", [], False)
     assert data["text"] == "1 號廁所：沒有收到資料，無法判斷。"
 
 
-class Replies:
-    """假模型：回固定文字。"""
-
-    def __init__(self, reply: str) -> None:
-        self.name, self.reply = "replies", reply
-
-    def __call__(self, prompt: str) -> str:
-        return self.reply
-
-
 @pytest.mark.parametrize("reply", ["", "   \n "])
 def test_empty_model_output_counts_as_no_reply(server, reply):
-    _, url = server(Replies(reply))
+    _, url = server(FakeModel(reply))
     code, data = _compare(url)
     assert code == 200 and (data["layer"], data["candidate"], data["no_reply"]) == ("template", None, True)
     assert data["rejected"] == ["模型沒有輸出"]
 
 
 def test_adopted_rewrite_is_not_no_reply(server):
-    _, url = server(Echoing())
+    _, url = server(EchoModel())
     code, data = _compare(url, kind="summary")
     assert code == 200 and (data["layer"], data["no_reply"]) == ("model", False)
-
-
-class PickHandover:
-    """假模型：一律回第 7 題（交班重點，只在內部 Demo）。"""
-
-    name = "fake-model"
-
-    def __call__(self, prompt: str) -> str:
-        return "7"
 
 
 def test_handover_question_answers_with_the_handover_original_and_a_note(serve_mod, server):
     from radar_agent.caregiver import handover_text
 
-    demo, url = server(PickHandover())
+    demo, url = server(FakeModel("7", name="fake-model"))
     code, data = _ask(url, "交接報告")
     assert code == 200 and data["question"]["id"] == "handover"
     assert data["answer"] == f"{HANDOVER_NOTE}\n{handover_text(demo.summary, place=demo.place)}"
@@ -412,18 +372,13 @@ def test_radar_ask_keeps_its_six_questions(serve_mod):
 
 def test_demo_ask_prompt_version_is_bumped_when_the_prompt_or_menu_changes(serve_mod):
     """紀錄只記 prompt_version；Demo 的選單或提示詞改了卻沒升版，就分不出模型當時看到哪一版。"""
-    import hashlib
-
-    from radar_agent.ask import build_prompt
-
-    digest = hashlib.sha256(build_prompt("{提問}", DEMO_MENU.questions).encode("utf-8")).hexdigest()[:16]
-    assert (DEMO_PROMPT_VERSION, digest) == ("jetson-demo-ask-v0", "fb0409607c9c42ac"), \
+    assert (DEMO_MENU.prompt_version, menu_digest(DEMO_MENU)) == ("jetson-demo-ask-v0", "fb0409607c9c42ac"), \
         "event_ask.DEMO_MENU 的題目或 ask.build_prompt 改了：升 event_ask.DEMO_PROMPT_VERSION，再更新這裡的版本與雜湊"
 
 
 def test_handover_question_whose_template_fails_its_check_shows_no_text_and_says_why(server):
     """和前 6 題一致：原句沒通過輸出檢查時不交出文字、寫出原因（不斷線、不回 500）。"""
-    demo, url = server(PickHandover())
+    demo, url = server(FakeModel("7", name="fake-model"))
     demo.place = "治療室"  # 「治療」是不能出現的用語
     code, data = _ask(url, "交接報告")
     assert code == 200 and data["question"]["id"] == "handover" and data["answer"] is None
@@ -431,7 +386,7 @@ def test_handover_question_whose_template_fails_its_check_shows_no_text_and_says
 
 
 def test_page_carries_the_handover_button_text_and_note(serve_mod, server):
-    _, url = server(PickFirst())
+    _, url = server(FakeModel("1", name="fake-model"))
     with urllib.request.urlopen(url + "/") as resp:
         page = resp.read().decode("utf-8")
     assert '"handover_question": "幫我整理交班重點"' in page

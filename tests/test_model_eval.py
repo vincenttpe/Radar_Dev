@@ -2,7 +2,6 @@
 
 模型以假模型、本機 HTTP 伺服器與子行程代替；題組、範本、檢查都用真的。
 """
-import hashlib
 import json
 import sys
 import threading
@@ -11,9 +10,8 @@ from itertools import count
 from typing import ClassVar
 
 import pytest
+from test_ask import menu_digest
 
-from radar_agent.ask import PROMPT_VERSION as ASK_PROMPT_VERSION
-from radar_agent.ask import build_prompt
 from radar_agent.caregiver import caregiver_text, event_notes
 from radar_agent.device_events import Summary
 from radar_agent.event_ask import DEMO_MENU
@@ -253,8 +251,7 @@ def test_wrong_question_is_counted_separately_from_no_match():
 
 def test_ask_prompt_version_is_bumped_when_the_prompt_or_menu_changes():
     """紀錄只記 prompt_version；知識圖譜提問的選單或提示詞改了卻沒升版，就分不出模型當時看到哪一版。"""
-    digest = hashlib.sha256(build_prompt("{提問}", ASK_MENU.questions).encode("utf-8")).hexdigest()[:16]
-    assert (ASK_PROMPT_VERSION, digest) == ("ask-v0", "cedf9111e4a66162"), \
+    assert (ASK_MENU.prompt_version, menu_digest(ASK_MENU)) == ("ask-v0", "cedf9111e4a66162"), \
         "ASK_MENU 或 ask.build_prompt 改了：升 ask.PROMPT_VERSION，再更新這裡的版本與雜湊"
 
 
