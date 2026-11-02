@@ -79,7 +79,7 @@ class Summary:
     errors: list[tuple[datetime, str]] = field(default_factory=list)
     # 時間或格式讀不懂的紀錄：原樣保留、不參與任何計算
     unreadable: list[dict[str, Any]] = field(default_factory=list)
-    # 規格外的 event：仍算心跳，但要請人確認
+    # 規格外的 event，或設定（params）的形狀不對：仍算心跳、事件照常計算，但要請人確認（報告寫「無法判讀」）
     unknown_events: list[dict[str, Any]] = field(default_factory=list)
     # 最後一筆是 offline、之後沒再收到資料：資料結束前就斷線了，之後的狀況不明（REVIEW.md 3.1）
     ended_offline: datetime | None = None
@@ -151,11 +151,12 @@ def summarize(records: list[dict[str, Any]]) -> Summary:
                 start = None
             online_start = when
         last = when
-        if event is not None and event not in KNOWN_EVENTS:
+        settings_ok = _settings_readable(payload)
+        if (event is not None and event not in KNOWN_EVENTS) or not settings_ok:
             summary.unknown_events.append(record)
         if event == "error":
             summary.errors.append((when, str(payload.get("message", ""))))
-        if "params" in payload:
+        if "params" in payload and settings_ok:  # 形狀不對的設定不採用，事件照常計算（漏掉跌倒比不採用一筆設定嚴重，2026-11-02）
             summary.setting_changes.append(SettingChange(when, payload["params"].get("sys.config", {})))
         if event == "fall":
             if not fall_active:
@@ -267,7 +268,7 @@ def timeline(records: list[dict[str, Any]]) -> Timeline:
 def _parse(
     records: list[dict[str, Any]], summary: Summary
 ) -> list[tuple[datetime, dict[str, Any], dict[str, Any]]]:
-    """summarize 用的時間軸：只收一台裝置，payload 不是物件、或設定（params）的形狀不對的紀錄列為無法判讀。"""
+    """summarize 用的時間軸：只收一台裝置，事件讀不懂的紀錄（readable_payload）列為無法判讀。"""
     line = timeline(records)
     summary.duplicates_removed = line.duplicates
     device: str | None = None
@@ -280,7 +281,7 @@ def _parse(
     unreadable = line.no_topic + line.unreadable_time
     parsed = []
     for entry in line.entries:
-        if isinstance(entry.payload, dict) and _settings_readable(entry.payload):
+        if readable_payload(entry.payload):
             parsed.append((entry.when, entry.payload, entry.record))
         else:
             unreadable.append((entry.index, entry.record))
@@ -288,8 +289,17 @@ def _parse(
     return parsed
 
 
+def readable_payload(payload: Any) -> bool:
+    """事件讀得懂嗎：payload 是物件，而且 event 沒有或是文字。event 是清單或物件時，整筆列為無法判讀，
+    不猜也不讓整份報告停掉（2026-11-02）。field_data 的事件統計用同一個判斷。"""
+    if not isinstance(payload, dict):
+        return False
+    event = payload.get("event")
+    return event is None or isinstance(event, str)
+
+
 def _settings_readable(payload: dict[str, Any]) -> bool:
-    """有 params 時，它和裡面的 sys.config 都要是物件；不是就整筆列為無法判讀，不猜也不讓整份報告停掉（2026-11-02）。"""
+    """有 params 時，它和裡面的 sys.config 都要是物件；不是就不採用這筆設定，事件照常計算並列為要請人確認（2026-11-02）。"""
     if "params" not in payload:
         return True
     params = payload["params"]
