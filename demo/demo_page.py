@@ -15,10 +15,14 @@ HEAD = (
 )
 
 
-def fragment(template: Path, placeholder: str, data: dict[str, Any]) -> str:
-    """範本裡的 placeholder 換成資料 JSON；「</」跳脫，資料裡的文字不會提早結束 <script>。"""
+def embed(text: str, placeholder: str, data: dict[str, Any]) -> str:
+    """範本文字裡的 placeholder 換成資料 JSON；「</」跳脫，資料裡的文字不會提早結束 <script>。"""
     payload = json.dumps(data, ensure_ascii=False, indent=1).replace("</", "<\\/")
-    return template.read_text(encoding="utf-8").replace(placeholder, payload)
+    return text.replace(placeholder, payload)
+
+
+def fragment(template: Path, placeholder: str, data: dict[str, Any]) -> str:
+    return embed(template.read_text(encoding="utf-8"), placeholder, data)
 
 
 def page(template: Path, placeholder: str, data: dict[str, Any]) -> str:

@@ -19,7 +19,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import random
 import re
 import statistics
@@ -308,7 +307,7 @@ _PREVIEW_EDITS = (  # 內部版的字 → 客戶版的字；範本改了對不�
     ("<strong>模擬資料・內部用</strong>\n  <span id=\"sim-note\"></span>", f"<strong>{PREVIEW_BANNER}</strong>"),
     ("雷達照護助理・知識圖譜 Demo（內部確認功能用）", "雷達照護助理・知識圖譜（功能預告）　<a href=\"/\">回到 Demo 主頁</a>"),
     ("，最後回答照護人員的問題。每個回答都說得出依據哪一版規則、哪一版知識圖譜、哪幾筆事件。",
-     "，最後產生照護人員看的句子。等級只由知識圖譜的門檻決定。"),
+     "，最後產生照護人員看的句子。"),
     ("→ 對話 → 五項指標的狀態 → 邊界情境 → 還缺什麼 → 事件明細。", "。"),
     # 客戶版沒有問答，標題不說「回答」；第 5 步不露出程式的函式名稱
     ("怎麼變成一段回答</h1>", "怎麼變成照護人員看的句子</h1>"),
@@ -320,6 +319,9 @@ def preview_data(data: dict[str, Any]) -> dict[str, Any]:
     """客戶版只帶五步流程用得到的資料：問答、審核用的原因、事件明細都不放進頁面原始碼。"""
     kept = {k: data[k] for k in PREVIEW_KEYS}
     kept["events"] = [{"label": e["label"]} for e in data["events"]]  # 流程只用到筆數與種類
+    sp = data["speed"]  # 量測值只帶數值與筆數，不帶事件編號（範本用 count() 兩種都讀得懂）
+    kept["speed"] = {"value": sp["value"], **{k: len(sp[k]) for k in ("used", "short", "unsure")}}
+    kept["assessment"] = {k: data["assessment"][k] for k in ("unit", "score", "rank", "source_text")}
     return kept
 
 
@@ -332,8 +334,7 @@ def preview_page(data: dict[str, Any]) -> str:
         if text.count(old) != 1:
             raise ValueError(f"kg_template.html 找不到要換成客戶版的字：{old[:20]}")
         text = text.replace(old, new)
-    payload = json.dumps(preview_data(data), ensure_ascii=False, indent=1).replace("</", "<\\/")
-    return demo_page.HEAD + text.replace(PLACEHOLDER, payload) + "</html>\n"
+    return demo_page.HEAD + demo_page.embed(text, PLACEHOLDER, preview_data(data)) + "</html>\n"
 
 
 if __name__ == "__main__":

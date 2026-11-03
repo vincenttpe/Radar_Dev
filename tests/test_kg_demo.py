@@ -169,14 +169,20 @@ def test_preview_page_carries_only_the_data_the_flow_needs(build, data):
     shipped = json.loads(re.search(r"const DATA = (\{.*?\n\});", page, re.S).group(1).replace("<\\/", "</"))
     assert set(shipped) == set(build.PREVIEW_KEYS)
     assert shipped["events"] == [{"label": e["label"]} for e in data["events"]]
-    for key in ("speed", "assessment", "caregiver", "kg", "rule", "period"):
+    sp = data["speed"]  # 量測值只帶數值與筆數，不帶事件編號
+    assert shipped["speed"] == {"value": sp["value"], "used": len(sp["used"]), "short": len(sp["short"]),
+                                "unsure": len(sp["unsure"])}
+    assert shipped["assessment"] == {k: data["assessment"][k] for k in ("unit", "score", "rank", "source_text")}
+    for key in ("caregiver", "kg", "rule", "period"):
         assert shipped[key] == data[key]
+    assert not any(e["id"] in page for e in data["events"])
     assert "審核用的原因" not in page and data["boundary"]["reason"] not in page
 
 
 def test_preview_page_lede_does_not_promise_answers_it_does_not_show(build, data):
     page = build.preview_page(data)
-    assert "回答照護人員的問題" not in page and "最後產生照護人員看的句子" in page
+    assert "回答照護人員的問題" not in page and "最後產生照護人員看的句子。</p>" in page
+    assert "等級只由知識圖譜的門檻決定" not in page  # 屬於拿掉的「展示時要說明」，不放回導言
     assert "怎麼變成照護人員看的句子" in page and "一段回答" not in page
     assert "rewrite()" not in page and "固定範本產生，已通過輸出檢查" in page
 

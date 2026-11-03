@@ -199,6 +199,7 @@ const $ = id => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const kgChip = () => el("span", DATA.kg.approved ? "chip ok" : "chip pending", DATA.kg.approved ? `知識圖譜 ${DATA.kg.version} 已核准` : `知識圖譜 ${DATA.kg.version} 未核准・僅供測試`);
 const sp = DATA.speed, a = DATA.assessment;
+const count = x => Array.isArray(x) ? x.length : x;  // 內部版給事件編號清單，客戶版只給筆數
 const walks = DATA.events.filter(e => e.label === "walking").length;
 const sits = DATA.events.length - walks;
 
@@ -208,7 +209,7 @@ const sits = DATA.events.length - walks;
 const steps = [
   { title: "雷達事件", draft: true, big: [DATA.events.length, "筆"], body: [`${DATA.period}，行走 ${walks} 筆、坐→站 ${sits} 筆`, "照事件格式草案產生"] },
   { title: "換算規則", draft: true, chip: el("span", "chip draft", `${DATA.rule.id}・${DATA.rule.status}`), list: DATA.rule.text },
-  { title: "量測值", big: [sp.value, a.unit], body: [`用了 ${sp.used.length} 筆，排除短距離 ${sp.short.length} 筆、信心值不足 ${sp.unsure.length} 筆`] },
+  { title: "量測值", big: [sp.value, a.unit], body: [`用了 ${count(sp.used)} 筆，排除短距離 ${count(sp.short)} 筆、信心值不足 ${count(sp.unsure)} 筆`] },
   { title: "知識圖譜門檻", chip: kgChip(), big: [`${a.score} 分`, a.rank], body: [`門檻原文：${a.source_text}`] },
   { title: "居服員看到的句子", says: DATA.caregiver, body: ["rewrite() 範本，已通過輸出檢查"] },
 ];
