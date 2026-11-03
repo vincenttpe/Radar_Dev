@@ -151,6 +151,45 @@ def test_records_whose_time_is_all_unreadable_are_not_reported_as_no_data():
     assert check_trend(text, trend, place="1 號廁所") == []
 
 
+def _odd(ts: str, payload, topic: str = TOPIC) -> dict:
+    return {"timestamp": ts, "topic": topic, "resolution": None, "payload": payload}
+
+
+R60 = "Radar60FL/DEMO-SIM-01/sys/property/post"
+
+
+def test_records_unreadable_within_the_two_weeks_are_listed():
+    """時間讀得懂、內容讀不懂的紀錄（Radar60FL、payload 不是物件、設定形狀不對）：照日期分到每一天，
+    以前完全沒寫出來；現在寫「這兩週另有 M 筆紀錄無法判讀」，範圍外的不算（2026-11-03 使用者在 #66 決定）。"""
+    records = [*two_weeks([SIX] * 14),
+               _odd("2026-10-03 09:00:02", {"method": "post", "params": {}}, R60),
+               _odd("2026-10-12 10:00:02", "壞掉"),
+               _odd("2026-10-13 10:00:02", {"event": "absence", "params": [1]}),
+               _odd("2026-09-30 09:00:02", {"method": "post"}, R60)]   # 兩週以前：使用趨勢沒用到，不算
+    trend = usage_trend(records)
+    text = trend_text(trend, place="1 號廁所")
+    lines = text.splitlines()
+    assert lines[-2] == "這兩週另有 3 筆紀錄無法判讀，請通知資訊人員。"
+    assert check_trend(text, trend, place="1 號廁所") == []
+
+
+def test_unreadable_in_the_window_comes_after_the_unreadable_time_line():
+    records = [*two_weeks([SIX] * 14), _odd("昨天", {}), _odd("2026-10-12 10:00:02", "壞掉")]
+    lines = trend_text(usage_trend(records), place="1 號廁所").splitlines()
+    assert lines[-3:-1] == ["另有 1 筆紀錄時間無法判讀，請通知資訊人員。", "這兩週另有 1 筆紀錄無法判讀，請通知資訊人員。"]
+
+
+def test_cli_trend_json_with_only_radar60fl_records(tmp_path, capsys):
+    """Dashboard 現在的實測資料（Radar60FL）：每天都在線不足，但要寫出原因是讀不懂（#66）。"""
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps([_odd("2026-10-14 09:00:00", {"method": "post"}, R60),
+                                _odd("2026-10-14 09:00:05", {"method": "post"}, R60)]), encoding="utf-8")
+    assert main([str(path), "--place", "1 號廁所", "--trend", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert "這兩週另有 2 筆紀錄無法判讀，請通知資訊人員。" in data["lines"]
+    assert len(data["days"]) == 14 and all(d["visits"] is None for d in data["days"])
+
+
 def test_check_flags_a_number_not_in_the_statistics_and_medical_wording():
     trend = usage_trend(two_weeks([SIX] * 14))
     text = trend_text(trend, place="1 號廁所")

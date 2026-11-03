@@ -547,6 +547,8 @@ class Trend:
     recent: list[DayCount]   # 最後 7 天，依日期；紀錄的時間全部讀不懂時是空的
     before: list[DayCount]   # 再往前 7 天；同上
     unplaced: int            # 時間讀不懂、分不到哪一天的紀錄
+    # 這兩週內時間讀得懂、內容讀不懂的紀錄（每天的 unreadable 加 unknown_events，和報告的「無法判讀」同一個算法，#66）
+    unreadable: int = 0
 
 
 def _day_count(day: date, summary: Summary | None) -> DayCount:
@@ -567,7 +569,8 @@ def usage_trend(records: list[dict[str, Any]]) -> Trend | None:
     last = max(days)
     window = [last - timedelta(days=13 - i) for i in range(14)]
     counts = [_day_count(d, days.get(d)) for d in window]
-    return Trend(counts[7:], counts[:7], len(unplaced))
+    unreadable = sum(len(s.unreadable) + len(s.unknown_events) for d, s in days.items() if d in window)
+    return Trend(counts[7:], counts[:7], len(unplaced), unreadable)
 
 
 def _average(counts: list[DayCount], field: str) -> Decimal | None:
@@ -617,6 +620,9 @@ def trend_text(trend: Trend | None, *, place: str) -> str:
     lines.append("近 7 天：" + "、".join(days) + "。")
     if trend.unplaced:
         lines.append(f"另有 {trend.unplaced} 筆紀錄時間無法判讀，請通知資訊人員。")
+    if trend.unreadable:
+        # 寫「這兩週」：接在「近 7 天」後面，不寫範圍會被讀成只算近 7 天（2026-11-03 使用者在 #66 決定）
+        lines.append(f"這兩週另有 {trend.unreadable} 筆紀錄無法判讀，請通知資訊人員。")
     lines.append("這是場域的統計，沒有個人 ID，不代表特定長者；供照護人員參考。")
     return "\n".join(lines)
 
@@ -635,6 +641,7 @@ def check_trend(text: str, trend: Trend | None, *, place: str = "") -> list[str]
                 if avg is not None:
                     allowed.add(Decimal(_one(avg)))
         allowed.add(Decimal(trend.unplaced))
+        allowed.add(Decimal(trend.unreadable))
     problems = [f"數字 {n} 不在統計裡" for n in sorted(numbers(text) - allowed)]
     if trend is not None and trend.unplaced and "沒有收到資料" in text:  # 和 check_output 同一條（#57、#63）
         problems.append(f"有 {trend.unplaced} 筆紀錄時間無法判讀，資料其實收到了，不能寫「沒有收到資料」")
