@@ -50,6 +50,7 @@ DOORS: dict[str, tuple[str, ...]] = {
         "demo/jetson_serve.py",  # Jetson 內部 Demo：網頁上打的提問經這個本機服務送進在地模型
         "demo/page_data.py",  # Demo 頁面讀實測資料前的 MAC 檢查、實測資料版頁面的輸出位置限制
         "src/radar_agent/dashboard_link.py",  # Jetson 向 Dashboard 取裝置事件與提問、把文字傳回雲端（docs/adr/0009）
+        "src/radar_agent/jetson_api.py",  # Dashboard 把裝置事件與提問送進 Jetson、在回應裡拿回文字（docs/adr/0011）
         "src/radar_agent/device_events.py",  # 讀取裝置事件紀錄檔、整理出造訪與警報
     ),
     "事件格式": ("schemas/", "src/radar_agent/event_validation.py"),
