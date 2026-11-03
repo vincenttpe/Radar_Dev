@@ -318,6 +318,28 @@ def test_timeline_sorts_and_sorts_out_every_record():
     assert line.unreadable_time == [(5, bad_time)]
 
 
+# Radar60FL 的紀錄（docs/16、docs/05 A45）：topic 多層，但不是伺服器下給裝置的指令
+RADAR60FL = {"timestamp": "2026-10-13 10:00:05", "topic": "Radar60FL/DEV9/sys/property/post", "resolution": None,
+             "payload": {"method": "post", "params": {"someoneExists": "1", "motionStatus": "2"}, "version": "1"}}
+
+
+def test_unknown_multi_level_topic_is_unreadable_not_a_command():
+    """只有已知的指令 topic（.../config/set）才當伺服器指令略過；其他多層 topic 列為無法判讀，
+    不當事件、不算心跳、不解讀欄位（2026-11-02 使用者在 #64 決定，等 A45 確認格式前不猜）。"""
+    summary = summarize([rec("10:00:00", "absence"), RADAR60FL])
+    assert summary.unreadable == [RADAR60FL]
+    assert summary.setting_changes == []
+    assert [(p.start, p.end) for p in summary.online] == [(t("10:00:00"), t("10:00:00"))]
+    line = timeline([RADAR60FL, {**RADAR60FL, "topic": TOPIC + "/config/set"}])
+    assert (line.unknown_topic, len(line.commands), line.entries) == ([(0, RADAR60FL)], 1, [])
+
+
+def test_records_that_are_all_unknown_topics_are_not_one_device_each():
+    """不認得的 topic 不拿來比對是不是同一台裝置：整份都是 Radar60FL 時不會丟出「一次只整理一台裝置」。"""
+    other = {**RADAR60FL, "topic": "Radar60FL/DEV8/sys/property/post"}
+    assert summarize([rec("10:00:00", "absence"), RADAR60FL, other]).unreadable == [RADAR60FL, other]
+
+
 @pytest.mark.parametrize("payload", [{"event": "absence", "params": [1]}, {"event": [1]}])
 def test_radar_caregiver_reports_a_record_in_the_wrong_shape_as_unreadable(payload, tmp_path, capsys):
     """命令列層級：這兩種紀錄以前會讓 radar-caregiver 直接丟錯，現在報告照樣產生，並寫出有讀不懂的紀錄。"""

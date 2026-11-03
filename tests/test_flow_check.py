@@ -59,6 +59,10 @@ def test_board_puts_prompts_in_alerts_and_never_says_nothing_to_do_when_it_canno
     empty = flow.board(by_name["範圍內沒有資料"])
     assert "沒有收到資料，無法判斷。" in empty.split('<ul class="alerts">', 1)[1] and "沒有待處理的事件" not in empty
     assert all('class="card"' not in flow.board(s) for s in scenarios)
+    assert '<p class="hint">沒有收到資料</p>' in empty
+    # Dashboard 有給紀錄、報告卻沒有涵蓋時段（例如 Radar60FL）：卡片寫讀不懂，不寫沒收到（#64）
+    unreadable = {**by_name["範圍內沒有資料"], "side": {"count": 561, "first": None, "last": None}}
+    assert '<p class="hint">沒有讀得懂的資料</p>' in flow.board(unreadable)
 
 
 def test_uncertain_spots_are_listed_as_pending(scenarios):

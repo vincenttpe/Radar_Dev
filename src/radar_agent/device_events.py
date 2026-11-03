@@ -219,9 +219,21 @@ def parse_timestamp(value: Any) -> datetime | None:
         return None
 
 
+# 已知的伺服器下給裝置的指令：topic 第三段以後（radar10/<裝置>/config/set，10/12 實測）。
+# 還有沒有其他的，併在會議清單 A45 問雷達負責人；確認前，其他多層 topic 一律列為無法判讀（#64）。
+COMMAND_TOPICS = {"config/set"}
+
+
 def is_command(record: dict[str, Any]) -> bool:
-    """topic 多層（例如 radar10/<裝置>/config/set）：伺服器下給裝置的指令，不是裝置送出的，也不算心跳。"""
-    return str(record.get("topic", "")).count("/") > 1
+    """已知的伺服器指令（COMMAND_TOPICS）：不是裝置送出的，也不算心跳。"""
+    parts = str(record.get("topic", "")).split("/")
+    return len(parts) > 2 and "/".join(parts[2:]) in COMMAND_TOPICS
+
+
+def is_unknown_topic(record: dict[str, Any]) -> bool:
+    """topic 多層、但不是已知的指令（例如 Radar60FL/<裝置>/sys/property/post，docs/05 A45）：
+    不知道是誰送的、格式是什麼，整筆列為無法判讀，不當事件、不解讀欄位（2026-11-02 使用者在 #64 決定）。"""
+    return str(record.get("topic", "")).count("/") > 1 and not is_command(record)
 
 
 @dataclass(frozen=True)
@@ -239,12 +251,13 @@ class Timeline:
     entries: list[Entry] = field(default_factory=list)
     duplicates: int = 0                                              # 完全相同的重複，只留第一筆
     commands: list[tuple[int, dict[str, Any]]] = field(default_factory=list)
+    unknown_topic: list[tuple[int, dict[str, Any]]] = field(default_factory=list)  # 多層但不是已知的指令
     no_topic: list[tuple[int, dict[str, Any]]] = field(default_factory=list)
     unreadable_time: list[tuple[int, dict[str, Any]]] = field(default_factory=list)
 
 
 def timeline(records: list[dict[str, Any]]) -> Timeline:
-    """去重、分出伺服器指令與沒有 topic 的紀錄、解析時間，依時間排序。可以混多台裝置。"""
+    """去重、分出伺服器指令、不認得的多層 topic 與沒有 topic 的紀錄、解析時間，依時間排序。可以混多台裝置。"""
     result = Timeline()
     seen: set[str] = set()
     for index, record in enumerate(records):
@@ -255,6 +268,9 @@ def timeline(records: list[dict[str, Any]]) -> Timeline:
         seen.add(key)
         if is_command(record):
             result.commands.append((index, record))
+            continue
+        if is_unknown_topic(record):
+            result.unknown_topic.append((index, record))
             continue
         topic = str(record.get("topic", ""))
         if not topic:
@@ -282,7 +298,8 @@ def _parse(
             device = topic
         elif topic != device:
             raise ValueError(f"一次只整理一台裝置，收到 {device} 與 {topic}")
-    unreadable = line.no_topic + line.unreadable_time
+    # 不認得的多層 topic 不拿來比對裝置：不知道它是不是這台送的，只列為無法判讀
+    unreadable = line.no_topic + line.unreadable_time + line.unknown_topic
     parsed = []
     for entry in line.entries:
         if readable_payload(entry.payload):
