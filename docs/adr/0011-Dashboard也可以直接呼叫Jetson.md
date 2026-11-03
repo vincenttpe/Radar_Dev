@@ -23,9 +23,9 @@ Demo 用的 Jetson Orin 在公司內已設定固定的 public IP（位址不寫�
 ## 後果
 
 - Jetson 會有一個對外開放的埠，屬單向門「個人資料的流向」：請求裡有提問原文與長者的動作紀錄。程式強制：
-  - 聽 127.0.0.1 以外的位址時，一定要 HTTPS（`--cert`、`--key`）與來源 IP 清單（`--allow`，Dashboard 的出口 IP）；不在清單裡的來源在 TLS 之前就斷線。
+  - 聽 127.0.0.1 以外的位址時，一定要 HTTPS（`--cert`、`--key`）與來源 IP 清單（`--allow`，Dashboard 的出口 IP，網段最大 /16）；不在清單裡的來源在 TLS 之前就斷線。
   - 每個請求要帶 token（環境變數 `RADAR_JETSON_API_TOKEN`，至少 32 個字元）；token 不進 repo、不寫進 log。
-  - 請求裡的紀錄一定要是這台裝置的（topic 第二段等於 `device`），不符就回 `failed`：輪詢時 Jetson 自己照裝置取資料，這裡改由 Dashboard 放進來，要防送錯。
+  - 請求裡的紀錄一定要是這台裝置的（topic 第二段等於 `device`；沒有 topic 的照舊列為無法判讀），不符就回 `failed`：輪詢時 Jetson 自己照裝置取資料，這裡改由 Dashboard 放進來，要防送錯。
   - 請求大小、紀錄筆數有上限；同時最多 4 條連線；一次只處理一筆，忙的時候回 503。
   - 提問原文不保存、不寫進 log；log 只記來源 IP、需求編號、種類、結果與秒數。
 - 程式管不到的，要在 Jetson 上設定（`docs/23` 有清單）：防火牆只放行 Dashboard 的出口 IP 到這個埠；關掉 rpcbind（埠 111）與 CUPS（埠 631）（B12 實測線索）；

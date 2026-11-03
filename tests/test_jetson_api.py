@@ -392,6 +392,14 @@ def test_device_is_read_from_the_second_part_of_the_topic(api):
     assert _call(server, body=_job(records=[other]))[1]["status"] == "failed"
 
 
+@pytest.mark.parametrize("topic", ["radar10", "radar10/", "DEMO-SIM-01"])
+def test_a_topic_that_does_not_name_this_device_fails_the_job(api, topic):
+    """有 topic 但讀不出是這台裝置（沒有斜線、第二段是空的）：和別台一樣算不符。"""
+    server, _ = api()
+    _, body, _ = _call(server, body=_job(records=[{**MORNING[0], "topic": topic}, *MORNING[1:]]))
+    assert body["status"] == "failed" and body["problems"][0].startswith("ValueError：紀錄的裝置和需求不符")
+
+
 def test_a_wrong_token_with_a_large_body_is_not_read(api):
     """沒通過驗證的請求不替它讀大內容：只讀標頭就回 401 並關掉連線。"""
     server, _ = api()

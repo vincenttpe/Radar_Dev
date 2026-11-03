@@ -217,7 +217,7 @@ RADAR_DASHBOARD_TOKEN=demo-token python -m radar_agent.dashboard_link --base htt
 
 | 欄位 | 說明 |
 |---|---|
-| `records` | 這台裝置、這段時間的紀錄，格式和 ② 相同（Logs 頁匯出的每一行）。範圍外的紀錄 Jetson 不算進去。**只放這一台裝置的紀錄**：只要有一筆 topic 的第二段（`radar10/<裝置>`、`Radar60FL/<裝置>/…`）不是 `device`，整筆需求回 `failed`，避免把別人的事件寫成這個地點的報告 |
+| `records` | 這台裝置、這段時間的紀錄，格式和 ② 相同（Logs 頁匯出的每一行）。範圍外的紀錄 Jetson 不算進去。**只放這一台裝置的紀錄**：只要有一筆 topic 的第二段（`radar10/<裝置>`、`Radar60FL/<裝置>/…`）不是 `device`（包括 topic 沒有斜線），整筆需求回 `failed`，避免把別人的事件寫成這個地點的報告；沒有 topic 的紀錄照舊列為無法判讀 |
 | `received_until`、`complete` | 和 ② 相同。`complete` 只有 JSON 的 `true` 算資料到齊，沒給或其他值都當成沒到齊 |
 | `settings` | 可以先放（② 的形狀），這一版的 Jetson 不讀 |
 
@@ -240,7 +240,7 @@ RADAR_DASHBOARD_TOKEN=demo-token python -m radar_agent.dashboard_link --base htt
 
 ### 安全（程式強制的部分）
 
-- 聽 127.0.0.1 以外的位址時，程式要求 HTTPS（`--cert`、`--key`）與 `--allow`（允許的來源 IP 或網段，最大 /16），少一個就不啟動。
+- 聽 127.0.0.1 以外的位址時，程式要求 HTTPS（`--cert`、`--key`）與 `--allow`（允許的來源 IPv4 位址或網段），少一個就不啟動。`--allow` 的網段最大 /16：`0.0.0.0/0` 這類等於沒擋，程式不接受。
 - token 從環境變數 `RADAR_JETSON_API_TOKEN` 讀，至少 32 個字元，用固定時間比對；不進 repo、不寫進 log。
 - 一次只處理一筆；同時最多 4 條連線，超過的直接關掉。
 - TLS 交握與每一次讀取有 30 秒逾時。這不是整個請求的上限：一直慢慢送的連線可以佔住一個名額，所以 `--allow` 只放 Dashboard 的出口 IP。

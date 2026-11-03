@@ -84,11 +84,13 @@ class _Given:
         if len(rows) > MAX_RECORDS:
             raise ValueError(f"裝置事件超過 {MAX_RECORDS} 筆，請縮短時間範圍")
         # 輪詢時 Jetson 照裝置去取，送錯的機會小；這裡紀錄由 Dashboard 放進來，送錯就會把別人的事件寫成這個地點的報告。
-        # topic 的第二段是裝置（radar10/<裝置>、Radar60FL/<裝置>/sys/...）；沒有 topic 的紀錄照舊列為無法判讀
+        # topic 的第二段是裝置（radar10/<裝置>、Radar60FL/<裝置>/sys/...）；有 topic 但讀不出是這台（沒有斜線、
+        # 第二段不同或是空的）都算不符。沒有 topic 的紀錄照舊列為無法判讀（device_events），不擋
         for r in rows:
-            parts = str(r.get("topic") or "").split("/")
-            if len(parts) > 1 and parts[1] != device:
-                raise ValueError(f"紀錄的裝置和需求不符：{printable(parts[1], 40)}（需求是 {device}）")
+            topic = str(r.get("topic") or "")
+            parts = topic.split("/")
+            if topic and (len(parts) < 2 or parts[1] != device):
+                raise ValueError(f"紀錄的裝置和需求不符：{printable(parts[1] if len(parts) > 1 else topic, 40)}（需求是 {device}）")
         until = self.data.get("received_until")
         # 只有真的 true 才算資料到齊，和輪詢方式相同
         return Fetched(rows, until if isinstance(until, str) else None, self.data.get("complete") is True)
@@ -193,7 +195,7 @@ def _handler() -> type[BaseHTTPRequestHandler]:
             if length is not None and length <= limit:
                 with contextlib.suppress(OSError):
                     self.rfile.read(length)
-            elif length:
+            elif length:  # 現在用 HTTP/1.0，回應後本來就會關連線；明寫出來，日後改 HTTP/1.1 也不會留著沒讀完的內容
                 self.close_connection = True
                 headers = {**(headers or {}), "Connection": "close"}
             self._send(code, {"error": error}, headers)
@@ -236,8 +238,7 @@ def _handler() -> type[BaseHTTPRequestHandler]:
                 self._send(400, {"error": "Content-Length 不對"})
                 return
             if length > self.server.max_body:  # 不讀內容、直接關掉連線
-                self.close_connection = True
-                self._send(413, {"error": f"內容超過 {self.server.max_body} 位元組"}, {"Connection": "close"})
+                self._refuse(413, f"內容超過 {self.server.max_body} 位元組")
                 return
             try:
                 data = json.loads(self.rfile.read(length).decode("utf-8"))  # 一定要是正確的 UTF-8（json 自己會放過代理字元）

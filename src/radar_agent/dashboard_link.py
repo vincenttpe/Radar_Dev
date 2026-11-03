@@ -217,22 +217,23 @@ def job_line(job_id: object, kind: object, status: str, seconds: float) -> str:
 def _send(dashboard: Dashboard, item: Unsent, unsent: list[Unsent], log: Callable[[str], None]) -> bool:
     """傳回一筆結果。連不上、5xx、408、429 放回 unsent 下一輪再送（只在記憶體），回 False；
     送到了、Dashboard 明確不收（其他 4xx）、或已補送 MAX_RETRIES 次，都回 True（後兩者丟掉並記下來），不擋住後面的需求。"""
-    job_id = printable(item.body["job_id"], 40)
+    job_id = item.body["job_id"]  # 傳回結果用 Dashboard 給的原值；只有寫進 log 時才過濾、截短
+    shown = printable(job_id, 40)
     try:
         dashboard.post_result(job_id, item.body)
         return True
     except urllib.error.HTTPError as e:
         if 400 <= e.code < 500 and e.code not in RETRY_CODES:  # Dashboard 明確不收（例如已逾時、查無此需求）：再送也沒用
-            log(f"{job_id} 結果 Dashboard 不收（HTTP {e.code}），丟掉")
+            log(f"{shown} 結果 Dashboard 不收（HTTP {e.code}），丟掉")
             return True
         error: Exception = e
     except Exception as e:  # 連不上、回應不完整，或其他意料外的錯誤：這筆都留著下一輪再送，不會因此丟掉
         error = e
     if item.tries >= MAX_RETRIES:
-        log(f"{job_id} 結果補送 {MAX_RETRIES} 次還沒送到（{type(error).__name__}），丟掉；等 Dashboard 逾時重發")
+        log(f"{shown} 結果補送 {MAX_RETRIES} 次還沒送到（{type(error).__name__}），丟掉；等 Dashboard 逾時重發")
         return True
     unsent.append(Unsent(item.body, item.tries + 1))
-    log(f"{job_id} 結果沒送出（{type(error).__name__}），下一輪再送")
+    log(f"{shown} 結果沒送出（{type(error).__name__}），下一輪再送")
     return False
 
 
