@@ -123,6 +123,7 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
     <div class="flow" id="flow"></div>
   </section>
 
+  <!--preview-cut：以下到 /preview-cut 只在內部版（客戶版 kg_build.preview_page 會整段拿掉）-->
   <section aria-labelledby="h-chat">
     <div class="head-row"><h2 id="h-chat">誰在問，能問什麼</h2><span class="hint">每種讀者一組固定問題，點選提問；回答只用上面的事實</span></div>
     <div class="tabs" role="tablist" aria-label="讀者" id="tabs"></div>
@@ -189,6 +190,7 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
       <li>沒有輸入框：在地模型能力有限，問題固定，答案可以事先算好、逐題檢查。超出範圍的問題（「其他問題」）系統不回答。</li>
     </ul>
   </section>
+  <!--/preview-cut-->
 </div></main>
 
 <script>
@@ -200,7 +202,7 @@ const sp = DATA.speed, a = DATA.assessment;
 const walks = DATA.events.filter(e => e.label === "walking").length;
 const sits = DATA.events.length - walks;
 
-$("sim-note").textContent = `非真實裝置紀錄；裝置 ${DATA.device}、長者代號 ${DATA.subject} 都是模擬的。換算規則是草案，句子由範本產生，尚未接上在地模型。`;
+/*preview-cut*/$("sim-note").textContent = `非真實裝置紀錄；裝置 ${DATA.device}、長者代號 ${DATA.subject} 都是模擬的。換算規則是草案，句子由範本產生，尚未接上在地模型。`;/*/preview-cut*/
 
 // 五步流程
 const steps = [
@@ -221,6 +223,7 @@ for (const s of steps) {
   $("flow").append(box);
 }
 
+/*preview-cut*/
 // 讀者切換：每個 Profile 一組固定問題；答完再列出延伸問題
 const tabs = $("tabs"), chat = $("chat"), menu = $("menu");
 let current = DATA.profiles[0], asked = [];
@@ -297,4 +300,5 @@ for (const e of DATA.events) {
   $("events").append(tr);
 }
 $("sample").textContent = JSON.stringify(DATA.sample_event, null, 2);
+/*/preview-cut*/
 </script>

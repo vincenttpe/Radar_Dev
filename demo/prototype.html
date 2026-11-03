@@ -159,6 +159,7 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .chat .meta { font: 12.5px var(--f-mono); color: var(--muted); }
 .chat .yesno { display: flex; gap: 8px; margin-top: 4px; }
 .jetson-stats { font-family: var(--f-mono); }
+.kg-link { margin-left: auto; color: inherit; font-weight: 500; }
 .compare { display: grid; gap: 10px; margin-top: 14px; }
 .compare-text p { margin: 0; font-size: 16px; line-height: 1.8; }
 .compare-text.wait p { color: var(--muted); }
@@ -177,6 +178,7 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   <strong id="src-label">模擬資料</strong><button type="button" class="gap-badge" data-gap="1" aria-label="Gap 1">1</button>
   <span id="src-note">非真實裝置紀錄；裝置名稱 DEMO-SIM-01，沒有任何長者資料。句子由範本產生，尚未接上在地模型。</span>
   <span id="jetson-stats" class="jetson-stats" hidden></span>
+  <a id="kg-link" class="kg-link" href="/kg" hidden>知識圖譜（功能預告）→</a>
 </div></div>
 
 <header class="top"><div class="wrap">
@@ -736,6 +738,7 @@ if (LIVE) {
   askButtons.slice(0, DATA.ask.length).forEach((b, i) => {
     b.onclick = () => { const q = DATA.ask[i]; say("reader", [q.text]); say("system", q.answer.split("\n"), "從選單點選，不經模型"); };
   });
+  if (LIVE.kg) { $("kg-link").href = LIVE.kg; $("kg-link").hidden = false; }  // 知識圖譜的功能預告頁（docs/21）
   const stats = $("jetson-stats");
   const poll = async () => {
     try {

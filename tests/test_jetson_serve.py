@@ -76,6 +76,21 @@ def test_page_is_the_prototype_marked_live(server):
     assert "模擬資料" in page and "DEMO-SIM-01" in page
 
 
+def test_knowledge_graph_preview_is_served_and_linked_from_the_page(server):
+    """知識圖譜只放功能預告版（docs/21）：/kg 是客戶版，主頁帶連結的網址；內部版不從這個服務提供。"""
+    _, url = server(FakeModel("1", name="fake-model"))
+    with urllib.request.urlopen(url + "/kg") as resp:
+        assert resp.headers["Content-Type"] == "text/html; charset=utf-8"
+        kg = resp.read().decode("utf-8")
+    assert "功能預告・開發中" in kg and "還缺什麼" not in kg and "內部用" not in kg
+    with urllib.request.urlopen(url + "/") as resp:
+        page = resp.read().decode("utf-8")
+    assert '"kg": "/kg"' in page and 'id="kg-link"' in page
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(url + "/kg_demo.html")
+    assert e.value.code == 404
+
+
 def test_typed_question_gets_the_same_answer_as_picking_it(server):
     demo, url = server(FakeModel("1", name="fake-model"))
     code, data = _ask(url, "有人跌到嗎")
