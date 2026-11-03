@@ -142,7 +142,7 @@ def test_a_job_missing_fields_fails_with_the_job_id_returned(api):
 def test_a_wrong_or_missing_token_is_refused_before_anything_is_done(api, token):
     model = FakeModel("1")
     server, lines = api(model)
-    status, body, resp = _call(server, body=_job(kind="ask", question="早上有人跌倒嗎"), token=token)
+    status, body, resp = _call(server, body=_job(kind="ask", question="早上有人跌倒嗎", records=MORNING[:20]), token=token)
     assert status == 401 and resp.getheader("WWW-Authenticate") == "Bearer"
     assert body == {"error": "token 不對"} and not model.prompts
     assert all("跌倒" not in line for line in lines)
@@ -200,7 +200,7 @@ def test_a_body_larger_than_the_limit_is_refused_without_reading_it(api):
     conn.close()
 
 
-@pytest.mark.parametrize(("length", "code"), [(None, 411), ("abc", 400), ("-1", 400)])
+@pytest.mark.parametrize(("length", "code"), [(None, 411), ("abc", 400), ("-1", 400), ("²", 400)])
 def test_the_content_length_must_be_given_and_valid(api, length, code):
     server, _ = api()
     conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=10)
@@ -228,6 +228,8 @@ def test_parse_allow_accepts_addresses_and_networks_and_refuses_nonsense():
         jetson_api.parse_allow(["dashboard.example.com"])
     with pytest.raises(ValueError, match="太大"):
         jetson_api.parse_allow(["0.0.0.0/0"])
+    with pytest.raises(ValueError, match="只收 IPv4"):
+        jetson_api.parse_allow(["2001:db8::1"])
 
 
 def test_a_busy_jetson_answers_503_instead_of_queueing_forever(api):
@@ -365,3 +367,69 @@ def test_the_demo_client_gets_the_same_report(api, monkeypatch, capsys):
     monkeypatch.setenv(jetson_api.TOKEN_ENV, "wrong")
     assert jetson_api_client.main(["--base", base, "--ask", "早上有人跌倒嗎"]) == 1
     assert capsys.readouterr().out.startswith("HTTP 401\n")
+
+
+def test_records_of_another_device_fail_the_job(api):
+    """請求說是 DEMO-SIM-01，紀錄卻是別台的：不能把別人的事件寫成這個地點的報告。"""
+    server, _ = api()
+    other = [{**r, "topic": r["topic"].replace("DEMO-SIM-01", "OTHER-02")} for r in MORNING]
+    _, body, _ = _call(server, body=_job(records=other))
+    assert (body["status"], body["result"]) == ("failed", None)
+    assert body["problems"] == ["ValueError：紀錄的裝置和需求不符：OTHER-02（需求是 DEMO-SIM-01）"]
+    mixed = MORNING[:10] + other[10:20]
+    assert _call(server, body=_job(records=mixed))[1]["status"] == "failed"
+
+
+def test_device_is_read_from_the_second_part_of_the_topic(api):
+    """Radar60FL 的 topic 是 Radar60FL/<裝置>/sys/property/post：同樣看第二段；沒有 topic 的紀錄照舊列為無法判讀。"""
+    server, _ = api()
+    r60 = {"timestamp": "2026-10-14 09:00:00", "topic": "Radar60FL/DEMO-SIM-01/sys/property/post", "resolution": None,
+           "payload": {"method": "post", "params": {}}}
+    no_topic = {"timestamp": "2026-10-14 09:00:01", "resolution": None, "payload": {"event": "absence"}}
+    _, body, _ = _call(server, body=_job(records=[r60, no_topic]))
+    assert body["status"] == "done"
+    other = {**r60, "topic": "Radar60FL/OTHER-02/sys/property/post"}
+    assert _call(server, body=_job(records=[other]))[1]["status"] == "failed"
+
+
+def test_a_wrong_token_with_a_large_body_is_not_read(api):
+    """沒通過驗證的請求不替它讀大內容：只讀標頭就回 401 並關掉連線。"""
+    server, _ = api()
+    conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=10)
+    conn.putrequest("POST", jetson_api.JOBS_PATH)
+    for name, value in (("Authorization", "Bearer wrong"), ("Content-Type", "application/json"),
+                        ("Content-Length", str(jetson_api.MAX_BODY))):
+        conn.putheader(name, value)
+    conn.endheaders()
+    resp = conn.getresponse()
+    assert (resp.status, resp.getheader("Connection")) == (401, "close")
+    conn.close()
+
+
+def test_log_lines_keep_only_printable_characters_of_the_job_id(api):
+    server, lines = api()
+    _call(server, body=_job(job_id="d-1\n00:00 偽造的一行"))
+    assert len(lines) == 1 and "\n" not in lines[0]
+    assert lines[0].startswith("127.0.0.1 d-100:00 偽造的一行 report done ")
+
+
+def test_connections_beyond_the_limit_are_closed_at_once(api, monkeypatch):
+    monkeypatch.setattr(jetson_api, "MAX_CONNECTIONS", 1)
+    server, lines = api()
+    import socket
+    hold = socket.create_connection(server.server_address)  # 佔住唯一的名額（不送任何東西）
+    try:
+        for _ in range(100):
+            if server.slots._value == 0:
+                break
+            threading.Event().wait(0.02)
+        with pytest.raises((ConnectionError, http.client.RemoteDisconnected)):
+            _call(server, body=_job())
+        assert "同時連線已滿（1 條），關掉來自 127.0.0.1 的連線" in lines
+    finally:
+        hold.close()
+    for _ in range(100):  # 名額放回來之後又能用
+        if server.slots._value == 1:
+            break
+        threading.Event().wait(0.02)
+    assert _call(server, body=_job())[0] == 200

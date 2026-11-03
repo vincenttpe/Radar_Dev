@@ -91,6 +91,7 @@ def test_docs_only_change_passes_with_none(template):
     ("src/radar_agent/device_events.py", "個人資料的流向"),
     ("src/radar_agent/local_model.py", "個人資料的流向"),
     ("src/radar_agent/jetson_api.py", "個人資料的流向"),
+    ("demo/jetson_api_client.py", "個人資料的流向"),
     ("schemas/event.v0.draft.json", "事件格式"),
     ("src/radar_agent/event_validation.py", "事件格式"),
     (".github/workflows/tests.yml", "檢查與審查機制"),

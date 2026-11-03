@@ -28,7 +28,7 @@ from collections.abc import Callable, Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from radar_agent.dashboard_link import Fetched, _log, handle
+from radar_agent.dashboard_link import Fetched, handle, job_line, log_stderr, printable
 from radar_agent.local_model import add_model_args, model_from_args
 from radar_agent.rewrite import Model
 
@@ -40,22 +40,26 @@ HEALTH_PATH = "/api/v1/health"
 MAX_BODY = 8 * 1024 * 1024  # 位元組：模擬上午 4 小時約 0.45 MB，留到約 2–3 天的量
 MAX_RECORDS = 100_000
 BUSY_WAIT = 30.0  # 秒：前一筆還在跑模型時，這一筆最多等多久
-READ_TIMEOUT = 30.0  # 秒：TLS 交握、讀標頭與內容的逾時，慢慢送的連線不會一直佔住
-LOCAL_NETS: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = (
-    ipaddress.ip_network("127.0.0.1/32"), ipaddress.ip_network("::1/128"))
-MIN_PREFIX = {4: 16, 6: 48}  # --allow 的網段最大到 /16（IPv6 /48）：0.0.0.0/0 這種等於沒擋
+# 秒：TLS 交握與每一次讀取的逾時（不是整個請求的上限：一直慢慢送的連線最多佔住一個名額，見 MAX_CONNECTIONS）
+READ_TIMEOUT = 30.0
+MAX_CONNECTIONS = 4  # 同時最多幾條連線；超過的直接關掉，記憶體裡最多 4 份請求內容
+UNAUTHORIZED_READ = 64 * 1024  # 位元組：token 不對時，內容比這小才讀掉（讓對方看得到 401），大的直接關連線
+LOCAL_NETS = (ipaddress.IPv4Network("127.0.0.1/32"),)
+MIN_PREFIX = 16  # --allow 的網段最大到 /16：0.0.0.0/0 這種等於沒擋
 
 
-def parse_allow(items: Sequence[str]) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
-    """--allow 的值 → 網段。只收 IP 或 CIDR（不收主機名稱：DNS 換了就會放錯人）。"""
+def parse_allow(items: Sequence[str]) -> tuple[ipaddress.IPv4Network, ...]:
+    """--allow 的值 → 網段。只收 IPv4 位址或 CIDR（伺服器只聽 IPv4；不收主機名稱：DNS 換了就會放錯人）。"""
     nets = []
     for item in items:
         try:
             net = ipaddress.ip_network(item.strip(), strict=False)
         except ValueError:
             raise ValueError(f"看不懂的 --allow：{item}（要是 IP 或網段，例如 203.0.113.5 或 203.0.113.0/24）") from None
-        if net.prefixlen < MIN_PREFIX[net.version]:
-            raise ValueError(f"--allow 的網段太大：{net}（最大 /{MIN_PREFIX[net.version]}）")
+        if not isinstance(net, ipaddress.IPv4Network):
+            raise ValueError(f"--allow 只收 IPv4：{item}")
+        if net.prefixlen < MIN_PREFIX:
+            raise ValueError(f"--allow 的網段太大：{net}（最大 /{MIN_PREFIX}）")
         nets.append(net)
     return tuple(nets)
 
@@ -68,7 +72,7 @@ def tls_context(cert: str, key: str) -> ssl.SSLContext:
 
 
 class _Given:
-    """請求裡附的裝置事件，當成 handle() 看到的 Dashboard（只用到 records）。"""
+    """請求裡附的裝置事件，當成 handle() 取裝置事件的地方（dashboard_link.RecordSource）。"""
 
     def __init__(self, data: dict[str, Any]) -> None:
         self.data = data
@@ -79,28 +83,48 @@ class _Given:
             raise ValueError("裝置事件的格式不對：records 要是一筆一個物件的清單")
         if len(rows) > MAX_RECORDS:
             raise ValueError(f"裝置事件超過 {MAX_RECORDS} 筆，請縮短時間範圍")
+        # 輪詢時 Jetson 照裝置去取，送錯的機會小；這裡紀錄由 Dashboard 放進來，送錯就會把別人的事件寫成這個地點的報告。
+        # topic 的第二段是裝置（radar10/<裝置>、Radar60FL/<裝置>/sys/...）；沒有 topic 的紀錄照舊列為無法判讀
+        for r in rows:
+            parts = str(r.get("topic") or "").split("/")
+            if len(parts) > 1 and parts[1] != device:
+                raise ValueError(f"紀錄的裝置和需求不符：{printable(parts[1], 40)}（需求是 {device}）")
         until = self.data.get("received_until")
         # 只有真的 true 才算資料到齊，和輪詢方式相同
         return Fetched(rows, until if isinstance(until, str) else None, self.data.get("complete") is True)
-
-    def next_job(self) -> dict[str, Any] | None:  # pragma: no cover  這個方式沒有佇列
-        raise NotImplementedError
-
-    def post_result(self, job_id: str, body: dict[str, Any]) -> None:  # pragma: no cover  結果直接放在回應裡
-        raise NotImplementedError
 
 
 class JetsonApi(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, address: tuple[str, int], *, token: str, model: Model | None,
-                 allow: Sequence[ipaddress.IPv4Network | ipaddress.IPv6Network] = LOCAL_NETS,
+                 allow: Sequence[ipaddress.IPv4Network] = LOCAL_NETS,
                  tls: ssl.SSLContext | None = None, busy_wait: float = BUSY_WAIT, max_body: int = MAX_BODY,
-                 log: Callable[[str], None] = _log) -> None:
+                 log: Callable[[str], None] = log_stderr) -> None:
         self.token, self.model, self.allow, self.tls = token.encode("utf-8"), model, tuple(allow), tls
         self.busy_wait, self.max_body, self.log = busy_wait, max_body, log
         self.busy = threading.Lock()
+        self.max_connections = MAX_CONNECTIONS
+        self.slots = threading.BoundedSemaphore(self.max_connections)
         super().__init__(address, _handler())
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        """同時連線超過 MAX_CONNECTIONS 條就直接關掉，不開新的執行緒。"""
+        if not self.slots.acquire(blocking=False):
+            self.log(f"同時連線已滿（{self.max_connections} 條），關掉來自 {client_address[0]} 的連線")
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:  # pragma: no cover  開不了執行緒時把名額還回去
+            self.slots.release()
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release()
 
     def verify_request(self, request: Any, client_address: Any) -> bool:
         """不在 --allow 裡的來源：在 TLS 與 HTTP 之前就斷線，只記 IP。"""
@@ -156,16 +180,22 @@ def _handler() -> type[BaseHTTPRequestHandler]:
 
         def _length(self) -> int | None:
             value = self.headers.get("Content-Length")
-            if value is None or not value.isdigit():
+            if value is None or not (value.isascii() and value.isdigit()):  # 只收 0–9（「²」「١٢」之類不算）
                 return None
             return int(value)
 
-        def _refuse(self, code: int, error: str, headers: dict[str, str] | None = None) -> None:
-            """回錯誤前把不大的內容讀掉：沒讀完就關掉連線，對方可能只看到 connection reset，看不到原因。"""
+        def _refuse(self, code: int, error: str, headers: dict[str, str] | None = None, *,
+                    read_up_to: int | None = None) -> None:
+            """回錯誤前把不大的內容讀掉：沒讀完就關掉連線，對方可能只看到 connection reset，看不到原因。
+            比 read_up_to（預設 max_body）大的不讀，回應後關掉連線。"""
+            limit = self.server.max_body if read_up_to is None else read_up_to
             length = self._length()
-            if length is not None and length <= self.server.max_body:
+            if length is not None and length <= limit:
                 with contextlib.suppress(OSError):
                     self.rfile.read(length)
+            elif length:
+                self.close_connection = True
+                headers = {**(headers or {}), "Connection": "close"}
             self._send(code, {"error": error}, headers)
 
         def _authorized(self) -> bool:
@@ -173,7 +203,7 @@ def _handler() -> type[BaseHTTPRequestHandler]:
             scheme, _, token = given.partition(" ")
             if scheme == "Bearer" and hmac.compare_digest(token.encode("utf-8"), self.server.token):
                 return True
-            self._refuse(401, "token 不對", {"WWW-Authenticate": "Bearer"})
+            self._refuse(401, "token 不對", {"WWW-Authenticate": "Bearer"}, read_up_to=UNAUTHORIZED_READ)
             return False
 
         def do_GET(self) -> None:
@@ -234,8 +264,8 @@ def _handler() -> type[BaseHTTPRequestHandler]:
             finally:
                 server.busy.release()
             self._send(200, body)
-            job_id, kind = str(body["job_id"])[:40], str(data.get("kind"))[:20]  # Dashboard 給的原值，只截短，不是提問原文
-            server.log(f"{self.client_address[0]} {job_id} {kind} {body['status']} {time.perf_counter() - started:.1f} 秒")
+            server.log(f"{self.client_address[0]} "
+                       + job_line(body["job_id"], data.get("kind"), body["status"], time.perf_counter() - started))
 
     return Handler
 
@@ -245,7 +275,7 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--host", default=HOST, help=f"聽哪個位址，預設 {HOST}（只有這台機器連得到）；開到外面要給 --cert、--key、--allow")
     ap.add_argument("--port", type=int, default=PORT, help=f"預設 {PORT}")
     ap.add_argument("--allow", action="append", default=[],
-                    help="允許的來源 IP 或網段（Dashboard 的出口 IP），可重複；本機（127.0.0.1、::1）一律允許")
+                    help="允許的來源 IP 或網段（Dashboard 的出口 IP），可重複；本機（127.0.0.1）一律允許")
     ap.add_argument("--cert", help="HTTPS 憑證（PEM）")
     ap.add_argument("--key", help="HTTPS 私鑰（PEM）")
     add_model_args(ap, required=False)
@@ -261,7 +291,7 @@ def build(args: argparse.Namespace) -> JetsonApi:
         raise ValueError(f"token 太短：至少 {MIN_TOKEN} 個字元（例如 openssl rand -hex 32）")
     if bool(args.cert) != bool(args.key):
         raise ValueError("--cert 與 --key 要一起給")
-    local = args.host in {"127.0.0.1", "localhost", "::1"}
+    local = args.host in {"127.0.0.1", "localhost"}
     if not local and not args.cert:
         raise ValueError("開到這台機器外面（--host 不是 127.0.0.1）一定要 HTTPS：請給 --cert 與 --key")
     if not local and not args.allow:
@@ -275,7 +305,7 @@ def build(args: argparse.Namespace) -> JetsonApi:
     server = JetsonApi((args.host, args.port), token=token, model=model, allow=allow, tls=tls)
     scheme = "https" if tls else "http"
     name = getattr(model, "name", None) or ("有" if model else "沒有（打字提問會回「目前無法用打字提問」）")
-    _log(f"Jetson API：{scheme}://{args.host}:{server.server_address[1]}{JOBS_PATH}；允許來源 "
+    log_stderr(f"Jetson API：{scheme}://{args.host}:{server.server_address[1]}{JOBS_PATH}；允許來源 "
          f"{'、'.join(str(n) for n in allow)}；在地模型 {name}")
     return server
 

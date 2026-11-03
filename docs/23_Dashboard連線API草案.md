@@ -217,7 +217,7 @@ RADAR_DASHBOARD_TOKEN=demo-token python -m radar_agent.dashboard_link --base htt
 
 | 欄位 | 說明 |
 |---|---|
-| `records` | 這台裝置、這段時間的紀錄，格式和 ② 相同（Logs 頁匯出的每一行）。範圍外的紀錄 Jetson 不算進去。**只放這一台裝置的紀錄** |
+| `records` | 這台裝置、這段時間的紀錄，格式和 ② 相同（Logs 頁匯出的每一行）。範圍外的紀錄 Jetson 不算進去。**只放這一台裝置的紀錄**：只要有一筆 topic 的第二段（`radar10/<裝置>`、`Radar60FL/<裝置>/…`）不是 `device`，整筆需求回 `failed`，避免把別人的事件寫成這個地點的報告 |
 | `received_until`、`complete` | 和 ② 相同。`complete` 只有 JSON 的 `true` 算資料到齊，沒給或其他值都當成沒到齊 |
 | `settings` | 可以先放（② 的形狀），這一版的 Jetson 不讀 |
 
@@ -229,11 +229,11 @@ RADAR_DASHBOARD_TOKEN=demo-token python -m radar_agent.dashboard_link --base htt
 |---|---|---|
 | `200` | 收下並處理了 | 和 ③ 的 JSON 相同：`{"job_id", "status", "received_until", "complete", "result", "problems"}`。`status` 是 `done`、`rejected` 或 `failed`，意思同 ③；需求欄位寫錯、`records` 形狀不對也是 `200` 加 `failed`，原因在 `problems` |
 | `400` | 內容不是 JSON 物件、不是 UTF-8、`Content-Length` 不對 | `{"error": "…"}` |
-| `401` | token 不對或沒帶 | `{"error": "token 不對"}` |
+| `401` | token 不對或沒帶 | `{"error": "token 不對"}`。內容超過 64 KB 時 Jetson 不讀，回應後直接關連線，送的一方可能只看到連線被重設 |
 | `404`、`405` | 網址或方法不對 | `{"error": "…"}` |
 | `411`、`413`、`415` | 沒有 `Content-Length`、內容太大、不是 `application/json` | `{"error": "…"}` |
 | `503` | 正在處理另一筆，等了 30 秒還沒輪到 | `{"error": "正在處理另一筆需求，請稍後再送"}`，附 `Retry-After: 5` |
-| 連線直接斷掉 | 來源 IP 不在 Jetson 的允許清單 | 沒有內容（不告訴對方原因） |
+| 連線直接斷掉 | 來源 IP 不在 Jetson 的允許清單，或同時連線已滿（4 條） | 沒有內容（不告訴對方原因）；連線已滿時稍後再送 |
 
 - 打字提問要跑在地模型，回應可能要十幾秒到一分鐘以上；Dashboard 的逾時請至少設 120 秒。
 - `GET /api/v1/health`（要 token）：`{"status": "ok", "model": true}`，`model` 是這台 Jetson 有沒有接在地模型。
@@ -242,7 +242,8 @@ RADAR_DASHBOARD_TOKEN=demo-token python -m radar_agent.dashboard_link --base htt
 
 - 聽 127.0.0.1 以外的位址時，程式要求 HTTPS（`--cert`、`--key`）與 `--allow`（允許的來源 IP 或網段，最大 /16），少一個就不啟動。
 - token 從環境變數 `RADAR_JETSON_API_TOKEN` 讀，至少 32 個字元，用固定時間比對；不進 repo、不寫進 log。
-- 一次只處理一筆；讀標頭、內容與 TLS 交握都有 30 秒逾時。
+- 一次只處理一筆；同時最多 4 條連線，超過的直接關掉。
+- TLS 交握與每一次讀取有 30 秒逾時。這不是整個請求的上限：一直慢慢送的連線可以佔住一個名額，所以 `--allow` 只放 Dashboard 的出口 IP。
 - 提問原文與紀錄不保存、不寫進 log；log 一行只有來源 IP、需求編號、種類、結果與秒數。
 
 ### Jetson 上要設定的（程式管不到）
@@ -319,11 +320,13 @@ RADAR_JETSON_API_TOKEN=local-test-token-0123456789abcdef python demo/jetson_api_
 
 ### 要和 Dashboard 負責人確認（這一種方式）
 
-| 題目 | 為什麼要問 |
-|---|---|
-| Dashboard 呼叫 Jetson 時的出口 IP（固定的嗎？幾個？） | Jetson 只放行這些 IP；雲端的出口 IP 會變的話，要改用通道（VPN、Tailscale 等） |
-| 憑證：先用自簽加釘選可以嗎？正式上線要不要網域名稱與正式憑證 | 用 IP 連線拿不到一般的正式憑證 |
-| token 怎麼交、多久換一次 | token 外洩等於任何放行的來源都能送資料進來 |
-| 逾時設多久、503 或連不上時畫面怎麼寫、要不要自動重送 | 打字提問要等模型，可能超過一分鐘 |
-| 一個請求最多放幾天的紀錄 | 上限 8 MB／10 萬筆；趨勢要 14 天，之後要另外設計 |
-| 正式上線用這一種還是輪詢（ADR 0009） | 機構現場多半不能對外開埠 |
+以下都是待確認，併在會議清單 B13（`docs/05`）。
+
+| 題目 | 為什麼要問 | 對應 |
+|---|---|---|
+| Dashboard 呼叫 Jetson 時的出口 IP（固定的嗎？幾個？） | Jetson 只放行這些 IP；雲端的出口 IP 會變的話，要改用通道（VPN、Tailscale 等） | B13、B12 |
+| 憑證：先用自簽加釘選可以嗎？正式上線要不要網域名稱與正式憑證 | 用 IP 連線拿不到一般的正式憑證 | B13、B12 |
+| token 怎麼交、多久換一次 | token 外洩等於任何放行的來源都能送資料進來 | B13、B12 |
+| 逾時設多久、503 或連不上時畫面怎麼寫、要不要自動重送 | 打字提問要等模型，可能超過一分鐘 | B13、B10 |
+| 一個請求最多放幾天的紀錄 | 上限 8 MB／10 萬筆；趨勢要 14 天，之後要另外設計 | B13 |
+| 正式上線用這一種還是輪詢（ADR 0009） | 機構現場多半不能對外開埠 | B13、B11 |
