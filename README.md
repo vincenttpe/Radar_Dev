@@ -41,6 +41,7 @@
    `docs/23_Dashboard連線API草案.md`：Jetson 主動向 Dashboard 取需求、取裝置事件、傳回文字的 API 草案 v0（`docs/adr/0009` 提議中；還沒和 Dashboard 約定）；最後一節是 Dashboard 直接呼叫 Jetson 的方式（`docs/adr/0011`），OpenAPI 文件是 `docs/api/jetson-api.openapi.yaml`。
    `docs/adr/0010-本repo暫時獨立運作.md`：本 repo（Jetson 端）暫時獨立運作，不改雷達設備與 Dashboard repo；Dashboard 負責人以協作者身分參與，兩邊只靠 `docs/23`、`docs/16` 兩份約定接起來。
    `docs/adr/0011-Dashboard也可以直接呼叫Jetson.md`：期中審查前另外加「Dashboard 把需求連同裝置事件 POST 給 Jetson、同一個回應拿回文字」的方式，和 ADR 0009 的輪詢並存。
+   `docs/adr/0012-第一階段個人報告以獨居長者與下肢三項測驗為範圍.md`（提議中）：第一階段的個人報告以獨居長者為對象（不需要辨識身分），在指定測驗時段由雷達量下肢三項，定位為專業輔助；附法規諮詢、知識圖譜 v2 與驗證的前提。
    `docs/24_Dashboard負責人交接_2026-11-03.md`：交給 Dashboard 負責人的交接：11/02–11/03 的句子變動、JSON 行為、Jetson 與 Dashboard 的溝通流程、長期架構（沒有 Jetson 的機構、知識圖譜導入）與待回答的問題。
 7. `docs/10_會議決策單_2026-10-16.md`：目前卡住開發的決定，每題附選項與影響，開會時逐題勾選。
 8. `REVIEW.md`：送 PR 前要知道的審查規範，特別是第 2 節的單向門。
