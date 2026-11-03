@@ -31,6 +31,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 import demo_page  # demo/ 底下的共用外殼；直接執行或測試時 demo/ 都在 sys.path
+import kg_build
 import page_data
 from radar_agent.caregiver import handover_head, handover_text
 from radar_agent.device_events import Summary
@@ -44,6 +45,7 @@ PORT = 8765
 MAX_BODY = 4096
 WARMUP_ASKED = "有人跌倒嗎"
 COMPARE_KINDS = ("summary", "handover")  # 事件摘要、交班重點
+KG_PATH = "/kg"  # 知識圖譜的功能預告頁
 # 提問用 7 題的 event_ask.DEMO_MENU（多一題交班重點，只在 Jetson 內部 Demo；2026-11-02 起定義在 event_ask）
 # 畫面寫「在這台 Jetson 上執行」，所以模型伺服器只能在本機（local_model 本身允許區網）
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
@@ -108,8 +110,11 @@ class Demo:
             "compare": {kind: self._parts(kind, self._rewrite(kind, None).text) for kind in COMPARE_KINDS},
             # 提問選單第 7 顆按鈕與答案開頭的註明：頁面不另寫一份
             "handover_question": HANDOVER_QUESTION.text, "handover_note": HANDOVER_NOTE,
+            "kg": KG_PATH,  # 頁首的「知識圖譜（功能預告）」連結
         }
         self.page = demo_page.page(page_data.TEMPLATE, page_data.PLACEHOLDER, data).encode("utf-8")
+        # 知識圖譜只放功能預告的客戶版（模擬資料、只有五步流程；2026-11-03 決定），內部版 kg_demo.html 不從這裡提供
+        self.kg_page = kg_build.preview_page(kg_build.kg_data()).encode("utf-8")
 
     def ask(self, asked: str) -> dict[str, Any]:
         """模型從 DEMO_MENU 選一題，和 radar-ask 走同一個 ask_events。交班重點回原句（沒經過模型），
@@ -194,6 +199,8 @@ def make_handler(demo: Demo, port: int) -> type[BaseHTTPRequestHandler]:
             path = self.path.split("?", 1)[0]
             if path in ("/", "/index.html"):
                 self._send(200, demo.page, "text/html; charset=utf-8")
+            elif path == KG_PATH:
+                self._send(200, demo.kg_page, "text/html; charset=utf-8")
             elif path == "/api/stats":
                 self._json(200, {"stats": demo.stats.latest})
             else:

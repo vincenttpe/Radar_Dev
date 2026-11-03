@@ -127,6 +127,7 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
     <div class="flow" id="flow"></div>
   </section>
 
+  <!--preview-cut：以下到 /preview-cut 只在內部版（客戶版 kg_build.preview_page 會整段拿掉）-->
   <section aria-labelledby="h-chat">
     <div class="head-row"><h2 id="h-chat">誰在問，能問什麼</h2><span class="hint">每種讀者一組固定問題，點選提問；回答只用上面的事實</span></div>
     <div class="tabs" role="tablist" aria-label="讀者" id="tabs"></div>
@@ -193,6 +194,7 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
       <li>沒有輸入框：在地模型能力有限，問題固定，答案可以事先算好、逐題檢查。超出範圍的問題（「其他問題」）系統不回答。</li>
     </ul>
   </section>
+  <!--/preview-cut-->
 </div></main>
 
 <script>
@@ -1732,16 +1734,17 @@ const $ = id => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const kgChip = () => el("span", DATA.kg.approved ? "chip ok" : "chip pending", DATA.kg.approved ? `知識圖譜 ${DATA.kg.version} 已核准` : `知識圖譜 ${DATA.kg.version} 未核准・僅供測試`);
 const sp = DATA.speed, a = DATA.assessment;
+const count = x => Array.isArray(x) ? x.length : x;  // 內部版給事件編號清單，客戶版只給筆數
 const walks = DATA.events.filter(e => e.label === "walking").length;
 const sits = DATA.events.length - walks;
 
-$("sim-note").textContent = `非真實裝置紀錄；裝置 ${DATA.device}、長者代號 ${DATA.subject} 都是模擬的。換算規則是草案，句子由範本產生，尚未接上在地模型。`;
+/*preview-cut*/$("sim-note").textContent = `非真實裝置紀錄；裝置 ${DATA.device}、長者代號 ${DATA.subject} 都是模擬的。換算規則是草案，句子由範本產生，尚未接上在地模型。`;/*/preview-cut*/
 
 // 五步流程
 const steps = [
   { title: "雷達事件", draft: true, big: [DATA.events.length, "筆"], body: [`${DATA.period}，行走 ${walks} 筆、坐→站 ${sits} 筆`, "照事件格式草案產生"] },
   { title: "換算規則", draft: true, chip: el("span", "chip draft", `${DATA.rule.id}・${DATA.rule.status}`), list: DATA.rule.text },
-  { title: "量測值", big: [sp.value, a.unit], body: [`用了 ${sp.used.length} 筆，排除短距離 ${sp.short.length} 筆、信心值不足 ${sp.unsure.length} 筆`] },
+  { title: "量測值", big: [sp.value, a.unit], body: [`用了 ${count(sp.used)} 筆，排除短距離 ${count(sp.short)} 筆、信心值不足 ${count(sp.unsure)} 筆`] },
   { title: "知識圖譜門檻", chip: kgChip(), big: [`${a.score} 分`, a.rank], body: [`門檻原文：${a.source_text}`] },
   { title: "居服員看到的句子", says: DATA.caregiver, body: ["rewrite() 範本，已通過輸出檢查"] },
 ];
@@ -1756,6 +1759,7 @@ for (const s of steps) {
   $("flow").append(box);
 }
 
+/*preview-cut*/
 // 讀者切換：每個 Profile 一組固定問題；答完再列出延伸問題
 const tabs = $("tabs"), chat = $("chat"), menu = $("menu");
 let current = DATA.profiles[0], asked = [];
@@ -1832,5 +1836,6 @@ for (const e of DATA.events) {
   $("events").append(tr);
 }
 $("sample").textContent = JSON.stringify(DATA.sample_event, null, 2);
+/*/preview-cut*/
 </script>
 </html>

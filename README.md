@@ -38,7 +38,7 @@
    `docs/14_週一資訊需求_2026-10-19.md`：週一會議要讓研發人員知道還缺哪些資訊、要誰提供、何時要。
    `docs/21_Jetson內部Demo.md`：頁面、服務、在地模型都跑在同一台 Jetson 上的內部 Demo（打字提問接上在地模型）。
    `docs/22_跌倒警報處理流程參考.md`：跌倒、呼救、久待、斷線時誰做什麼的參考草案（不含醫療判定；正式流程由機構訂定）。
-   `docs/23_Dashboard連線API草案.md`：Jetson 主動向 Dashboard 取需求、取裝置事件、傳回文字的 API 草案 v0（`docs/adr/0009` 提議中；還沒和 Dashboard 約定）；最後一節是 Dashboard 直接呼叫 Jetson 的方式（`docs/adr/0011`）。
+   `docs/23_Dashboard連線API草案.md`：Jetson 主動向 Dashboard 取需求、取裝置事件、傳回文字的 API 草案 v0（`docs/adr/0009` 提議中；還沒和 Dashboard 約定）；最後一節是 Dashboard 直接呼叫 Jetson 的方式（`docs/adr/0011`），OpenAPI 文件是 `docs/api/jetson-api.openapi.yaml`。
    `docs/adr/0010-本repo暫時獨立運作.md`：本 repo（Jetson 端）暫時獨立運作，不改雷達設備與 Dashboard repo；Dashboard 負責人以協作者身分參與，兩邊只靠 `docs/23`、`docs/16` 兩份約定接起來。
    `docs/adr/0011-Dashboard也可以直接呼叫Jetson.md`：期中審查前另外加「Dashboard 把需求連同裝置事件 POST 給 Jetson、同一個回應拿回文字」的方式，和 ADR 0009 的輪詢並存。
    `docs/24_Dashboard負責人交接_2026-11-03.md`：交給 Dashboard 負責人的交接：11/02–11/03 的句子變動、JSON 行為、Jetson 與 Dashboard 的溝通流程、長期架構（沒有 Jetson 的機構、知識圖譜導入）與待回答的問題。

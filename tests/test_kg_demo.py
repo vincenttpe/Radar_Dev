@@ -142,3 +142,51 @@ def test_embedded_data_cannot_close_the_script_tag(build, data):
     html = build.fragment({**data, "caregiver": "</script><b>"})
     payload = html.split("const DATA = ", 1)[1].split(";\n", 1)[0]
     assert "</script>" not in payload and json.loads(payload)["caregiver"] == "</script><b>"
+
+
+# ---- 客戶版（功能預告，demo/jetson_serve.py 的 /kg）----
+
+PREVIEW_BANNER = "功能預告・開發中：知識圖譜的換算規則與句子尚未完成專業審核；畫面資料是模擬的，不是真實長者。"
+
+
+def test_preview_page_says_it_is_a_preview_in_development(build, data):
+    page = build.preview_page(data)
+    assert PREVIEW_BANNER in page
+    assert "知識圖譜（功能預告）" in page and 'href="/"' in page  # 回到 Demo 主頁
+
+
+def test_preview_page_keeps_only_the_five_step_flow(build, data):
+    page = build.preview_page(data)
+    assert 'id="flow"' in page and "虛線框是還沒定案的部分" in page
+    for internal in ("內部用", "內部確認功能用", "還缺什麼", "展示時要說明", "誰提供", "週一清單",
+                     "誰在問，能問什麼", "五項指標", "邊界情境", "事件明細", 'id="sim-note"'):
+        assert internal not in page, internal
+
+
+def test_preview_page_carries_only_the_data_the_flow_needs(build, data):
+    """頁面原始碼裡也不帶問答、審核用的原因與事件明細：客戶看原始碼也看不到內部內容。"""
+    page = build.preview_page(data)
+    shipped = json.loads(re.search(r"const DATA = (\{.*?\n\});", page, re.S).group(1).replace("<\\/", "</"))
+    assert set(shipped) == set(build.PREVIEW_KEYS)
+    assert shipped["events"] == [{"label": e["label"]} for e in data["events"]]
+    sp = data["speed"]  # 量測值只帶數值與筆數，不帶事件編號
+    assert shipped["speed"] == {"value": sp["value"], "used": len(sp["used"]), "short": len(sp["short"]),
+                                "unsure": len(sp["unsure"])}
+    assert shipped["assessment"] == {k: data["assessment"][k] for k in ("unit", "score", "rank", "source_text")}
+    for key in ("caregiver", "kg", "rule", "period"):
+        assert shipped[key] == data[key]
+    assert not any(e["id"] in page for e in data["events"])
+    assert "審核用的原因" not in page and data["boundary"]["reason"] not in page
+
+
+def test_preview_page_lede_does_not_promise_answers_it_does_not_show(build, data):
+    page = build.preview_page(data)
+    assert "回答照護人員的問題" not in page and "最後產生照護人員看的句子。</p>" in page
+    assert "等級只由知識圖譜的門檻決定" not in page  # 屬於拿掉的「展示時要說明」，不放回導言
+    assert "怎麼變成照護人員看的句子" in page and "一段回答" not in page
+    assert "rewrite()" not in page and "固定範本產生，已通過輸出檢查" in page
+
+
+def test_internal_page_is_unchanged_by_the_preview(build, data):
+    page = build.page(data)
+    assert "模擬資料・內部用" in page and "還缺什麼" in page and PREVIEW_BANNER not in page

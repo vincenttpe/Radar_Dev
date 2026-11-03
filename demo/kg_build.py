@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import random
+import re
 import statistics
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -294,6 +295,46 @@ def fragment(data: dict[str, Any]) -> str:
 
 def page(data: dict[str, Any]) -> str:
     return demo_page.page(HERE / "kg_template.html", PLACEHOLDER, data)
+
+
+# ---- 客戶版：功能預告（demo/jetson_serve.py 的 /kg；docs/21「知識圖譜：功能預告」）----
+# 2026-11-03 使用者決定：Demo 時向客戶預告知識圖譜，說明開發中、尚未完成確認；只保留五步流程，
+# 拿掉問答、五項指標、邊界情境、事件明細，以及內部用的「還缺什麼」「展示時要說明」。橫幅句子由使用者選定。
+PREVIEW_BANNER = "功能預告・開發中：知識圖譜的換算規則與句子尚未完成專業審核；畫面資料是模擬的，不是真實長者。"
+PREVIEW_KEYS = ("period", "kg", "rule", "events", "speed", "assessment", "caregiver")  # 五步流程用得到的資料
+_CUT = re.compile(r"<!--preview-cut.*?<!--/preview-cut-->\n|/\*preview-cut\*/.*?/\*/preview-cut\*/\n?", re.S)
+_PREVIEW_EDITS = (  # 內部版的字 → 客戶版的字；範本改了對不上就丟錯，不會悄悄留下內部用字
+    ("<strong>模擬資料・內部用</strong>\n  <span id=\"sim-note\"></span>", f"<strong>{PREVIEW_BANNER}</strong>"),
+    ("雷達照護助理・知識圖譜 Demo（內部確認功能用）", "雷達照護助理・知識圖譜（功能預告）　<a href=\"/\">回到 Demo 主頁</a>"),
+    ("，最後回答照護人員的問題。每個回答都說得出依據哪一版規則、哪一版知識圖譜、哪幾筆事件。",
+     "，最後產生照護人員看的句子。"),
+    ("→ 對話 → 五項指標的狀態 → 邊界情境 → 還缺什麼 → 事件明細。", "。"),
+    # 客戶版沒有問答，標題不說「回答」；第 5 步不露出程式的函式名稱
+    ("怎麼變成一段回答</h1>", "怎麼變成照護人員看的句子</h1>"),
+    ('"rewrite() 範本，已通過輸出檢查"', '"固定範本產生，已通過輸出檢查"'),
+)
+
+
+def preview_data(data: dict[str, Any]) -> dict[str, Any]:
+    """客戶版只帶五步流程用得到的資料：問答、審核用的原因、事件明細都不放進頁面原始碼。"""
+    kept = {k: data[k] for k in PREVIEW_KEYS}
+    kept["events"] = [{"label": e["label"]} for e in data["events"]]  # 流程只用到筆數與種類
+    sp = data["speed"]  # 量測值只帶數值與筆數，不帶事件編號（範本用 count() 兩種都讀得懂）
+    kept["speed"] = {"value": sp["value"], **{k: len(sp[k]) for k in ("used", "short", "unsure")}}
+    kept["assessment"] = {k: data["assessment"][k] for k in ("unit", "score", "rank", "source_text")}
+    return kept
+
+
+def preview_page(data: dict[str, Any]) -> str:
+    template = (HERE / "kg_template.html").read_text(encoding="utf-8")
+    text, cuts = _CUT.subn("", template)
+    if cuts != 3:
+        raise ValueError(f"kg_template.html 的 preview-cut 標記應該有 3 段，找到 {cuts} 段")
+    for old, new in _PREVIEW_EDITS:
+        if text.count(old) != 1:
+            raise ValueError(f"kg_template.html 找不到要換成客戶版的字：{old[:20]}")
+        text = text.replace(old, new)
+    return demo_page.HEAD + demo_page.embed(text, PLACEHOLDER, preview_data(data)) + "</html>\n"
 
 
 if __name__ == "__main__":
