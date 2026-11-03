@@ -1,7 +1,8 @@
 # Dashboard 連線 API 草案（v0，2026-11-02，還沒和 Dashboard 約定）
 
 給 Dashboard 負責人：Jetson 怎麼向 Dashboard 取需求、取裝置事件、傳回文字。連線方向見 `docs/adr/0009`（提議中）：
-**Jetson 主動往外連，Dashboard 不連進 Jetson**。網址、欄位名稱都是草案，請逐項確認或改成你們的寫法；
+**Jetson 主動往外連，Dashboard 不連進 Jetson**。2026-11-03 另外加了 **Dashboard 直接呼叫 Jetson** 的方式（`docs/adr/0011`），
+兩種並存，見最後一節「另一種方式」。網址、欄位名稱都是草案，請逐項確認或改成你們的寫法；
 本 repo 的連線程式（`src/radar_agent/dashboard_link.py`）把這些都集中在一處，改了只動那裡。
 
 傳回的文字格式沿用 `docs/16`：報告 `caregiver-report-v0`、提問 `event-ask-v0`。
@@ -184,3 +185,148 @@ RADAR_DASHBOARD_TOKEN=demo-token python -m radar_agent.dashboard_link --base htt
 | j-3 報告（範圍比資料長） | done | 0.1 |
 
 這是本機的假 Dashboard，沒有經過網路與 HTTPS；連真實 Dashboard 的延遲還要加上輪詢間隔（暫定 5 秒）與網路往返。
+
+## 另一種方式：Dashboard 直接呼叫 Jetson（`docs/adr/0011`，2026-11-03）
+
+上面是 Jetson 主動輪詢（ADR 0009）。期中審查前另外加了這一種：**Dashboard 把需求連同裝置事件 POST 給 Jetson，在同一個回應裡拿到文字**。
+兩種並存，產生的 JSON 完全相同；Jetson 端的程式是 `radar_agent.jetson_api`。
+
+```
+使用者 ─登入→ Dashboard（雲端）
+                │ 1. 依登入 ID 決定是哪個機構、哪台 Jetson、哪台裝置
+                │ 2. POST https://<Jetson 的 IP>:8443/api/v1/jobs（需求 + 那段時間的 records）
+                ▼
+             Jetson ── 在地模型與範本產生文字，通過輸出檢查
+                │ 3. 同一個回應傳回 JSON（和 ③ 的內容相同）
+                ▼
+           Dashboard 照原文顯示
+```
+
+### 請求：`POST /api/v1/jobs`
+
+- 標頭：`Authorization: Bearer <token>`、`Content-Type: application/json`。
+- 內容：① 的需求欄位（`job_id`、`kind`、`device`、`place`、`from`、`to`，`ask` 加 `question`，`pick` 加 `question_id`），再加上 ② 的資料欄位：
+
+```json
+{"job_id": "d-1", "kind": "ask", "device": "DEMO-SIM-01", "place": "1 號廁所",
+ "from": "2026-10-14 08:00:00", "to": "2026-10-14 12:00:00", "question": "早上有人跌倒嗎",
+ "records": [{"timestamp": "2026-10-14 08:00:00", "topic": "radar10/DEMO-SIM-01", "resolution": null,
+              "payload": {"event": "absence"}}],
+ "received_until": "2026-10-14 11:59:55", "complete": true}
+```
+
+| 欄位 | 說明 |
+|---|---|
+| `records` | 這台裝置、這段時間的紀錄，格式和 ② 相同（Logs 頁匯出的每一行）。範圍外的紀錄 Jetson 不算進去。**只放這一台裝置的紀錄**：只要有一筆 topic 的第二段（`radar10/<裝置>`、`Radar60FL/<裝置>/…`）不是 `device`（包括 topic 沒有斜線），整筆需求回 `failed`，避免把別人的事件寫成這個地點的報告；沒有 topic 的紀錄照舊列為無法判讀 |
+| `received_until`、`complete` | 和 ② 相同。`complete` 只有 JSON 的 `true` 算資料到齊，沒給或其他值都當成沒到齊 |
+| `settings` | 可以先放（② 的形狀），這一版的 Jetson 不讀 |
+
+上限：內容 8 MB、紀錄 10 萬筆（模擬上午 4 小時約 0.45 MB、2,900 筆）。超過的話請縮短時間範圍分次送。
+
+### 回應
+
+| HTTP | 什麼時候 | 內容 |
+|---|---|---|
+| `200` | 收下並處理了 | 和 ③ 的 JSON 相同：`{"job_id", "status", "received_until", "complete", "result", "problems"}`。`status` 是 `done`、`rejected` 或 `failed`，意思同 ③；需求欄位寫錯、`records` 形狀不對也是 `200` 加 `failed`，原因在 `problems` |
+| `400` | 內容不是 JSON 物件、不是 UTF-8、`Content-Length` 不對 | `{"error": "…"}` |
+| `401` | token 不對或沒帶 | `{"error": "token 不對"}`。內容超過 64 KB 時 Jetson 不讀，回應後直接關連線，送的一方可能只看到連線被重設 |
+| `404`、`405` | 網址或方法不對 | `{"error": "…"}` |
+| `411`、`413`、`415` | 沒有 `Content-Length`、內容太大、不是 `application/json` | `{"error": "…"}` |
+| `503` | 正在處理另一筆，等了 30 秒還沒輪到 | `{"error": "正在處理另一筆需求，請稍後再送"}`，附 `Retry-After: 5` |
+| 連線直接斷掉 | 來源 IP 不在 Jetson 的允許清單，或同時連線已滿（4 條） | 沒有內容（不告訴對方原因）；連線已滿時稍後再送 |
+
+- 打字提問要跑在地模型，回應可能要十幾秒到一分鐘以上；Dashboard 的逾時請至少設 120 秒。
+- `GET /api/v1/health`（要 token）：`{"status": "ok", "model": true}`，`model` 是這台 Jetson 有沒有接在地模型。
+
+### 安全（程式強制的部分）
+
+- 聽 127.0.0.1 以外的位址時，程式要求 HTTPS（`--cert`、`--key`）與 `--allow`（允許的來源 IPv4 位址或網段），少一個就不啟動。`--allow` 的網段最大 /16：`0.0.0.0/0` 這類等於沒擋，程式不接受。
+- token 從環境變數 `RADAR_JETSON_API_TOKEN` 讀，至少 32 個字元，用固定時間比對；不進 repo、不寫進 log。
+- 一次只處理一筆；同時最多 4 條連線，超過的直接關掉。
+- TLS 交握與每一次讀取有 30 秒逾時。這不是整個請求的上限：一直慢慢送的連線可以佔住一個名額，所以 `--allow` 只放 Dashboard 的出口 IP。
+- 提問原文與紀錄不保存、不寫進 log；log 一行只有來源 IP、需求編號、種類、結果與秒數。
+
+### Jetson 上要設定的（程式管不到）
+
+下面的 `<Jetson 的 IP>`、`<Dashboard 出口 IP>` 由維運填；IP 不寫進 repo。
+
+1. **產生 token**，交給 Dashboard 負責人（不要貼在 issue 或聊天紀錄裡）：
+
+   ```bash
+   openssl rand -hex 32
+   ```
+
+2. **產生自簽憑證**（用 IP 連線沒有網域名稱），把指紋交給 Dashboard 釘選：
+
+   ```bash
+   openssl req -x509 -newkey rsa:2048 -nodes -keyout ~/radar-api/key.pem -out ~/radar-api/cert.pem -days 365 -subj "/CN=<Jetson 的 IP>" -addext "subjectAltName=IP:<Jetson 的 IP>"
+   ```
+
+   ```bash
+   openssl x509 -in ~/radar-api/cert.pem -noout -fingerprint -sha256
+   ```
+
+   `key.pem` 只給執行服務的帳號讀（`chmod 600`）。Dashboard 端只信任這一張憑證（或比對指紋），不要關掉憑證驗證。
+
+3. **防火牆**：只讓 Dashboard 的出口 IP 連 8443。先確認遠端維運（SSH、AnyDesk）的連線也有放行，不然會把自己鎖在外面：
+
+   ```bash
+   sudo ufw default deny incoming
+   ```
+
+   ```bash
+   sudo ufw allow from <Dashboard 出口 IP> to any port 8443 proto tcp
+   ```
+
+   ```bash
+   sudo ufw enable
+   ```
+
+4. **關掉用不到的服務**（2026-10-29 實測開著，放在 public IP 上會被掃到；B12）：
+
+   ```bash
+   sudo systemctl disable --now rpcbind.socket rpcbind cups cups-browsed
+   ```
+
+5. **確認 Ollama 只聽本機**：下面的輸出要是 `127.0.0.1:11434`，不能是 `0.0.0.0` 或 `*`：
+
+   ```bash
+   ss -ltn | grep 11434
+   ```
+
+6. **啟動**（正式跑時寫成 systemd 服務，`Restart=always`，token 放在只有 root 讀得到的 `EnvironmentFile`）：
+
+   ```bash
+   RADAR_JETSON_API_TOKEN=<token> python -m radar_agent.jetson_api --host <Jetson 的 IP> --port 8443 --cert ~/radar-api/cert.pem --key ~/radar-api/key.pem --allow <Dashboard 出口 IP> --endpoint http://127.0.0.1:11434/v1 --model gemma4:e4b --reasoning-effort none
+   ```
+
+7. **從外面確認**：在 Dashboard 的機器（或其他放行的機器）用 `demo/jetson_api_client.py` 送一筆，看到 `HTTP 200` 與 `"status": "done"`。
+
+### 本機試跑
+
+開兩個終端機。第一個起 API（`--echo` 是不用模型的假模型；token 隨便給一個 32 字元以上的）：
+
+```bash
+RADAR_JETSON_API_TOKEN=local-test-token-0123456789abcdef python -m radar_agent.jetson_api --echo
+```
+
+第二個送一筆模擬上午的報告：
+
+```bash
+RADAR_JETSON_API_TOKEN=local-test-token-0123456789abcdef python demo/jetson_api_client.py --base http://127.0.0.1:8443
+```
+
+`--ask 早上有人跌倒嗎` 送打字提問，`--pick visits` 送點題。
+
+### 要和 Dashboard 負責人確認（這一種方式）
+
+以下都是待確認，併在會議清單 B13（`docs/05`）。
+
+| 題目 | 為什麼要問 | 對應 |
+|---|---|---|
+| Dashboard 呼叫 Jetson 時的出口 IP（固定的嗎？幾個？） | Jetson 只放行這些 IP；雲端的出口 IP 會變的話，要改用通道（VPN、Tailscale 等） | B13、B12 |
+| 憑證：先用自簽加釘選可以嗎？正式上線要不要網域名稱與正式憑證 | 用 IP 連線拿不到一般的正式憑證 | B13、B12 |
+| token 怎麼交、多久換一次 | token 外洩等於任何放行的來源都能送資料進來 | B13、B12 |
+| 逾時設多久、503 或連不上時畫面怎麼寫、要不要自動重送 | 打字提問要等模型，可能超過一分鐘 | B13、B10 |
+| 一個請求最多放幾天的紀錄 | 上限 8 MB／10 萬筆；趨勢要 14 天，之後要另外設計 | B13 |
+| 正式上線用這一種還是輪詢（ADR 0009） | 機構現場多半不能對外開埠 | B13、B11 |

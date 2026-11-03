@@ -2,6 +2,8 @@
 status: proposed（2026-11-02 提議，待和 Dashboard 負責人確認後改為 accepted）
 ---
 
+> 補充（2026-11-03）：`docs/adr/0011` 另外加了「Dashboard 直接呼叫 Jetson」的方式，和本篇的輪詢兩種並存；本篇的做法不變。
+
 # Jetson 主動向 Dashboard 取需求、傳回文字；Dashboard 不連進 Jetson
 
 使用者登入雲端的 Dashboard，帳號決定看得到哪個機構、哪些裝置。使用者要報告或打字提問時，Dashboard 把需求放進一個佇列；

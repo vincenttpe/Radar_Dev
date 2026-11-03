@@ -486,3 +486,14 @@ def test_cli_refuses_to_start_before_the_clock_is_set(monkeypatch, capsys):
     monkeypatch.setenv(dashboard_link.TOKEN_ENV, "t")
     assert main(["--base", "https://dashboard.example.com", "--once"]) == 2
     assert "NTP 校時" in capsys.readouterr().err
+
+
+def test_the_result_goes_back_under_the_original_job_id_and_only_the_log_is_cleaned():
+    """log 只留可見字元、截短；傳回結果時用 Dashboard 給的原始編號，不能送到別筆需求。"""
+    long_id = "j-" + "x" * 60 + "\n偽造"
+    link, lines = Flaky(), []
+    link.fail, link.jobs = 0, [{**JOB, "job_id": long_id}]
+    assert run_once(link, None, log=lines.append, unsent=[])
+    assert link.posted == [long_id]
+    assert all("\n" not in line for line in lines)
+    assert lines[0].startswith("j-" + "x" * 38 + " report done ")

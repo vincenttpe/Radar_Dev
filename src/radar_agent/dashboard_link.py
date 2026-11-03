@@ -99,12 +99,16 @@ class Fetched:
     complete: bool
 
 
-class Dashboard(Protocol):
+class RecordSource(Protocol):
+    """handle() 取裝置事件的地方：輪詢時是 Dashboard，Dashboard 直接呼叫時是請求本身（jetson_api）。"""
+
+    def records(self, device: str, start: str, end: str) -> Fetched: ...
+
+
+class Dashboard(RecordSource, Protocol):
     """Jetson 看到的 Dashboard：正式是 HttpDashboard，測試可以換成記憶體裡的替身。"""
 
     def next_job(self) -> dict[str, Any] | None: ...
-
-    def records(self, device: str, start: str, end: str) -> Fetched: ...
 
     def post_result(self, job_id: str, body: dict[str, Any]) -> None: ...
 
@@ -170,7 +174,7 @@ class HttpDashboard:
         self._call("POST", f"/api/v1/jetson/jobs/{urllib.parse.quote(job_id, safe='')}/result", body, parse=False)
 
 
-def handle(data: dict[str, Any], dashboard: Dashboard, model: Model | None) -> dict[str, Any]:
+def handle(data: dict[str, Any], dashboard: RecordSource, model: Model | None) -> dict[str, Any]:
     """一筆需求 → 要傳回的 JSON（docs/23 ③）。不丟例外：失敗也要傳回，Dashboard 才不會一直等。"""
     body: dict[str, Any] = {"job_id": str(data.get("job_id") or ""), "status": "failed", "received_until": None,
                             "complete": None, "result": None, "problems": []}
@@ -200,25 +204,36 @@ def handle(data: dict[str, Any], dashboard: Dashboard, model: Model | None) -> d
     return body
 
 
+def printable(value: object, limit: int) -> str:
+    """寫進 log 的外來值（需求編號、種類）：只留可見字元再截短，換行之類不能用來偽造 log 行。"""
+    return "".join(c for c in str(value) if c.isprintable())[:limit]
+
+
+def job_line(job_id: object, kind: object, status: str, seconds: float) -> str:
+    """一筆需求處理完的 log：編號、種類、結果與秒數，不含提問原文（輪詢與 jetson_api 共用）。"""
+    return f"{printable(job_id, 40)} {printable(kind, 20)} {status} {seconds:.1f} 秒"
+
+
 def _send(dashboard: Dashboard, item: Unsent, unsent: list[Unsent], log: Callable[[str], None]) -> bool:
     """傳回一筆結果。連不上、5xx、408、429 放回 unsent 下一輪再送（只在記憶體），回 False；
     送到了、Dashboard 明確不收（其他 4xx）、或已補送 MAX_RETRIES 次，都回 True（後兩者丟掉並記下來），不擋住後面的需求。"""
-    job_id = item.body["job_id"]
+    job_id = item.body["job_id"]  # 傳回結果用 Dashboard 給的原值；只有寫進 log 時才過濾、截短
+    shown = printable(job_id, 40)
     try:
         dashboard.post_result(job_id, item.body)
         return True
     except urllib.error.HTTPError as e:
         if 400 <= e.code < 500 and e.code not in RETRY_CODES:  # Dashboard 明確不收（例如已逾時、查無此需求）：再送也沒用
-            log(f"{job_id} 結果 Dashboard 不收（HTTP {e.code}），丟掉")
+            log(f"{shown} 結果 Dashboard 不收（HTTP {e.code}），丟掉")
             return True
         error: Exception = e
     except Exception as e:  # 連不上、回應不完整，或其他意料外的錯誤：這筆都留著下一輪再送，不會因此丟掉
         error = e
     if item.tries >= MAX_RETRIES:
-        log(f"{job_id} 結果補送 {MAX_RETRIES} 次還沒送到（{type(error).__name__}），丟掉；等 Dashboard 逾時重發")
+        log(f"{shown} 結果補送 {MAX_RETRIES} 次還沒送到（{type(error).__name__}），丟掉；等 Dashboard 逾時重發")
         return True
     unsent.append(Unsent(item.body, item.tries + 1))
-    log(f"{job_id} 結果沒送出（{type(error).__name__}），下一輪再送")
+    log(f"{shown} 結果沒送出（{type(error).__name__}），下一輪再送")
     return False
 
 
@@ -245,8 +260,7 @@ def run_once(dashboard: Dashboard, model: Model | None, *, log: Callable[[str], 
         return False
     body = handle(data, dashboard, model)
     _send(dashboard, Unsent(body), unsent, log)
-    kind = str(data.get("kind"))[:20]  # Dashboard 給的原值，只截短，不是提問原文
-    log(f"{body['job_id']} {kind} {body['status']} {time.perf_counter() - started:.1f} 秒")
+    log(job_line(body["job_id"], data.get("kind"), body["status"], time.perf_counter() - started))
     return True
 
 
@@ -268,7 +282,7 @@ def run(dashboard: Dashboard, model: Model | None, *, interval: float = POLL_SEC
         sleep(interval)
 
 
-def _log(line: str) -> None:
+def log_stderr(line: str) -> None:
     with contextlib.suppress(OSError, ValueError):  # stderr 斷了（BrokenPipe）或被關閉（ValueError）也不讓服務停掉
         print(f"{time.strftime('%H:%M:%S')} {line}", file=sys.stderr, flush=True)
 
@@ -291,7 +305,7 @@ def main(argv: list[str] | None = None) -> int:
         dashboard = HttpDashboard(args.base, os.environ.get(TOKEN_ENV, ""))
         if args.once:
             unsent: list[Unsent] = []
-            while run_once(dashboard, model, log=_log, unsent=unsent):
+            while run_once(dashboard, model, log=log_stderr, unsent=unsent):
                 pass
             return 0 if not unsent else 1
     except (OSError, ValueError) as e:
@@ -300,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as e:  # 試跑時遇到意料外的錯誤：結束並說明種類，不印內容
         print(f"錯誤：意料外的錯誤 {type(e).__name__}", file=sys.stderr)
         return 2
-    run(dashboard, model, interval=args.interval, log=_log)  # pragma: no cover  一直跑，由 Ctrl+C 或 systemd 停止
+    run(dashboard, model, interval=args.interval, log=log_stderr)  # pragma: no cover  一直跑，由 Ctrl+C 或 systemd 停止
     return 0  # pragma: no cover
 
 
