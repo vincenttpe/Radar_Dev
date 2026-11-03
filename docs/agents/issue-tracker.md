@@ -1,6 +1,6 @@
 # Issue 追蹤：GitHub
 
-這個 repo 的 issue 與規格都記在 GitHub Issues（`Deepfens-AI/Radar_Agent`）。用 `gh` 指令操作；雲端工作階段沒有 `gh` 時，改用對應的 GitHub MCP 工具（`mcp__github__issue_write`、`issue_read`、`list_issues`、`add_issue_comment` 等），對同一個 repo 操作。
+這個 repo 的 issue 與規格都記在 GitHub Issues（`vincenttpe/Radar_Dev`）。原本的 `Deepfens-AI/Radar_Agent` 已封存（唯讀），只剩舊紀錄，不能再開 issue；本 repo 暫時獨立運作，Dashboard 負責人以協作者身分在這裡開 issue 與 PR（`docs/adr/0010`）。用 `gh` 指令操作；雲端工作階段沒有 `gh` 時，改用對應的 GitHub MCP 工具（`mcp__github__issue_write`、`issue_read`、`list_issues`、`add_issue_comment` 等），對同一個 repo 操作。
 
 ## 操作方式
 

@@ -6,7 +6,7 @@
 
 ### Issue tracker
 
-Issue 記在 GitHub Issues（`Deepfens-AI/Radar_Agent`）。見 `docs/agents/issue-tracker.md`。
+Issue 記在 GitHub Issues（`vincenttpe/Radar_Dev`；原本的 `Deepfens-AI/Radar_Agent` 已封存）。見 `docs/agents/issue-tracker.md`。
 
 ### Triage labels
 
