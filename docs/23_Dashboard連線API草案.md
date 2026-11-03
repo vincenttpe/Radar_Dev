@@ -172,4 +172,15 @@ RADAR_DASHBOARD_TOKEN=demo-token python -m radar_agent.dashboard_link --base htt
 ```
 
 假 Dashboard 會在終端機印出 Jetson 傳回的每一筆結果。`--echo` 改成 `--endpoint http://127.0.0.1:11434/v1 --model gemma4:e4b`
-就是用 Jetson 上的在地模型選提問的題號。
+就是用 Jetson 上的在地模型選提問的題號（Ollama 跑 Gemma 4 時再加 `--reasoning-effort none`）。
+
+**Demo 機台試跑（2026-11-03）**：Jetson Orin NX 16GB，Ollama `gemma4:e4b`、`--reasoning-effort none`，連本機的假 Dashboard。佇列裡的 4 筆都處理完並傳回：
+
+| 需求 | 結果 | 秒數 |
+|---|---|---|
+| j-1 報告（08:00–12:00） | done | 0.3 |
+| j-2 打字提問（在地模型選題） | done | 0.7 |
+| j-4 點題（不經過模型） | done | 0.3 |
+| j-3 報告（範圍比資料長） | done | 0.1 |
+
+這是本機的假 Dashboard，沒有經過網路與 HTTPS；連真實 Dashboard 的延遲還要加上輪詢間隔（暫定 5 秒）與網路往返。
