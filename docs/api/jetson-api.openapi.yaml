@@ -5,7 +5,7 @@
 openapi: 3.1.0
 info:
   title: Jetson API（雷達照護助理）
-  version: 0.2.0
+  version: v0-draft
   description: |
     Dashboard 把一筆需求（報告、打字提問、在選單上點題）**連同那段時間的裝置事件**送給 Jetson，
     Jetson 用在地模型與固定範本產生文字、通過輸出檢查後，**在同一個回應裡**傳回 JSON。Jetson 不回頭連 Dashboard。
@@ -86,18 +86,17 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/JobResult" }
         "400": { $ref: "#/components/responses/Error" }
-        "401":
-          description: token 不對或沒帶。內容超過 64 KB 時 Jetson 不讀內容、回應後直接關連線，送的一方可能只看到連線被重設。
-          headers:
-            WWW-Authenticate: { schema: { type: string, const: Bearer } }
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/Error" }
         "405": { $ref: "#/components/responses/Error" }
         "411": { $ref: "#/components/responses/Error" }
         "413": { $ref: "#/components/responses/Error" }
         "415": { $ref: "#/components/responses/Error" }
+        "500":
+          description: 處理時發生意料外的錯誤（不帶細節，只寫錯誤種類）。稍後再送；一直發生請通知 Jetson 管理者。
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "503":
           description: 正在處理另一筆，等了 30 秒還沒輪到。稍後再送。
           headers:
@@ -120,7 +119,7 @@ paths:
                 properties:
                   status: { type: string, const: ok }
                   model: { type: boolean }
-        "401": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 components:
   securitySchemes:
     token:
@@ -128,6 +127,13 @@ components:
       scheme: bearer
       description: 每台 Jetson 一個 token（至少 32 個字元）。不進 repo、不寫進 log、不要貼在 issue 或聊天紀錄。
   responses:
+    Unauthorized:
+      description: token 不對或沒帶。內容超過 64 KB 時 Jetson 不讀內容、回應後直接關連線，送的一方可能只看到連線被重設。
+      headers:
+        WWW-Authenticate: { schema: { type: string, const: Bearer } }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
     Error:
       description: 請求本身不對（見各狀態碼）。
       content:
@@ -156,7 +162,7 @@ components:
         place: { type: string, minLength: 1, description: 地點名稱，會寫進文字；不放長者姓名。 }
         from: { $ref: "#/components/schemas/Timestamp", description: 範圍開始（含）。 }
         to: { $ref: "#/components/schemas/Timestamp", description: 範圍結束（不含）。 }
-        question: { type: string, maxLength: 100, description: 只有 `ask` 要給：使用者打的提問原文。超過 100 字回 notice。 }
+        question: { type: string, description: 只有 `ask` 要給：使用者打的提問原文。超過 100 字時仍回 200，`result.notice` 請使用者縮短（不要在客戶端先擋掉，提示句由 Jetson 產生）。 }
         question_id:
           type: string
           enum: [falls, calls, longstay, visits, offline, alerts]

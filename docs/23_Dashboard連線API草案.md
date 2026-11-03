@@ -234,6 +234,7 @@ RADAR_DASHBOARD_TOKEN=demo-token python -m radar_agent.dashboard_link --base htt
 | `401` | token 不對或沒帶 | `{"error": "token 不對"}`。內容超過 64 KB 時 Jetson 不讀，回應後直接關連線，送的一方可能只看到連線被重設 |
 | `404`、`405` | 網址或方法不對 | `{"error": "…"}` |
 | `411`、`413`、`415` | 沒有 `Content-Length`、內容太大、不是 `application/json` | `{"error": "…"}` |
+| `500` | 處理時發生意料外的錯誤 | `{"error": "處理時發生錯誤：<錯誤種類>"}`，不帶細節；稍後再送 |
 | `503` | 正在處理另一筆，等了 30 秒還沒輪到 | `{"error": "正在處理另一筆需求，請稍後再送"}`，附 `Retry-After: 5` |
 | 連線直接斷掉 | 來源 IP 不在 Jetson 的允許清單，或同時連線已滿（4 條） | 沒有內容（不告訴對方原因）；連線已滿時稍後再送 |
 
