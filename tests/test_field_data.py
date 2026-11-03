@@ -40,7 +40,7 @@ def test_inspect_reports_counts_gaps_and_hours_without_printing_the_mac(records)
     lines = text.splitlines()
     assert lines[0] == "格式：一行一筆（JSON Lines），10 筆（完全相同的重複 1 筆）"
     assert lines[1] == "裝置：1 台（（識別碼像 MAC，不顯示） 9 筆）"
-    assert "伺服器下給裝置的指令（topic 多層）：1 筆，不算進事件" in lines
+    assert "伺服器下給裝置的指令（config/set）：1 筆，不算進事件" in lines
     assert not any(line.startswith("不認得的多層 topic") for line in lines)
     assert "時間戳讀不懂（不是 %Y-%m-%d %H:%M:%S）：1 筆" in lines
     assert "時間範圍：2026-10-19 09:00:00 ～ 2026-10-19 09:05:00（時間戳沒有時區，照原樣）" in lines
@@ -62,7 +62,7 @@ def test_inspect_lists_unknown_multi_level_topics_apart_from_commands(records):
     post = {"timestamp": "2026-10-19 09:07:00", "topic": f"Radar60FL/{FAKE_MAC}/sys/property/post", "resolution": None,
             "payload": {"method": "post", "params": {"someoneExists": "1"}}}
     lines = report_text(inspect([*records, post, {**post, "timestamp": "2026-10-19 09:07:05"}], "JSON 陣列")).splitlines()
-    assert "伺服器下給裝置的指令（topic 多層）：1 筆，不算進事件" in lines
+    assert "伺服器下給裝置的指令（config/set）：1 筆，不算進事件" in lines
     assert "不認得的多層 topic（不是已知的伺服器指令，例如 Radar60FL）：2 筆，列為無法判讀" in lines
     assert lines[1] == "裝置：1 台（（識別碼像 MAC，不顯示） 11 筆）"
 

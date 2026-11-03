@@ -151,7 +151,7 @@ def report_text(r: Report) -> str:
     if r.no_topic:
         lines.append(f"沒有 topic：{r.no_topic:,} 筆")
     if r.commands:
-        lines.append(f"伺服器下給裝置的指令（topic 多層）：{r.commands:,} 筆，不算進事件")
+        lines.append(f"伺服器下給裝置的指令（config/set）：{r.commands:,} 筆，不算進事件")
     if r.unknown_topic:
         lines.append(f"不認得的多層 topic（不是已知的伺服器指令，例如 Radar60FL）：{r.unknown_topic:,} 筆，列為無法判讀")
     if r.unreadable_time:
