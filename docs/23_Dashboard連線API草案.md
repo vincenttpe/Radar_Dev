@@ -188,6 +188,8 @@ RADAR_DASHBOARD_TOKEN=demo-token python -m radar_agent.dashboard_link --base htt
 
 ## 另一種方式：Dashboard 直接呼叫 Jetson（`docs/adr/0011`，2026-11-03）
 
+**機器可讀的 API 文件**：`docs/api/jetson-api.openapi.yaml`（OpenAPI 3.1，可以匯入 Swagger UI、Postman 等工具；數字與題號由 `tests/test_api_doc.py` 核對和程式一致）。
+
 上面是 Jetson 主動輪詢（ADR 0009）。期中審查前另外加了這一種：**Dashboard 把需求連同裝置事件 POST 給 Jetson，在同一個回應裡拿到文字**。
 兩種並存，產生的 JSON 完全相同；Jetson 端的程式是 `radar_agent.jetson_api`。
 

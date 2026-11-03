@@ -1,0 +1,234 @@
+# Jetson API（Dashboard 直接呼叫 Jetson；docs/adr/0011）的 OpenAPI 3.1 文件。
+# 說明文字與決定的來龍去脈見 docs/23「另一種方式：Dashboard 直接呼叫 Jetson」；顯示規則見 docs/16。
+# 數字（上限、埠號）和 src/radar_agent/jetson_api.py 對不上時，tests/test_api_doc.py 會失敗。
+# 草案 v0：網址、欄位名稱還沒和 Dashboard 負責人約定（會議清單 B13）。
+openapi: 3.1.0
+info:
+  title: Jetson API（雷達照護助理）
+  version: 0.2.0
+  description: |
+    Dashboard 把一筆需求（報告、打字提問、在選單上點題）**連同那段時間的裝置事件**送給 Jetson，
+    Jetson 用在地模型與固定範本產生文字、通過輸出檢查後，**在同一個回應裡**傳回 JSON。Jetson 不回頭連 Dashboard。
+
+    - 草案 v0，還沒和 Dashboard 負責人約定（會議清單 B13）。另一種連線方式（Jetson 主動輪詢）見 docs/23 ①–③。
+    - 一次只處理一筆；打字提問要跑在地模型，回應可能十幾秒到一分鐘以上，請把逾時設成至少 120 秒。
+    - 只接受允許清單裡的來源 IP（Dashboard 的出口 IP）；其他來源在 TLS 之前就斷線，沒有任何回應。
+    - 同時最多 4 條連線，超過的直接斷線。
+    - 提問原文與紀錄 Jetson 不保存、不寫進 log；Dashboard 端也請不要把提問原文寫進 log。
+    - 回傳的文字照原文顯示，不要改字、不要自己補數字（docs/16）。
+servers:
+  - url: https://{jetson}:8443
+    description: 正式（HTTPS，自簽憑證由 Dashboard 釘選；IP 由維運提供，不寫進 repo）
+    variables:
+      jetson:
+        default: jetson.example
+  - url: http://127.0.0.1:8443
+    description: 本機試跑（只有 Jetson 自己連得到）
+security:
+  - token: []
+paths:
+  /api/v1/jobs:
+    post:
+      summary: 送一筆需求，取回產生的文字
+      operationId: runJob
+      requestBody:
+        required: true
+        description: 內容上限 8 MB（8388608 位元組）、紀錄上限 100000 筆。`Content-Type` 要是 `application/json`，要有 `Content-Length`。
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JobRequest" }
+            examples:
+              report:
+                summary: 報告
+                value:
+                  job_id: d-1
+                  kind: report
+                  device: DEMO-SIM-01
+                  place: 1 號廁所
+                  from: "2026-10-14 08:00:00"
+                  to: "2026-10-14 12:00:00"
+                  records:
+                    - { timestamp: "2026-10-14 08:00:00", topic: radar10/DEMO-SIM-01, resolution: null, payload: { event: absence } }
+                  received_until: "2026-10-14 11:59:55"
+                  complete: true
+              ask:
+                summary: 打字提問（在地模型選題）
+                value:
+                  job_id: d-2
+                  kind: ask
+                  device: DEMO-SIM-01
+                  place: 1 號廁所
+                  from: "2026-10-14 08:00:00"
+                  to: "2026-10-14 12:00:00"
+                  question: 早上有人跌倒嗎
+                  records: []
+                  received_until: "2026-10-14 11:59:55"
+                  complete: true
+              pick:
+                summary: 在選單上點題（不經過模型）
+                value:
+                  job_id: d-3
+                  kind: pick
+                  device: DEMO-SIM-01
+                  place: 1 號廁所
+                  from: "2026-10-14 08:00:00"
+                  to: "2026-10-14 12:00:00"
+                  question_id: visits
+                  records: []
+                  received_until: "2026-10-14 11:59:55"
+                  complete: true
+      responses:
+        "200":
+          description: |
+            收下並處理了。看 `status`：`done` 產生了文字；`rejected` 文字沒通過輸出檢查，不交出任何文字；
+            `failed` 沒辦法產生（需求欄位寫錯、records 形狀不對、紀錄不是這台裝置的等），原因在 `problems`。
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401":
+          description: token 不對或沒帶。內容超過 64 KB 時 Jetson 不讀內容、回應後直接關連線，送的一方可能只看到連線被重設。
+          headers:
+            WWW-Authenticate: { schema: { type: string, const: Bearer } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "405": { $ref: "#/components/responses/Error" }
+        "411": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+        "503":
+          description: 正在處理另一筆，等了 30 秒還沒輪到。稍後再送。
+          headers:
+            Retry-After: { schema: { type: string, const: "5" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/v1/health:
+    get:
+      summary: 健康檢查
+      operationId: health
+      responses:
+        "200":
+          description: 服務在跑。`model` 是這台 Jetson 有沒有接在地模型（沒接時打字提問會回 notice「目前無法用打字提問」）。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, model]
+                properties:
+                  status: { type: string, const: ok }
+                  model: { type: boolean }
+        "401": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    token:
+      type: http
+      scheme: bearer
+      description: 每台 Jetson 一個 token（至少 32 個字元）。不進 repo、不寫進 log、不要貼在 issue 或聊天紀錄。
+  responses:
+    Error:
+      description: 請求本身不對（見各狀態碼）。
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, description: 原因（中文）。 }
+    Timestamp:
+      type: string
+      pattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$'
+      description: "`YYYY-MM-DD HH:MM:SS`，和紀錄一樣不帶時區（會議清單 A49）。"
+    JobRequest:
+      type: object
+      required: [job_id, kind, device, place, from, to, records]
+      properties:
+        job_id: { type: string, minLength: 1, description: Dashboard 自己的編號，原樣帶回。 }
+        kind:
+          type: string
+          enum: [report, ask, pick]
+          description: "`report` 報告；`ask` 打字提問（在地模型選題）；`pick` 在選單上點題（不經過模型）。"
+        device: { type: string, minLength: 1, description: 裝置代號（不是 MAC）。 }
+        place: { type: string, minLength: 1, description: 地點名稱，會寫進文字；不放長者姓名。 }
+        from: { $ref: "#/components/schemas/Timestamp", description: 範圍開始（含）。 }
+        to: { $ref: "#/components/schemas/Timestamp", description: 範圍結束（不含）。 }
+        question: { type: string, maxLength: 100, description: 只有 `ask` 要給：使用者打的提問原文。超過 100 字回 notice。 }
+        question_id:
+          type: string
+          enum: [falls, calls, longstay, visits, offline, alerts]
+          description: 只有 `pick` 要給：選單上的題號（選單見回傳的 `menu`）。
+        records:
+          type: array
+          maxItems: 100000
+          description: |
+            **這一台裝置**、這段時間的紀錄，格式和 Logs 頁匯出的每一行相同。範圍外的紀錄 Jetson 不算進去。
+            只要有一筆 topic 的第二段（`radar10/<裝置>`、`Radar60FL/<裝置>/…`）不是 `device`（包括 topic 沒有斜線），
+            整筆回 `failed`；沒有 topic 的紀錄列為無法判讀。
+          items: { $ref: "#/components/schemas/Record" }
+        received_until:
+          oneOf: [{ $ref: "#/components/schemas/Timestamp" }, { type: "null" }]
+          description: Dashboard 收到這台裝置哪個時間點為止，原樣帶回。
+        complete:
+          type: boolean
+          description: 這段時間的資料是否都到了。只有 JSON 的 `true` 算到齊；沒給或其他值都當成沒到齊。
+        settings:
+          type: array
+          description: 偵測設定（docs/23 ②）；可以先放，這一版不讀。
+    Record:
+      type: object
+      properties:
+        timestamp: { type: string }
+        topic: { type: string }
+        resolution: {}
+        payload: {}
+    JobResult:
+      type: object
+      required: [job_id, status, received_until, complete, result, problems]
+      properties:
+        job_id: { type: string }
+        status: { type: string, enum: [done, rejected, failed] }
+        received_until: { oneOf: [{ type: string }, { type: "null" }] }
+        complete: { oneOf: [{ type: boolean }, { type: "null" }], description: 需求本身寫錯時是 null。 }
+        result:
+          description: "`done` 時：`report` 是 caregiver-report-v0，`ask`／`pick` 是 event-ask-v0（欄位見 docs/16）；其他狀態是 null。"
+          oneOf:
+            - { $ref: "#/components/schemas/CaregiverReport" }
+            - { $ref: "#/components/schemas/EventAsk" }
+            - { type: "null" }
+        problems: { type: array, items: { type: string }, description: 沒產生或沒通過檢查的原因。 }
+    CaregiverReport:
+      type: object
+      description: 欄位意思與畫面建議見 docs/16「報告」。
+      required: [schema, place, from, to, highlights, summary, counts, events, text_layer]
+      properties:
+        schema: { type: string, const: caregiver-report-v0 }
+        place: { type: string }
+        from: { oneOf: [{ type: string }, { type: "null" }] }
+        to: { oneOf: [{ type: string }, { type: "null" }] }
+        highlights: { type: string }
+        summary: { type: string, description: 一句一行，用 \n 分行，顯示時要保留換行。 }
+        counts: { type: object }
+        events: { type: array, items: { type: object } }
+        text_layer: { type: string }
+    EventAsk:
+      type: object
+      description: 欄位意思與畫面流程見 docs/16「提問」。沒有 answer 時一定有 notice，照原文顯示。
+      required: [schema, question, confirm, answer, notice, menu]
+      properties:
+        schema: { type: string, const: event-ask-v0 }
+        question: { oneOf: [{ type: object, properties: { id: { type: string }, text: { type: string } } }, { type: "null" }] }
+        confirm: { oneOf: [{ type: string }, { type: "null" }] }
+        answer: { oneOf: [{ type: string }, { type: "null" }] }
+        notice: { oneOf: [{ type: string }, { type: "null" }] }
+        menu: { type: array, items: { type: object, properties: { id: { type: string }, text: { type: string } } } }
+        model: { oneOf: [{ type: string }, { type: "null" }] }
+        prompt_version: { oneOf: [{ type: string }, { type: "null" }] }
+        seconds: { type: number }
+        from: { oneOf: [{ type: string }, { type: "null" }] }
+        to: { oneOf: [{ type: string }, { type: "null" }] }
+        rejected: { type: array, items: { type: string } }
+        text_layer: { type: string }
