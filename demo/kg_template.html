@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* 版面：模擬資料橫幅 → 五步流程（事件 → 換算 → 量測值 → 門檻 → 句子）→ 對話 → 五項指標的狀態 → 邊界情境 → 還缺什麼 → 事件明細。色彩與字型沿用 demo/template.html */
+/* 版面：模擬資料橫幅 → 五步流程（事件 → 換算 → 量測值 → 門檻 → 句子）→ 試算 → 對話 → 五項指標的狀態 → 邊界情境 → 還缺什麼 → 事件明細。色彩與字型沿用 demo/template.html */
 :root {
   --bg: #eef2f3; --surface: #ffffff; --ink: #16232a; --muted: #56676f; --line: #d3dce0;
   --accent: #1c6a72; --accent-soft: #d5e8ea;
@@ -104,6 +104,17 @@ details summary { cursor: pointer; font-weight: 500; }
 details summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: var(--bg); padding: 12px; border-radius: 8px; }
 .notes { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 14px; display: grid; gap: 4px; max-width: 72ch; }
+
+/* 試算 */
+.try { display: grid; gap: 12px; }
+.try p { margin: 0; }
+.try-form { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: end; }
+.try-form label { display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); }
+.try-form select, .try-form input { font: 15px var(--f-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; min-height: 40px; }
+.try-form input { font-family: var(--f-mono); width: 9em; }
+.try-form select:focus-visible, .try-form input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.try-result { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.try-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 </style>
 
 <div class="sim"><div class="wrap">
@@ -124,6 +135,19 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
   </section>
 
   <!--preview-cut：以下到 /preview-cut 只在內部版（客戶版 kg_build.preview_page 會整段拿掉）-->
+  <section aria-labelledby="h-try">
+    <div class="head-row"><h2 id="h-try">換一個測試值，看句子怎麼變</h2><span class="hint">只換輸入，知識圖譜的門檻與建議不變</span></div>
+    <div class="panel try">
+      <div class="try-form">
+        <label for="try-metric">指標<select id="try-metric"></select></label>
+        <label for="try-value"><span id="try-label"></span><input id="try-value" type="number" min="0" inputmode="decimal" autocomplete="off"></label>
+      </div>
+      <p class="hint" id="try-range"></p>
+      <div class="try-result" id="try-result" aria-live="polite"></div>
+      <p class="hint">這裡是測試值，非真實長者。測試值不會送審，也不會儲存；句中若出現「已交由審核人確認」，是正式句子的固定用語。句子來自 rewrite() 範本，尚未接上在地模型。</p>
+    </div>
+  </section>
+
   <section aria-labelledby="h-chat">
     <div class="head-row"><h2 id="h-chat">誰在問，能問什麼</h2><span class="hint">每種讀者一組固定問題，點選提問；回答只用上面的事實</span></div>
     <div class="tabs" role="tablist" aria-label="讀者" id="tabs"></div>
@@ -187,7 +211,8 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
       <li>居服員看到的句子來自正式的範本並通過輸出檢查；接上在地模型之前不稱為「LLM 產生」。</li>
       <li>量不到、沒有規則、落在門檻重疊的情況，一律寫「無法評估」，不猜一個等級。</li>
       <li>不同讀者看到不同的問題；主管機關不能看個人資料，所以沒有題目。居服員以外的句子是草案，題目與範本都要經過審核。</li>
-      <li>沒有輸入框：在地模型能力有限，問題固定，答案可以事先算好、逐題檢查。超出範圍的問題（「其他問題」）系統不回答。</li>
+      <li>問答沒有輸入框：在地模型能力有限，問題固定，答案可以事先算好、逐題檢查。超出範圍的問題（「其他問題」）系統不回答。</li>
+      <li>測試值只換輸入，等級與句子都是規則引擎與範本事先算好的結果，頁面只查表；範圍是為了試算訂的，未經審核，不代表量測的合理範圍。</li>
     </ul>
   </section>
   <!--/preview-cut-->
@@ -225,6 +250,42 @@ for (const s of steps) {
 }
 
 /*preview-cut*/
+// 測試值試算：查 kg_build.tester_data() 算好的表，這裡不判定等級。數值換成整數再算，避免浮點誤差
+function tryLookup(m, raw) {
+  if (!/^\d+(\.\d+)?$/.test(raw)) return null;
+  const decimals = (m.step.split(".")[1] || "").length;
+  const [whole, frac = ""] = raw.split(".");
+  const kept = frac.replace(/0+$/, "");
+  if (kept.length > decimals) return null;
+  const scaled = Number(whole + kept.padEnd(decimals, "0"));
+  const step = Number(m.step.replace(".", ""));
+  if (scaled % step) return null;
+  return m.outcomes[m.codes[scaled / step]] ?? null;
+}
+function renderTry() {
+  const m = DATA.tester.metrics.find(x => x.metric === $("try-metric").value);
+  const raw = $("try-value").value.trim(), box = $("try-result");
+  box.replaceChildren();
+  const hit = tryLookup(m, raw);
+  if (!hit) { box.append(el("p", "hint", raw ? "這個數值不在可試算的範圍或間隔內，請依上方說明輸入。" : "請輸入數字。")); return; }
+  const meta = el("div", "try-meta");
+  meta.append(hit.status === "assessed" ? el("span", "chip ok", `${hit.score} 分「${hit.rank}」`) : el("span", "chip off", "無法評估"), kgChip());
+  if (hit.source_text) meta.append(el("span", "hint", `門檻原文：${hit.source_text}`));
+  box.append(meta, el("p", "says", `${m.metric} ${raw} ${m.unit}${hit.rest}`));
+  if (hit.reason) box.append(el("p", "hint", `審核用的原因（不給居服員）：數值 ${raw} ${hit.reason}`));
+}
+function selectTry(m, value) {
+  $("try-label").textContent = `測試值（${m.unit}）`;
+  Object.assign($("try-value"), { max: m.max, step: m.step, value });
+  $("try-range").textContent = `可試算 0～${m.max}，間隔 ${m.step}。`;
+  renderTry();
+}
+for (const m of DATA.tester.metrics) { const o = el("option", null, m.metric); o.value = m.metric; $("try-metric").append(o); }
+$("try-metric").value = a.metric;
+$("try-metric").onchange = e => selectTry(DATA.tester.metrics.find(m => m.metric === e.target.value), "");
+$("try-value").oninput = renderTry;
+selectTry(DATA.tester.metrics.find(m => m.metric === a.metric), sp.value);
+
 // 讀者切換：每個 Profile 一組固定問題；答完再列出延伸問題
 const tabs = $("tabs"), chat = $("chat"), menu = $("menu");
 let current = DATA.profiles[0], asked = [];

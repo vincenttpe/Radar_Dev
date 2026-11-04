@@ -2,7 +2,7 @@
 
 一位長者一週的模擬姿態與活動事件 → 換算規則（**草案**）→ 量測值 → 知識圖譜門檻（radar-kg-level 的
 `assess`）→ 居服員看的等級與建議（`rewrite()`，目前是範本）→ 依讀者（Profile）切換的固定問題與回答，每個回答都附依據
-（規則版本、知識圖譜版本、事件編號）。
+（規則版本、知識圖譜版本、事件編號）。內部版另可輸入測試值，對照不變的知識圖譜看等級與句子。
 
 為什麼是模擬：10/19 的實測資料只有浴廁裝置事件（進出、久待、跌倒、呼救、斷線），換算不出知識圖譜的
 五項量測值（docs/02「對應怎麼做」）。這裡的事件照 schemas/event.v0.draft.json 產生，是「如果雷達能輸出
@@ -32,7 +32,7 @@ import demo_page  # demo/ 底下的共用外殼；直接執行或測試時 demo/
 from radar_agent.output_check import FORBIDDEN, check_output
 from radar_agent.event_validation import validate_event
 from radar_agent.audience import ALLOWED, check_audience
-from radar_agent.kg_rules import Assessment, KgInfo, assess, load
+from radar_agent.kg_rules import Assessment, KgInfo, KnowledgeGraph, assess, load
 from radar_agent.rewrite import rewrite
 
 HERE = Path(__file__).resolve().parent
@@ -72,6 +72,15 @@ NOT_ASSESSED = [
 ]
 # 邊界情境：假設這週的中位數剛好是 0.80（知識圖譜 v1 的門檻重疊，會議清單 E5）
 BOUNDARY_VALUE = "0.80"
+# 測試值試算：指標 → （上限, 間隔），下限都是 0。只決定頁面事先算好哪些值，不影響等級；範圍未經審核。
+# 間隔比來源精度細的（單腳站立、來回行走），才試得到「比精度細，無法評估」。
+TEST_RANGES: dict[str, tuple[str, str]] = {
+    "下肢肌力": ("40", "1"),
+    "單腳站立": ("60", "0.5"),
+    "來回行走": ("20", "0.05"),
+    "心肺耐力": ("200", "1"),
+    "步行速度": ("2", "0.01"),
+}
 
 
 def _iso(t: datetime) -> str:
@@ -246,6 +255,34 @@ def profile_menus(kg_info: KgInfo, speed: dict[str, Any], a: Assessment, boundar
     return result
 
 
+def _tester_metric(kg: KnowledgeGraph, metric: str, maximum: str, step: str) -> dict[str, Any]:
+    """一個指標範圍內每個測試值的結果，全由 assess() 與 rewrite() 算好，頁面只查表，不自己判定等級。
+
+    相同結果只存一份：codes 的第 k 個字是「k × 間隔」這個值對應的 outcomes 索引；句子與原因開頭的數值由頁面補上。
+    """
+    if metric not in kg.thresholds:
+        raise ValueError(f"TEST_RANGES 的「{metric}」不在知識圖譜 {kg.info['version']}")
+    unit, grid = kg.thresholds[metric]["unit"], Decimal(step)
+    outcomes: list[dict[str, Any]] = []
+    codes = ""
+    for k in range(int(Decimal(maximum) / grid) + 1):
+        value = str(Decimal(k) * grid)
+        a = assess(kg, metric, value)
+        reason = a["reason"].removeprefix(f"數值 {value} ") if a["reason"] else None
+        outcome = {"status": a["status"], "score": a["score"], "rank": a["rank"], "source_text": a["source_text"],
+                   "rest": _personal(a).removeprefix(f"{metric} {value} {unit}"), "reason": reason}
+        if outcome not in outcomes:
+            outcomes.append(outcome)
+        codes += str(outcomes.index(outcome))
+    if len(outcomes) > 10:
+        raise ValueError(f"「{metric}」的結果超過 10 種，codes 一個字放不下")
+    return {"metric": metric, "unit": unit, "max": maximum, "step": step, "codes": codes, "outcomes": outcomes}
+
+
+def tester_data(kg: KnowledgeGraph) -> dict[str, Any]:
+    return {"metrics": [_tester_metric(kg, metric, *limits) for metric, limits in TEST_RANGES.items()]}
+
+
 def kg_data() -> dict[str, Any]:
     events = simulated_events()
     for e in events:
@@ -284,6 +321,7 @@ def kg_data() -> dict[str, Any]:
         "caregiver": _personal(result),
         "boundary": {"value": BOUNDARY_VALUE, "reason": boundary["reason"], "caregiver": _personal(boundary)},
         "not_assessed": NOT_ASSESSED,
+        "tester": tester_data(kg),
         "profiles": menus,
         "sample_event": events[0],
     }

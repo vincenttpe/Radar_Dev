@@ -144,6 +144,64 @@ def test_embedded_data_cannot_close_the_script_tag(build, data):
     assert "</script>" not in payload and json.loads(payload)["caregiver"] == "</script><b>"
 
 
+# ---- 測試值試算：只換輸入，知識圖譜不變；頁面只查表，不自己判定等級 ----
+
+def _tester(data, metric):
+    return next(m for m in data["tester"]["metrics"] if m["metric"] == metric)
+
+
+def _point(entry, value):
+    """照頁面查表的方式，還原某個測試值的結果。"""
+    outcome = entry["outcomes"][int(entry["codes"][int(Decimal(value) / Decimal(entry["step"]))])]
+    head = f'{entry["metric"]} {value} {entry["unit"]}'
+    reason = f'數值 {value} {outcome["reason"]}' if outcome["reason"] else None
+    return outcome, head + outcome["rest"], reason
+
+
+def test_tester_covers_every_metric_in_the_knowledge_graph(data):
+    assert {m["metric"] for m in data["tester"]["metrics"]} == set(load().thresholds)
+
+
+def test_tester_table_is_exactly_what_the_engine_produces(data):
+    kg = load()
+    for entry in data["tester"]["metrics"]:
+        step = Decimal(entry["step"])
+        assert len(entry["codes"]) == int(Decimal(entry["max"]) / step) + 1
+        for k in range(len(entry["codes"])):
+            value = str(Decimal(k) * step)
+            expected = assess(kg, entry["metric"], value)
+            outcome, text, reason = _point(entry, value)
+            assert text == rewrite(expected).text and check_output(text, expected) == []
+            assert reason == expected["reason"]
+            assert (outcome["status"], outcome["score"], outcome["rank"], outcome["source_text"]) == (
+                expected["status"], expected["score"], expected["rank"], expected["source_text"])
+
+
+@pytest.mark.parametrize("metric, value, status, score", [
+    ("步行速度", "0.79", "assessed", 1),
+    ("步行速度", "0.80", "unassessable", None),  # 門檻重疊
+    ("步行速度", "0.81", "assessed", 2),
+    ("下肢肌力", "12", "assessed", 2),
+    ("心肺耐力", "105", "unassessable", None),   # 門檻缺口
+    ("來回行走", "5.45", "unassessable", None),  # 比來源精度細
+])
+def test_tester_can_reach_every_kind_of_result(data, metric, value, status, score):
+    outcome, _, _ = _point(_tester(data, metric), value)
+    assert (outcome["status"], outcome["score"]) == (status, score)
+
+
+def test_tester_explains_that_test_values_are_not_sent_for_review(repo):
+    """「已交由審核人確認」是正式句子的固定用語，試算時不成立，頁面要講清楚。"""
+    page = (repo / "demo" / "kg_demo.html").read_text(encoding="utf-8")
+    assert "測試值不會送審" in page and "非真實長者" in page
+
+
+def test_tester_rejects_a_metric_outside_the_knowledge_graph(build, monkeypatch):
+    monkeypatch.setitem(build.TEST_RANGES, "握力", ("100", "1"))
+    with pytest.raises(ValueError, match="握力"):
+        build.tester_data(load())
+
+
 # ---- 客戶版（功能預告，demo/jetson_serve.py 的 /kg）----
 
 PREVIEW_BANNER = "功能預告・開發中：知識圖譜的換算規則與句子尚未完成專業審核；畫面資料是模擬的，不是真實長者。"
@@ -159,7 +217,8 @@ def test_preview_page_keeps_only_the_five_step_flow(build, data):
     page = build.preview_page(data)
     assert 'id="flow"' in page and "虛線框是還沒定案的部分" in page
     for internal in ("內部用", "內部確認功能用", "還缺什麼", "展示時要說明", "誰提供", "週一清單",
-                     "誰在問，能問什麼", "五項指標", "邊界情境", "事件明細", 'id="sim-note"'):
+                     "誰在問，能問什麼", "五項指標", "邊界情境", "事件明細", 'id="sim-note"',
+                     "測試值", 'id="try-metric"', "DATA.tester"):
         assert internal not in page, internal
 
 
