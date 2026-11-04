@@ -116,7 +116,7 @@ def measure(session: dict[str, Any], events: list[dict[str, Any]]) -> dict[str, 
         result["reason"] = f"測驗時段內有 {len(unsure)} 筆事件信心值低於 {MIN_CONFIDENCE}，量測不可靠，無法評估"
         return result
     start = session["started"]
-    if key.startswith("chair_stand"):
+    if key in ("chair_stand", "chair_stand_retry"):
         stands = [e for e in window if e["label"] == "sit_to_stand"]
         limit = start + timedelta(seconds=30)
         result["used"] = [e["event_id"] for e in stands if _span(e)[1] <= limit]
@@ -131,7 +131,7 @@ def measure(session: dict[str, Any], events: list[dict[str, Any]]) -> dict[str, 
         seconds = Decimal(str((end - begin).total_seconds()))
         result["used"] = [walks[0]["event_id"]]
         result["value"] = str((Decimal(session["course_m"]) / seconds).quantize(Decimal("0.01"), ROUND_HALF_UP))
-    else:
+    elif key == "up_and_go":
         sits = [e for e in window if e["label"] == "stand_to_sit"]
         if not sits:
             result["reason"] = "測驗時段內沒有站→坐事件，無法評估"
@@ -140,6 +140,8 @@ def measure(session: dict[str, Any], events: list[dict[str, Any]]) -> dict[str, 
         result["used"] = [e["event_id"] for e in window]
         seconds = Decimal(str((end - start).total_seconds()))
         result["value"] = str(seconds.quantize(Decimal("0.1"), ROUND_HALF_UP))
+    else:  # 新的測驗要先寫量測規則，不能默默套用其他測驗的算法
+        raise ValueError(f"不認得的測驗：{key}")
     return result
 
 

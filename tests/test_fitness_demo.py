@@ -121,3 +121,43 @@ def test_page_is_labelled_as_simulated_draft(build, data):
     page = build.page(data)
     for label in ("模擬資料・內部用", "草案", "推定", "115 年", "一般檢測（樂活組）", "方向待確認"):
         assert label in page, label
+
+
+def _session(build, key):
+    return next(s for s in build.SESSIONS if s["key"] == key)
+
+
+def test_gait_speed_needs_exactly_one_walk_in_the_session(build):
+    session = _session(build, "gait_speed")
+    walk = next(e for e in build.simulated_events() if e["label"] == "walking"
+                and e["timestamps"]["started"] < build._iso(session["started"] + build._s(60)))
+    for events in ([], [walk, {**walk, "event_id": "SIM-FT-X"}]):
+        got = build.measure(session, events)
+        assert got["value"] is None and f"有 {len(events)} 筆行走事件" in got["reason"]
+
+
+def test_up_and_go_without_sitting_back_down_is_not_assessed(build):
+    session = _session(build, "up_and_go")
+    events = [e for e in build.simulated_events() if e["label"] != "stand_to_sit"]
+    got = build.measure(session, events)
+    assert got["value"] is None and "沒有站→坐事件" in got["reason"]
+
+
+def test_unknown_test_key_is_refused(build):
+    with pytest.raises(ValueError, match="不認得的測驗"):
+        build.measure({**_session(build, "up_and_go"), "key": "six_minute_walk"}, build.simulated_events())
+
+
+def test_norms_age_groups_match_the_table_header_in_docs25():
+    text = (REPO / "docs" / "25_文獻與資料集參考.md").read_text(encoding="utf-8")
+    for name, item in NORMS["items"].items():
+        header = re.search(rf"^\| {name} \| (.*) \|$", text, re.M).group(1).split(" | ")
+        ages = [g["ages"].removesuffix("歲").replace("90歲以上", "90 以上") for g in item["male"]]
+        assert [h.replace(" ", "") for h in header] == [a.replace(" ", "") for a in ages]
+        assert [g["ages"] for g in item["male"]] == [g["ages"] for g in item["female"]]
+
+
+def test_page_says_the_two_scales_cannot_be_compared_directly(build, data):
+    page = build.page(data)
+    assert "名稱與分級方式不同，不能直接比較" in page
+    assert "FT-DRAFT-0 自己定的" in page
