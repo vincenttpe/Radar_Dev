@@ -307,13 +307,13 @@ def test_cli_refuses_chinese_models_before_calling_them(argv, capsys):
 def test_cli_event_questions(capsys):
     assert main(["--echo", "--event-questions"]) == 0
     out = capsys.readouterr().out
-    assert out.startswith(f"提示詞版本：event-prompt-v2\n模型：echo　題數：{len(EVENT_ASK_CASES)}　正確 ")
+    assert out.startswith(f"提示詞版本：event-prompt-v3\n模型：echo　題數：{len(EVENT_ASK_CASES)}　正確 ")
 
 
 def test_cli_demo_questions(capsys):
     assert main(["--echo", "--demo-questions"]) == 0
     out = capsys.readouterr().out
-    assert out.startswith(f"提示詞版本：jetson-demo-ask-v1\n模型：echo　題數：{len(DEMO_ASK_CASES)}　正確 ")
+    assert out.startswith(f"提示詞版本：jetson-demo-ask-v2\n模型：echo　題數：{len(DEMO_ASK_CASES)}　正確 ")
 
 
 def test_demo_cases_reuse_the_six_question_cases_and_point_at_the_demo_menu():

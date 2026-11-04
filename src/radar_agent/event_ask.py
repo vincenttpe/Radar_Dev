@@ -27,8 +27,8 @@ from radar_agent.rewrite import Model, rewrite_handover
 SCHEMA = "event-ask-v0"
 # 提示詞（ask.build_prompt）加上 EVENT_QUESTIONS 的版本，記進每次提問的紀錄（prompt_version）。
 # 改了 EVENT_QUESTIONS、EVENT_SCOPE 或 ask.build_prompt 都要升版：v1 是 2026-10-28 longstay 題目加上「久待警報有幾次」；
-# v2 是 2026-11-04 加上 EVENT_SCOPE（#76）
-PROMPT_VERSION = "event-prompt-v2"
+# v2 是 2026-11-04 加上 EVENT_SCOPE（#76）；v3 是同日加上 EVENT_SCOPE.known
+PROMPT_VERSION = "event-prompt-v3"
 
 EVENT_QUESTIONS: tuple[Question, ...] = (
     Question("falls", "有沒有人跌倒？"),
@@ -57,6 +57,9 @@ EVENT_SCOPE = MenuScope(
     "問原因、身分（誰、哪一位）、身體狀況、預測未來、比較或趨勢、判斷該怎麼做或代表什麼，或要系統代辦事情，都輸出 0。\n"
     "例：「跌倒的人有沒有受傷」輸出 0；「誰跌倒了」輸出 0；「明天會不會斷線」輸出 0；「幫我通知家屬」輸出 0；「這個月跌倒有變多嗎」輸出 0；「今天有人摔倒嗎」輸出跌倒那一題的編號。\n",
     "系統只能回答下面這個固定問題，答案只有事件有沒有發生、次數、時間與處理步驟，不知道是誰、原因、身體狀況，不能預測、比較趨勢，也不能代辦事情。",
+    # 2026-11-04 審查決定要對得到（PR #79）；加了範圍限制後模型都回 0。
+    # 「誰卡在廁所很久」是刻意的例外：其他問「誰」的問法仍回 0，這一句的答案是久待次數，不會說是誰
+    known=(("現在我要去處理什麼", "alerts"), ("上了幾次廁所", "visits"), ("誰卡在廁所很久", "longstay")),
 )
 # 沒有答案時給讀者的提示，依原因不同（2026-11-02 決定由本 repo 產生，Dashboard 照原文顯示，不自己寫句子）。
 # 鍵是 ask.Match.why；unavailable 是對到題目、但答案沒通過輸出檢查
@@ -110,11 +113,11 @@ EVENT_MENU = EventMenu(EVENT_QUESTIONS, PROMPT_VERSION, SCHEMA, checked_answer, 
 # ── Jetson 內部 Demo 的 7 題選單（docs/21）：多一題「交班重點」────────────
 # 只在 Jetson 內部 Demo（2026-10-30 決定）；radar-ask 與 Dashboard 仍是上面的 6 題。2026-11-02 從 demo/jetson_serve.py
 # 搬來，model_eval 才能用同一份選單評估（--demo-questions）。「幫我寫一份交班紀錄」也對到這一題，答案開頭註明不是正式紀錄。
-# 題目、EVENT_SCOPE 或 ask.build_prompt 改了要升 DEMO_PROMPT_VERSION（tests/test_jetson_serve.py 會檢查）；v1 加上 EVENT_SCOPE
+# 題目、EVENT_SCOPE 或 ask.build_prompt 改了要升 DEMO_PROMPT_VERSION（tests/test_jetson_serve.py 會檢查）；v1 加上 EVENT_SCOPE，v2 加上 EVENT_SCOPE.known
 # 題目文字就是確認句裡的「您是想問『幫我整理交班重點』嗎？」。只寫「交班重點」實測有 2 題對錯題（2026-10-30）
 HANDOVER_QUESTION = Question("handover", "幫我整理交班重點")
 HANDOVER_NOTE = "以下是交班重點，不是機構的正式交班紀錄。"
-DEMO_PROMPT_VERSION = "jetson-demo-ask-v1"
+DEMO_PROMPT_VERSION = "jetson-demo-ask-v2"
 DEMO_SCHEMA = "jetson-demo-ask-v0"  # 選單 7 題、多了 handover，和 Dashboard 用的 event-ask-v0 不同
 
 

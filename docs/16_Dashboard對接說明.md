@@ -125,7 +125,7 @@ Dashboard 的 Logs 頁已經能依時間篩選、匯出 NDJSON（2026-10-23 截�
 | `answer` | 答案，開頭寫出涵蓋的時段（例如「1 號廁所 10/14 08:00–11:59：」）；對不到題目或答案沒通過檢查時是 `null` |
 | `notice` | 沒有 `answer` 時一定有的提示句（依原因不同，`docs/23`「提問的兩種方式」），照原文顯示；有答案時是 `null`（2026-11-02 新增） |
 | `menu` | 全部六題 `{id, text}`，對不到時讓照護人員自己點 |
-| `model`、`prompt_version` | 用了哪個模型、哪一版 prompt（含選單；事件提問是 `event-prompt-v2`，2026-11-04 起；`event-prompt-v1` 是 2026-10-28 起，之前記成 `ask-v0`） |
+| `model`、`prompt_version` | 用了哪個模型、哪一版 prompt（含選單；事件提問是 `event-prompt-v3`，2026-11-04 起；`event-prompt-v1` 是 2026-10-28 起，之前記成 `ask-v0`）。`model` 是 null 表示這次沒有呼叫模型（規則擋下，或完全相符的已確認問法），`seconds` 接近 0 |
 | `seconds` | 模型對應花的秒數 |
 | `from`、`to` | 答案涵蓋的資料時間。題目不解析「今天早上」這類時段，畫面要標出這段時間 |
 | `rejected` | 對不到或不顯示的原因 |
