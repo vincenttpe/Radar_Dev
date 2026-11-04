@@ -191,7 +191,7 @@ KPI 與查核點已整理在 `08_KPI與查核點.md`，這裡不重複，只標�
 
 **給客戶的功能預告版（2026-11-03）**：Jetson 內部 Demo 的 `/kg`，只有五步流程、頂端標「功能預告・開發中」，見 `docs/21`「知識圖譜：功能預告」。
 
-**線上預覽**：https://claude.ai/artifact/Kn97Jaw2Esgo7D96kQTVVX 。頁面預設只有擁有者能開；改了 `demo/kg_*` 之後要重新發布（`python demo/kg_build.py --fragment 路徑`）。
+**線上預覽**：https://claude.ai/artifact/Kn97Jaw2Esgo7D96kQTVVX 。頁面是公開連結，拿到連結的人不用登入就能看，重新發布後也會立刻看到更新（2026-11-04 決定維持公開）；內容是模擬資料，但含審核用的原因與未核准的門檻和建議，不要放真實資料。改了 `demo/kg_*` 之後要重新發布（`python demo/kg_build.py --fragment 路徑`）。
 
 ## 10/19 實測資料（2026-10-16 準備）
 
