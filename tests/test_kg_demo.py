@@ -190,6 +190,48 @@ def test_tester_can_reach_every_kind_of_result(data, metric, value, status, scor
     assert (outcome["status"], outcome["score"]) == (status, score)
 
 
+def test_regenerated_answers_follow_the_test_value(data):
+    """重新生成後，問答要跟著測試值走：等級來自引擎，事件才算得出的說明不能沿用。"""
+    speed = _tester(data, "步行速度")
+    outcome, text, _ = _point(speed, "0.3")
+    answers = outcome["answers"]
+    assert answers["居服員"]["walk"]["a"].replace("{v}", "0.3") == text
+    assert "「不好」" in answers["家屬"]["walk"]["a"] and "0 分「不好」" in answers["醫師"]["value"]["a"]
+    assert "34" not in answers["居服員"]["how"]["a"] and "不是由事件換算" in answers["居服員"]["how"]["a"]
+    assert "0.90" not in answers["居服員"]["how"]["q"]
+    assert "僅供測試" in answers["家屬"]["walk"]["a"]
+
+
+def test_regenerated_answers_cover_only_questions_in_the_menu(data):
+    menus = {p["profile"]: {q["id"] for q in p["questions"]} for p in data["profiles"]}
+    for outcome in _tester(data, "步行速度")["outcomes"]:
+        assert set(outcome["answers"]) == {"居服員", "醫師", "家屬", "長者本人"}
+        for profile, answers in outcome["answers"].items():
+            assert set(answers) <= menus[profile]
+
+
+def test_regenerated_answers_do_not_guess_a_level_when_unassessable(data):
+    outcome, _, _ = _point(_tester(data, "步行速度"), "0.80")
+    answers = outcome["answers"]
+    for profile, qid in (("家屬", "walk"), ("家屬", "advice"), ("長者本人", "walk"), ("長者本人", "advice")):
+        text = answers[profile][qid]["a"]
+        assert "無法評估" in text and "稍差" not in text and "普通" not in text and "None" not in text
+    assert "重疊" in answers["醫師"]["value"]["a"], "審核用語只給醫師"
+    for profile in ("居服員", "家屬", "長者本人"):
+        assert not any("重疊" in a["a"] for a in answers[profile].values())
+
+
+def test_only_the_metric_the_questions_are_about_has_answers(data):
+    for entry in data["tester"]["metrics"]:
+        has_answers = all("answers" in o for o in entry["outcomes"])
+        assert has_answers == (entry["metric"] == "步行速度")
+
+
+def test_internal_page_has_a_regenerate_button(repo):
+    page = (repo / "demo" / "kg_demo.html").read_text(encoding="utf-8")
+    assert "重新生成" in page and "回到模擬資料" in page
+
+
 def test_tester_explains_that_test_values_are_not_sent_for_review(repo):
     """「已交由審核人確認」是正式句子的固定用語，試算時不成立，頁面要講清楚。"""
     page = (repo / "demo" / "kg_demo.html").read_text(encoding="utf-8")
@@ -218,7 +260,7 @@ def test_preview_page_keeps_only_the_five_step_flow(build, data):
     assert 'id="flow"' in page and "虛線框是還沒定案的部分" in page
     for internal in ("內部用", "內部確認功能用", "還缺什麼", "展示時要說明", "誰提供", "週一清單",
                      "誰在問，能問什麼", "五項指標", "邊界情境", "事件明細", 'id="sim-note"',
-                     "測試值", 'id="try-metric"', "DATA.tester"):
+                     "測試值", 'id="try-metric"', "DATA.tester", "重新生成", "回到模擬資料"):
         assert internal not in page, internal
 
 

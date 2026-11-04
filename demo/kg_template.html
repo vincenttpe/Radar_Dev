@@ -113,6 +113,10 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
 .try-form select, .try-form input { font: 15px var(--f-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; min-height: 40px; }
 .try-form input { font-family: var(--f-mono); width: 9em; }
 .try-form select:focus-visible, .try-form input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.try-go { font: 500 14px var(--f-body); min-height: 40px; padding: 7px 16px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: var(--surface); cursor: pointer; }
+.try-reset { font: 500 14px var(--f-body); min-height: 40px; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
+.try-go:focus-visible, .try-reset:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.try-status { font-weight: 500; color: var(--check); }
 .try-result { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .try-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 </style>
@@ -138,11 +142,14 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
   <section aria-labelledby="h-try">
     <div class="head-row"><h2 id="h-try">換一個測試值，看句子怎麼變</h2><span class="hint">只換輸入，知識圖譜的門檻與建議不變</span></div>
     <div class="panel try">
-      <div class="try-form">
+      <form class="try-form" id="try-form" novalidate>
         <label for="try-metric">指標<select id="try-metric"></select></label>
         <label for="try-value"><span id="try-label"></span><input id="try-value" type="number" min="0" inputmode="decimal" autocomplete="off"></label>
-      </div>
+        <button class="try-go" type="submit">重新生成</button>
+        <button class="try-reset" type="button" id="try-reset">回到模擬資料</button>
+      </form>
       <p class="hint" id="try-range"></p>
+      <p class="hint try-status" id="try-status" aria-live="polite"></p>
       <div class="try-result" id="try-result" aria-live="polite"></div>
       <p class="hint">這裡是測試值，非真實長者。測試值不會送審，也不會儲存；句中若出現「已交由審核人確認」，是正式句子的固定用語。句子來自 rewrite() 範本，尚未接上在地模型。</p>
     </div>
@@ -212,7 +219,7 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
       <li>量不到、沒有規則、落在門檻重疊的情況，一律寫「無法評估」，不猜一個等級。</li>
       <li>不同讀者看到不同的問題；主管機關不能看個人資料，所以沒有題目。居服員以外的句子是草案，題目與範本都要經過審核。</li>
       <li>問答沒有輸入框：在地模型能力有限，問題固定，答案可以事先算好、逐題檢查。超出範圍的問題（「其他問題」）系統不回答。</li>
-      <li>測試值只換輸入，等級與句子都是規則引擎與範本事先算好的結果，頁面只查表；範圍是為了試算訂的，未經審核，不代表量測的合理範圍。</li>
+      <li>測試值只換輸入，等級與句子都是規則引擎與範本事先算好的結果，頁面只查表；範圍是為了試算訂的，未經審核，不代表量測的合理範圍。按「重新生成」會更新試算結果，步行速度也會更新問答；上方五步流程、五項指標與邊界情境仍是模擬資料。</li>
     </ul>
   </section>
   <!--/preview-cut-->
@@ -262,34 +269,62 @@ function tryLookup(m, raw) {
   if (scaled % step) return null;
   return m.outcomes[m.codes[scaled / step]] ?? null;
 }
+const tryMetric = () => DATA.tester.metrics.find(x => x.metric === $("try-metric").value);
+let testState = null;  // 問答目前套用的測試值；null＝模擬資料算出的結果
 function renderTry() {
-  const m = DATA.tester.metrics.find(x => x.metric === $("try-metric").value);
+  const m = tryMetric();
   const raw = $("try-value").value.trim(), box = $("try-result");
   box.replaceChildren();
   const hit = tryLookup(m, raw);
-  if (!hit) { box.append(el("p", "hint", raw ? "這個數值不在可試算的範圍或間隔內，請依上方說明輸入。" : "請輸入數字。")); return; }
+  if (!hit) { box.append(el("p", "hint", raw ? "這個數值不在可試算的範圍或間隔內，請依上方說明輸入。" : "請輸入數字。")); return hit; }
   const meta = el("div", "try-meta");
   meta.append(hit.status === "assessed" ? el("span", "chip ok", `${hit.score} 分「${hit.rank}」`) : el("span", "chip off", "無法評估"), kgChip());
   if (hit.source_text) meta.append(el("span", "hint", `門檻原文：${hit.source_text}`));
   box.append(meta, el("p", "says", `${m.metric} ${raw} ${m.unit}${hit.rest}`));
   if (hit.reason) box.append(el("p", "hint", `審核用的原因（不給居服員）：數值 ${raw} ${hit.reason}`));
+  return hit;
 }
 function selectTry(m, value) {
   $("try-label").textContent = `測試值（${m.unit}）`;
   Object.assign($("try-value"), { max: m.max, step: m.step, value });
   $("try-range").textContent = `可試算 0～${m.max}，間隔 ${m.step}。`;
-  renderTry();
 }
+// 重新生成：同時更新試算結果與下方問答。數值不合法時問答維持原樣
+function regenerate() {
+  const m = tryMetric(), raw = $("try-value").value.trim(), hit = renderTry();
+  if (!hit) { $("try-status").textContent = ""; return; }
+  testState = hit.answers ? { hit, raw, unit: m.unit } : null;
+  $("try-status").textContent = hit.answers ? `下方問答已換成測試值 ${raw} ${m.unit}。` : `已更新上方結果。問答的題目都在問走路，這個指標不會改變問答；問答目前顯示模擬資料。`;
+  select(current);
+}
+function resetTry() {
+  $("try-metric").value = a.metric;
+  selectTry(DATA.tester.metrics.find(m => m.metric === a.metric), sp.value);
+  testState = null; renderTry(); $("try-status").textContent = "";
+  select(current);
+}
+const markStale = () => { $("try-status").textContent = "數值已改，按「重新生成」才會更新結果。"; };
 for (const m of DATA.tester.metrics) { const o = el("option", null, m.metric); o.value = m.metric; $("try-metric").append(o); }
 $("try-metric").value = a.metric;
-$("try-metric").onchange = e => selectTry(DATA.tester.metrics.find(m => m.metric === e.target.value), "");
-$("try-value").oninput = renderTry;
+$("try-metric").onchange = () => { selectTry(tryMetric(), ""); markStale(); };
+$("try-value").oninput = markStale;
+$("try-form").onsubmit = e => { e.preventDefault(); regenerate(); };
+$("try-reset").onclick = resetTry;
 selectTry(DATA.tester.metrics.find(m => m.metric === a.metric), sp.value);
+renderTry();
 
 // 讀者切換：每個 Profile 一組固定問題；答完再列出延伸問題
 const tabs = $("tabs"), chat = $("chat"), menu = $("menu");
 let current = DATA.profiles[0], asked = [];
-function answer(q) {
+// 套用測試值後的題目：有對應的答案就換掉，換到的都標明不是事件換算；其餘題目不受數值影響
+function withTest(q) {
+  const o = testState?.hit.answers[current.profile]?.[q.id];
+  if (!o) return q;
+  return { ...q, q: o.q ?? q.q, a: o.a.replaceAll("{v}", testState.raw), layer: "測試值（非事件換算）",
+           basis: [`測試值 ${testState.raw} ${testState.unit}，手動輸入`, `知識圖譜 ${DATA.kg.version}（${DATA.kg.approved ? "已核准" : "尚未核准，僅供測試"}）`] };
+}
+function answer(raw) {
+  const q = withTest(raw);
   const turn = el("div", "turn");
   turn.append(el("div", "q", q.q));
   const ans = el("div", "a");
@@ -310,7 +345,7 @@ function renderMenu() {
   menu.append(el("span", "label", last ? "接著問" : "可以問"));
   for (const id of ids) {
     const q = current.questions.find(x => x.id === id);
-    const b = el("button", "ask" + (id === "out" ? " out" : ""), q.q); b.type = "button";
+    const b = el("button", "ask" + (id === "out" ? " out" : ""), withTest(q).q); b.type = "button";
     b.onclick = () => { asked.push(id); answer(q); renderMenu(); };
     menu.append(b);
   }
@@ -329,7 +364,8 @@ function select(p) {
     chat.append(el("p", "refused", `沒有題目：${p.refused.join("；")}。主管機關只看場域統計（原型頁的事件摘要與使用趨勢）。`));
   } else {
     const draft = p.questions.some(q => q.draft);
-    $("profile-note").textContent = `${p.profile}：${p.questions.length - 1} 個問題加「其他問題」。` +
+    $("profile-note").textContent = (testState ? `目前顯示測試值 ${testState.raw} ${testState.unit}，非真實長者。` : "") +
+      `${p.profile}：${p.questions.length - 1} 個問題加「其他問題」。` +
       (draft ? "這個讀者還沒有正式範本，句子是 Demo 草案。" : "等級的句子是正式範本（rewrite()）。") +
       (p.basis_open ? "依據預設展開。" : "依據預設收起。");
     asked.push(p.questions[0].id); answer(p.questions[0]);
