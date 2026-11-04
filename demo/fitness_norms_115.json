@@ -1,0 +1,593 @@
+{
+ "note": "Demo 用（demo/fitness_build.py）。不是知識圖譜、未經審核；不要拿來產生正式報告。數值由官方頁面文字直接轉出，tests/test_fitness_demo.py 核對和 docs/25 Q1 來源 5 的表格一致。",
+ "source": {
+  "title": "體育署 i 運動資訊平台「體適能各年齡最新現況值」",
+  "url": "https://isports.sa.gov.tw/apps/TIS/PFM50/PFM5030M_01V1.aspx?MENU_PRG_CD=4&ITEM_PRG_CD=6",
+  "year": 115,
+  "group": "一般檢測（樂活組）",
+  "read": "2026-11-04"
+ },
+ "levels": [
+  "不好",
+  "稍差",
+  "適當",
+  "良好",
+  "很好"
+ ],
+ "pr": [
+  "PR1-20",
+  "PR21-40",
+  "PR41-60",
+  "PR61-80",
+  "PR81-99"
+ ],
+ "reading": "推定：每列的四個數是「稍差、適當、良好、很好」的下限（含下限）；頁面沒有說明，邊界歸屬也是推定（docs/25 Q1 來源 5）。",
+ "items": {
+  "下肢肌力": {
+   "test": "椅子坐立",
+   "unit": "次/30 秒",
+   "direction_confirmed": true,
+   "male": [
+    {
+     "ages": "65~69歲",
+     "min_age": 65,
+     "max_age": 69,
+     "lower_bounds": [
+      14,
+      17,
+      20,
+      25
+     ]
+    },
+    {
+     "ages": "70~74歲",
+     "min_age": 70,
+     "max_age": 74,
+     "lower_bounds": [
+      13,
+      16,
+      19,
+      23
+     ]
+    },
+    {
+     "ages": "75~79歲",
+     "min_age": 75,
+     "max_age": 79,
+     "lower_bounds": [
+      12,
+      15,
+      18,
+      21
+     ]
+    },
+    {
+     "ages": "80~84歲",
+     "min_age": 80,
+     "max_age": 84,
+     "lower_bounds": [
+      10,
+      14,
+      16,
+      20
+     ]
+    },
+    {
+     "ages": "85~89歲",
+     "min_age": 85,
+     "max_age": 89,
+     "lower_bounds": [
+      8,
+      12,
+      14,
+      18
+     ]
+    },
+    {
+     "ages": "90歲以上",
+     "min_age": 90,
+     "max_age": null,
+     "lower_bounds": [
+      6,
+      11,
+      13,
+      16
+     ]
+    }
+   ],
+   "female": [
+    {
+     "ages": "65~69歲",
+     "min_age": 65,
+     "max_age": 69,
+     "lower_bounds": [
+      14,
+      17,
+      20,
+      23
+     ]
+    },
+    {
+     "ages": "70~74歲",
+     "min_age": 70,
+     "max_age": 74,
+     "lower_bounds": [
+      13,
+      16,
+      19,
+      23
+     ]
+    },
+    {
+     "ages": "75~79歲",
+     "min_age": 75,
+     "max_age": 79,
+     "lower_bounds": [
+      12,
+      15,
+      17,
+      20
+     ]
+    },
+    {
+     "ages": "80~84歲",
+     "min_age": 80,
+     "max_age": 84,
+     "lower_bounds": [
+      10,
+      13,
+      15,
+      19
+     ]
+    },
+    {
+     "ages": "85~89歲",
+     "min_age": 85,
+     "max_age": 89,
+     "lower_bounds": [
+      8,
+      11,
+      14,
+      17
+     ]
+    },
+    {
+     "ages": "90歲以上",
+     "min_age": 90,
+     "max_age": null,
+     "lower_bounds": [
+      5,
+      10,
+      13,
+      17
+     ]
+    }
+   ]
+  },
+  "心肺耐力": {
+   "test": "原地抬膝踏步",
+   "unit": "次/2 分鐘",
+   "direction_confirmed": true,
+   "male": [
+    {
+     "ages": "65~69歲",
+     "min_age": 65,
+     "max_age": 69,
+     "lower_bounds": [
+      81,
+      96,
+      106,
+      117
+     ]
+    },
+    {
+     "ages": "70~74歲",
+     "min_age": 70,
+     "max_age": 74,
+     "lower_bounds": [
+      79,
+      95,
+      107,
+      120
+     ]
+    },
+    {
+     "ages": "75~79歲",
+     "min_age": 75,
+     "max_age": 79,
+     "lower_bounds": [
+      70,
+      92,
+      106,
+      119
+     ]
+    },
+    {
+     "ages": "80~84歲",
+     "min_age": 80,
+     "max_age": 84,
+     "lower_bounds": [
+      63,
+      87,
+      100,
+      113
+     ]
+    },
+    {
+     "ages": "85~89歲",
+     "min_age": 85,
+     "max_age": 89,
+     "lower_bounds": [
+      43,
+      74,
+      95,
+      109
+     ]
+    },
+    {
+     "ages": "90歲以上",
+     "min_age": 90,
+     "max_age": null,
+     "lower_bounds": [
+      32,
+      68,
+      82,
+      102
+     ]
+    }
+   ],
+   "female": [
+    {
+     "ages": "65~69歲",
+     "min_age": 65,
+     "max_age": 69,
+     "lower_bounds": [
+      88,
+      100,
+      110,
+      122
+     ]
+    },
+    {
+     "ages": "70~74歲",
+     "min_age": 70,
+     "max_age": 74,
+     "lower_bounds": [
+      81,
+      98,
+      110,
+      122
+     ]
+    },
+    {
+     "ages": "75~79歲",
+     "min_age": 75,
+     "max_age": 79,
+     "lower_bounds": [
+      70,
+      92,
+      105,
+      118
+     ]
+    },
+    {
+     "ages": "80~84歲",
+     "min_age": 80,
+     "max_age": 84,
+     "lower_bounds": [
+      52,
+      81,
+      98,
+      114
+     ]
+    },
+    {
+     "ages": "85~89歲",
+     "min_age": 85,
+     "max_age": 89,
+     "lower_bounds": [
+      35,
+      68,
+      89,
+      108
+     ]
+    },
+    {
+     "ages": "90歲以上",
+     "min_age": 90,
+     "max_age": null,
+     "lower_bounds": [
+      17,
+      56,
+      81,
+      100
+     ]
+    }
+   ]
+  },
+  "平衡能力": {
+   "test": "開眼單足立",
+   "unit": "秒",
+   "direction_confirmed": true,
+   "male": [
+    {
+     "ages": "65~69歲",
+     "min_age": 65,
+     "max_age": 69,
+     "lower_bounds": [
+      6.09,
+      17,
+      30,
+      30
+     ]
+    },
+    {
+     "ages": "70~74歲",
+     "min_age": 70,
+     "max_age": 74,
+     "lower_bounds": [
+      5.45,
+      13.8,
+      24.49,
+      30
+     ]
+    },
+    {
+     "ages": "75~79歲",
+     "min_age": 75,
+     "max_age": 79,
+     "lower_bounds": [
+      2.86,
+      6.98,
+      14,
+      28.64
+     ]
+    },
+    {
+     "ages": "80~84歲",
+     "min_age": 80,
+     "max_age": 84,
+     "lower_bounds": [
+      2.16,
+      5,
+      9.76,
+      19.34
+     ]
+    },
+    {
+     "ages": "85~89歲",
+     "min_age": 85,
+     "max_age": 89,
+     "lower_bounds": [
+      1.03,
+      3.28,
+      5.49,
+      12
+     ]
+    },
+    {
+     "ages": "90歲以上",
+     "min_age": 90,
+     "max_age": null,
+     "lower_bounds": [
+      0,
+      2,
+      3.7,
+      12
+     ]
+    }
+   ],
+   "female": [
+    {
+     "ages": "65~69歲",
+     "min_age": 65,
+     "max_age": 69,
+     "lower_bounds": [
+      7.69,
+      17.92,
+      30,
+      30
+     ]
+    },
+    {
+     "ages": "70~74歲",
+     "min_age": 70,
+     "max_age": 74,
+     "lower_bounds": [
+      4.8,
+      10.65,
+      21.72,
+      30
+     ]
+    },
+    {
+     "ages": "75~79歲",
+     "min_age": 75,
+     "max_age": 79,
+     "lower_bounds": [
+      2.98,
+      6.28,
+      11.8,
+      25
+     ]
+    },
+    {
+     "ages": "80~84歲",
+     "min_age": 80,
+     "max_age": 84,
+     "lower_bounds": [
+      1.5,
+      3.73,
+      7,
+      15
+     ]
+    },
+    {
+     "ages": "85~89歲",
+     "min_age": 85,
+     "max_age": 89,
+     "lower_bounds": [
+      0,
+      2,
+      4.98,
+      10
+     ]
+    },
+    {
+     "ages": "90歲以上",
+     "min_age": 90,
+     "max_age": null,
+     "lower_bounds": [
+      0,
+      1.3,
+      3.87,
+      12.24
+     ]
+    }
+   ],
+   "bounds_note": "部分組別有重複的下限：男、女 65~69 歲良好與很好的下限都是 30，所以「良好」沒有範圍；男 90 歲以上、女 85~89 歲、女 90 歲以上稍差的下限是 0，所以「不好」沒有範圍（都依推定讀法）。Demo 沒有判定這一項"
+  },
+  "動態平衡與敏捷力": {
+   "test": "椅子坐起繞物",
+   "unit": "秒",
+   "direction_confirmed": false,
+   "male": [
+    {
+     "ages": "65~69歲",
+     "min_age": 65,
+     "max_age": 69,
+     "lower_bounds": [
+      4.76,
+      5.6,
+      6.6,
+      8
+     ]
+    },
+    {
+     "ages": "70~74歲",
+     "min_age": 70,
+     "max_age": 74,
+     "lower_bounds": [
+      5.1,
+      6,
+      7,
+      8.92
+     ]
+    },
+    {
+     "ages": "75~79歲",
+     "min_age": 75,
+     "max_age": 79,
+     "lower_bounds": [
+      5.4,
+      6.68,
+      7.73,
+      10.23
+     ]
+    },
+    {
+     "ages": "80~84歲",
+     "min_age": 80,
+     "max_age": 84,
+     "lower_bounds": [
+      6.1,
+      7.36,
+      9,
+      12.3
+     ]
+    },
+    {
+     "ages": "85~89歲",
+     "min_age": 85,
+     "max_age": 89,
+     "lower_bounds": [
+      6.64,
+      9,
+      11.1,
+      15.41
+     ]
+    },
+    {
+     "ages": "90歲以上",
+     "min_age": 90,
+     "max_age": null,
+     "lower_bounds": [
+      7.76,
+      10.1,
+      13.54,
+      19.12
+     ]
+    }
+   ],
+   "female": [
+    {
+     "ages": "65~69歲",
+     "min_age": 65,
+     "max_age": 69,
+     "lower_bounds": [
+      4.9,
+      5.5,
+      6.21,
+      7.63
+     ]
+    },
+    {
+     "ages": "70~74歲",
+     "min_age": 70,
+     "max_age": 74,
+     "lower_bounds": [
+      5.3,
+      6,
+      7,
+      8.6
+     ]
+    },
+    {
+     "ages": "75~79歲",
+     "min_age": 75,
+     "max_age": 79,
+     "lower_bounds": [
+      5.9,
+      6.8,
+      7.9,
+      10
+     ]
+    },
+    {
+     "ages": "80~84歲",
+     "min_age": 80,
+     "max_age": 84,
+     "lower_bounds": [
+      6.62,
+      8.02,
+      9.63,
+      12.41
+     ]
+    },
+    {
+     "ages": "85~89歲",
+     "min_age": 85,
+     "max_age": 89,
+     "lower_bounds": [
+      7.9,
+      9.62,
+      12,
+      16.26
+     ]
+    },
+    {
+     "ages": "90歲以上",
+     "min_age": 90,
+     "max_age": null,
+     "lower_bounds": [
+      8.25,
+      11,
+      14.9,
+      21.05
+     ]
+    }
+   ],
+   "direction_note": "秒數越小越好，但表頭照字面讀會變成秒數越多越好；方向待確認，Demo 不分級（docs/25 Q1 來源 5）"
+  }
+ }
+}

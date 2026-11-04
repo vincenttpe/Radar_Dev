@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>下肢三項測驗 Demo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 版面：模擬資料橫幅 → 三項測驗卡片（量測 → 官方表 → v1 對照）→ 官方表與讀法 → 待確認 → 事件明細。色彩與字型沿用 demo/kg_template.html */
+:root {
+  --bg: #eef2f3; --surface: #ffffff; --ink: #16232a; --muted: #56676f; --line: #d3dce0;
+  --accent: #1c6a72; --accent-soft: #d5e8ea;
+  --check: #925f00; --check-bg: #faf0d9; --device: #4f5d65; --device-bg: #e3e8eb; --ok: #2a7548; --ok-bg: #e2f2e8;
+  --sim-bg: #2b2438; --sim-ink: #f4effa; --draft: #7a4fb0; --draft-bg: #efe7f8;
+  --f-display: "Noto Serif TC", "Songti TC", serif;
+  --f-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f161a; --surface: #172227; --ink: #e2eaed; --muted: #94a5ad; --line: #2a3940;
+  --accent: #66b6be; --accent-soft: #1d3a3e;
+  --check: #e2b45c; --check-bg: #342a18; --device: #a9b6bd; --device-bg: #222e34; --ok: #7fd09f; --ok-bg: #1a3325;
+  --sim-bg: #3a3150; --sim-ink: #f4effa; --draft: #c4a5ee; --draft-bg: #2c2340; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #0f161a; --surface: #172227; --ink: #e2eaed; --muted: #94a5ad; --line: #2a3940;
+  --accent: #66b6be; --accent-soft: #1d3a3e;
+  --check: #e2b45c; --check-bg: #342a18; --device: #a9b6bd; --device-bg: #222e34; --ok: #7fd09f; --ok-bg: #1a3325;
+  --sim-bg: #3a3150; --sim-ink: #f4effa; --draft: #c4a5ee; --draft-bg: #2c2340; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.65 var(--f-body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--sim-bg); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.sim { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--sim-bg); color: var(--sim-ink); font-size: 13px; }
+.sim .wrap { display: flex; flex-wrap: wrap; gap: 4px 16px; padding-block: 8px; align-items: baseline; }
+.sim strong { letter-spacing: .08em; }
+header.top .wrap { padding-block: 28px 8px; display: grid; gap: 6px; }
+.eyebrow { font-size: 12px; letter-spacing: .12em; color: var(--muted); }
+h1 { font: 600 clamp(24px, 4vw, 32px)/1.25 var(--f-display); margin: 0; text-wrap: balance; }
+h2 { font: 600 19px/1.3 var(--f-display); margin: 0; text-wrap: balance; }
+h3 { font: 700 13px/1.4 var(--f-body); letter-spacing: .06em; color: var(--muted); margin: 0; }
+.lede { color: var(--muted); margin: 0; max-width: 66ch; }
+main .wrap { display: grid; gap: 32px; padding-block: 16px 56px; }
+section { display: grid; gap: 12px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.hint { font-size: 13px; color: var(--muted); }
+.head-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.chip { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em; padding: 1px 8px; border-radius: 999px; }
+td .chip { white-space: nowrap; }
+.chip.draft { background: var(--draft-bg); color: var(--draft); }
+.chip.pending { background: var(--check-bg); color: var(--check); }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+.chip.off { background: var(--device-bg); color: var(--device); }
+
+/* 測驗卡片 */
+.tests { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.card { display: grid; gap: 10px; align-content: start; overflow-wrap: anywhere; }
+.card .big { font: 500 28px/1.1 var(--f-mono); font-variant-numeric: tabular-nums; }
+.card .big small { font: 13px var(--f-body); color: var(--muted); margin-left: 4px; }
+.card ul { margin: 0; padding-left: 1.1em; font-size: 13px; color: var(--muted); display: grid; gap: 2px; }
+.card .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; font-size: 14px; }
+.card .row b { font-size: 12px; letter-spacing: .06em; color: var(--muted); font-weight: 500; min-width: 7em; }
+.card.na { border-style: dashed; }
+.chip.grade { background: var(--accent-soft); color: var(--accent); }  /* 等級不分好壞配色：百分等級不是健康判斷 */
+.notes { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 14px; display: grid; gap: 4px; max-width: 76ch; }
+.events { min-width: 520px; font-size: 13px; }
+.events td { font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.events tr.low td { color: var(--check); }
+</style>
+
+<div class="sim"><div class="wrap">
+  <strong>模擬資料・內部用・草案</strong>
+  <span id="sim-note"></span>
+</div></div>
+
+<header class="top"><div class="wrap">
+  <div class="eyebrow">雷達照護助理・下肢三項測驗（ADR 0012 提議）</div>
+  <h1>指定測驗時段的雷達事件，怎麼變成官方表的等級</h1>
+  <p class="lede">現場人員按下開始後，雷達在測驗時段記下起身、行走、坐下。量測規則把事件換成次數、步速與秒數，再依長者的年齡與性別查體育署官方表的五個等級，旁邊列出知識圖譜 v1 的結果對照。全部是模擬資料，規則是草案。</p>
+</div></header>
+
+<main><div class="wrap">
+  <section aria-labelledby="h-tests">
+    <div class="head-row"><h2 id="h-tests">三項測驗</h2><span class="hint" id="subject"></span></div>
+    <div class="tests" id="tests"></div>
+  </section>
+
+  <section aria-labelledby="h-norms">
+    <h2 id="h-norms">官方表與讀法</h2>
+    <div class="panel" style="display:grid;gap:8px">
+      <p style="margin:0" id="norms-source"></p>
+      <p class="hint" style="margin:0" id="norms-reading"></p>
+      <div class="table-wrap"><table><thead><tr id="norms-head"></tr></thead><tbody><tr id="norms-pr"></tr></tbody></table></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-open">
+    <h2 id="h-open">還要確認的事</h2>
+    <ul class="notes">
+      <li>測驗時段由誰開始、雷達能不能輸出坐→站、站→坐、行走事件與信心值（docs/05 E7、A45–A50）。</li>
+      <li>量測規則 FT-DRAFT-0 是草案，要和碼表或影像對照驗證後才能用（ADR 0012；驗證計畫另訂）。</li>
+      <li>官方表「每格是下限」是推定；2.44 公尺（動態平衡與敏捷力）方向待確認；步行速度官方表沒有（docs/25 Q1 來源 5）。</li>
+      <li>採不採用官方表（docs/05 E5 選項 e）由審核人決定；確認可行後，再向運動部申請 106～114 年資料與寶典原文。</li>
+      <li>「4 公尺步道」「30 秒內站好才算」「發令到坐下」是量測規則 FT-DRAFT-0 自己定的，還沒對照官方的施測細則。</li>
+      <li>官方表和知識圖譜 v1 的名稱與分級方式不同，不能直接比較（例如這位模擬長者 15 次坐站，官方女 70～74 歲是「稍差」、v1 是「尚好」）；v1 的 2.44 公尺分級也沒有和官方表核對過方向。</li>
+      <li>年齡與性別是模擬值；正式使用屬單向門「個人資料的流向」。</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="h-events">
+    <h2 id="h-events">事件明細</h2>
+    <details class="panel">
+      <summary id="events-summary"></summary>
+      <div class="table-wrap" style="margin-top:12px"><table class="events">
+        <thead><tr><th>事件編號</th><th>種類</th><th>開始</th><th>秒數</th><th>信心值</th></tr></thead>
+        <tbody id="events"></tbody>
+      </table></div>
+    </details>
+  </section>
+</div></main>
+
+<script>
+const DATA = {
+ "subject": {
+  "id": "DEMO-ELDER-02",
+  "sex": "female",
+  "age": 72,
+  "sex_text": "女"
+ },
+ "device": "DEMO-SIM-FT-01",
+ "rule_id": "FT-DRAFT-0",
+ "norms": {
+  "source": {
+   "title": "體育署 i 運動資訊平台「體適能各年齡最新現況值」",
+   "url": "https://isports.sa.gov.tw/apps/TIS/PFM50/PFM5030M_01V1.aspx?MENU_PRG_CD=4&ITEM_PRG_CD=6",
+   "year": 115,
+   "group": "一般檢測（樂活組）",
+   "read": "2026-11-04"
+  },
+  "reading": "推定：每列的四個數是「稍差、適當、良好、很好」的下限（含下限）；頁面沒有說明，邊界歸屬也是推定（docs/25 Q1 來源 5）。",
+  "levels": [
+   "不好",
+   "稍差",
+   "適當",
+   "良好",
+   "很好"
+  ],
+  "pr": [
+   "PR1-20",
+   "PR21-40",
+   "PR41-60",
+   "PR61-80",
+   "PR81-99"
+  ]
+ },
+ "kg": {
+  "version": "v1",
+  "approval": "pending",
+  "approved": false
+ },
+ "tests": {
+  "chair_stand": {
+   "test": "30 秒椅子坐立",
+   "started": "2026-11-02T10:00:00.000+08:00",
+   "rules": [
+    "測驗時段開始後 30 秒內「站好」（坐→站事件結束）的次數",
+    "時段內任何一次坐→站信心值低於 0.8：次數不可靠，無法評估"
+   ],
+   "official_item": "下肢肌力",
+   "v1_metric": "下肢肌力",
+   "measure": {
+    "value": "15",
+    "used": [
+     "SIM-FT-0001",
+     "SIM-FT-0002",
+     "SIM-FT-0003",
+     "SIM-FT-0004",
+     "SIM-FT-0005",
+     "SIM-FT-0006",
+     "SIM-FT-0007",
+     "SIM-FT-0008",
+     "SIM-FT-0009",
+     "SIM-FT-0010",
+     "SIM-FT-0011",
+     "SIM-FT-0012",
+     "SIM-FT-0013",
+     "SIM-FT-0014",
+     "SIM-FT-0015"
+    ],
+    "late": [
+     "SIM-FT-0016"
+    ],
+    "unsure": [],
+    "reason": null
+   },
+   "official": {
+    "status": "graded",
+    "item": "下肢肌力",
+    "level": "稍差",
+    "pr": "PR21-40",
+    "ages": "70~74歲",
+    "lower_bounds": [
+     13,
+     16,
+     19,
+     23
+    ],
+    "reason": null
+   },
+   "v1": {
+    "status": "assessed",
+    "score": 3,
+    "rank": "尚好",
+    "source_text": "起站30秒 14~17次",
+    "reason": null
+   }
+  },
+  "gait_speed": {
+   "test": "4 公尺步行",
+   "started": "2026-11-02T10:05:00.000+08:00",
+   "rules": [
+    "測驗時段內恰好一筆行走事件，信心值 0.8 以上",
+    "步速 = 步道長度 4 公尺 ÷ 行走秒數，四捨五入到小數 2 位"
+   ],
+   "official_item": null,
+   "v1_metric": "步行速度",
+   "measure": {
+    "value": "0.87",
+    "used": [
+     "SIM-FT-0017"
+    ],
+    "late": [],
+    "unsure": [],
+    "reason": null
+   },
+   "official": {
+    "status": "not_graded",
+    "reason": "官方表沒有步行速度這一項；切點另依文獻（docs/25 Q1 來源 4），待審核人決定"
+   },
+   "v1": {
+    "status": "assessed",
+    "score": 2,
+    "rank": "普通",
+    "source_text": "步行速度 0.8~1.0 m/s",
+    "reason": null
+   }
+  },
+  "up_and_go": {
+   "test": "2.44 公尺椅子坐起繞物",
+   "started": "2026-11-02T10:10:00.000+08:00",
+   "rules": [
+    "從測驗時段開始（發令）到站→坐事件結束的秒數，四捨五入到小數 1 位",
+    "時段內的事件信心值都要 0.8 以上"
+   ],
+   "official_item": "動態平衡與敏捷力",
+   "v1_metric": "來回行走",
+   "measure": {
+    "value": "7.4",
+    "used": [
+     "SIM-FT-0018",
+     "SIM-FT-0019",
+     "SIM-FT-0020"
+    ],
+    "late": [],
+    "unsure": [],
+    "reason": null
+   },
+   "official": {
+    "status": "not_graded",
+    "reason": "秒數越小越好，但表頭照字面讀會變成秒數越多越好；方向待確認，Demo 不分級（docs/25 Q1 來源 5）",
+    "item": "動態平衡與敏捷力"
+   },
+   "v1": {
+    "status": "assessed",
+    "score": 1,
+    "rank": "稍差",
+    "source_text": "2.44公尺行走 6.7~7.5秒",
+    "reason": null
+   }
+  },
+  "chair_stand_retry": {
+   "test": "30 秒椅子坐立（重測）",
+   "started": "2026-11-02T10:20:00.000+08:00",
+   "rules": [
+    "測驗時段開始後 30 秒內「站好」（坐→站事件結束）的次數",
+    "時段內任何一次坐→站信心值低於 0.8：次數不可靠，無法評估"
+   ],
+   "official_item": "下肢肌力",
+   "v1_metric": "下肢肌力",
+   "measure": {
+    "value": null,
+    "used": [],
+    "late": [],
+    "unsure": [
+     "SIM-FT-0024",
+     "SIM-FT-0030"
+    ],
+    "reason": "測驗時段內有 2 筆事件信心值低於 0.8，量測不可靠，無法評估"
+   },
+   "official": {
+    "status": "not_graded",
+    "reason": "沒有量測值"
+   },
+   "v1": null
+  }
+ },
+ "events": [
+  {
+   "id": "SIM-FT-0001",
+   "label": "sit_to_stand",
+   "start": "10:00:00.400",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0002",
+   "label": "sit_to_stand",
+   "start": "10:00:02.350",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0003",
+   "label": "sit_to_stand",
+   "start": "10:00:04.300",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0004",
+   "label": "sit_to_stand",
+   "start": "10:00:06.250",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0005",
+   "label": "sit_to_stand",
+   "start": "10:00:08.200",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0006",
+   "label": "sit_to_stand",
+   "start": "10:00:10.150",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0007",
+   "label": "sit_to_stand",
+   "start": "10:00:12.100",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0008",
+   "label": "sit_to_stand",
+   "start": "10:00:14.050",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0009",
+   "label": "sit_to_stand",
+   "start": "10:00:16.000",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0010",
+   "label": "sit_to_stand",
+   "start": "10:00:17.950",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0011",
+   "label": "sit_to_stand",
+   "start": "10:00:19.900",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0012",
+   "label": "sit_to_stand",
+   "start": "10:00:21.850",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0013",
+   "label": "sit_to_stand",
+   "start": "10:00:23.800",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0014",
+   "label": "sit_to_stand",
+   "start": "10:00:25.750",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0015",
+   "label": "sit_to_stand",
+   "start": "10:00:27.700",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0016",
+   "label": "sit_to_stand",
+   "start": "10:00:29.650",
+   "seconds": "1.1",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0017",
+   "label": "walking",
+   "start": "10:05:01.200",
+   "seconds": "4.6",
+   "confidence": 0.92
+  },
+  {
+   "id": "SIM-FT-0018",
+   "label": "sit_to_stand",
+   "start": "10:10:00.600",
+   "seconds": "1.2",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0019",
+   "label": "walking",
+   "start": "10:10:01.800",
+   "seconds": "4.1",
+   "confidence": 0.88
+  },
+  {
+   "id": "SIM-FT-0020",
+   "label": "stand_to_sit",
+   "start": "10:10:06.100",
+   "seconds": "1.3",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0021",
+   "label": "sit_to_stand",
+   "start": "10:20:00.500",
+   "seconds": "1.2",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0022",
+   "label": "sit_to_stand",
+   "start": "10:20:02.600",
+   "seconds": "1.2",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0023",
+   "label": "sit_to_stand",
+   "start": "10:20:04.700",
+   "seconds": "1.2",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0024",
+   "label": "sit_to_stand",
+   "start": "10:20:06.800",
+   "seconds": "1.2",
+   "confidence": 0.62
+  },
+  {
+   "id": "SIM-FT-0025",
+   "label": "sit_to_stand",
+   "start": "10:20:08.900",
+   "seconds": "1.2",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0026",
+   "label": "sit_to_stand",
+   "start": "10:20:11.000",
+   "seconds": "1.2",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0027",
+   "label": "sit_to_stand",
+   "start": "10:20:13.100",
+   "seconds": "1.2",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0028",
+   "label": "sit_to_stand",
+   "start": "10:20:15.200",
+   "seconds": "1.2",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0029",
+   "label": "sit_to_stand",
+   "start": "10:20:17.300",
+   "seconds": "1.2",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0030",
+   "label": "sit_to_stand",
+   "start": "10:20:19.400",
+   "seconds": "1.2",
+   "confidence": 0.62
+  },
+  {
+   "id": "SIM-FT-0031",
+   "label": "sit_to_stand",
+   "start": "10:20:21.500",
+   "seconds": "1.2",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0032",
+   "label": "sit_to_stand",
+   "start": "10:20:23.600",
+   "seconds": "1.2",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0033",
+   "label": "sit_to_stand",
+   "start": "10:20:25.700",
+   "seconds": "1.2",
+   "confidence": 0.9
+  },
+  {
+   "id": "SIM-FT-0034",
+   "label": "sit_to_stand",
+   "start": "10:20:27.800",
+   "seconds": "1.2",
+   "confidence": 0.9
+  }
+ ]
+};
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const S = DATA.subject, N = DATA.norms;
+$("sim-note").textContent = `非真實裝置紀錄；長者 ${S.id}（模擬：${S.sex_text}，${S.age} 歲）、裝置 ${DATA.device} 都是模擬的。量測規則 ${DATA.rule_id} 是草案。`;
+$("subject").textContent = `模擬長者：${S.sex_text}，${S.age} 歲`;
+const UNIT = { chair_stand: "次", chair_stand_retry: "次", gait_speed: "m/s", up_and_go: "秒" };
+const row = (label, ...nodes) => { const r = el("div", "row"); r.append(el("b", null, label), ...nodes); return r; };
+for (const [key, t] of Object.entries(DATA.tests)) {
+  const m = t.measure, o = t.official, v = t.v1;
+  const card = el("div", "panel card" + (m.value === null ? " na" : ""));
+  card.append(el("h3", null, t.test));
+  if (m.value === null) card.append(el("div", "big", "無法評估"));
+  else { const b = el("div", "big", m.value); b.append(el("small", null, UNIT[key])); card.append(b); }
+  const ul = el("ul"); t.rules.forEach(r => ul.append(el("li", null, r))); card.append(ul);
+  if (m.reason) card.append(el("p", "hint", m.reason));
+  else card.append(el("p", "hint", `用了 ${m.used.length} 筆事件` + (m.late.length ? `；${m.late.length} 筆在 30 秒之後才站好，不算` : "")));
+  const off = o.status === "graded"
+    ? el("span", "chip grade", `${o.level}（${o.pr}）`)
+    : el("span", "chip off", "不分級");
+  card.append(row("官方 115 年", off));
+  if (o.status === "graded") card.append(el("p", "hint", `${o.item}・${S.sex_text} ${o.ages}・下限 ${o.lower_bounds.join("／")}（推定讀法）`));
+  else card.append(el("p", "hint", o.reason));
+  if (v) {
+    const chip = v.status === "assessed" ? el("span", "chip pending", `${v.score} 分「${v.rank}」・僅供測試`) : el("span", "chip off", "無法評估");
+    card.append(row(`知識圖譜 ${DATA.kg.version}`, chip));
+    card.append(el("p", "hint", v.status === "assessed" ? `${t.v1_metric}：${v.source_text}（不分年齡、性別）` : v.reason));
+  }
+  $("tests").append(card);
+}
+$("norms-source").textContent = `${N.source.title}，${N.source.year} 年、${N.source.group}（${N.source.read} 讀取）`;
+$("norms-reading").textContent = N.reading + "　這是和同齡同性別比較的百分等級，不是健康切點。";
+N.levels.forEach(l => $("norms-head").append(el("th", null, l)));
+N.pr.forEach(p => $("norms-pr").append(el("td", "mono", p)));
+$("events-summary").textContent = `${DATA.events.length} 筆模擬事件（橘色是信心值低於 0.8）`;
+for (const e of DATA.events) {
+  const tr = el("tr", e.confidence < 0.8 ? "low" : null);
+  [e.id, e.label, e.start, e.seconds, e.confidence.toFixed(2)].forEach(x => tr.append(el("td", null, String(x))));
+  $("events").append(tr);
+}
+</script>
+</html>
