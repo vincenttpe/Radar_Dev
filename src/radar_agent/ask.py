@@ -33,11 +33,13 @@ class MenuScope:
     """選單答得到什麼（2026-11-04，#76）：模型會依主題對題，「跌倒的人有沒有受傷」也對到跌倒，所以分三層把關。
 
     refuse 規則先擋，不送模型；note 加在給模型的選單前；verify 是對到題目後再問一次模型時的範圍說明。
+    known 是人確認過、模型卻對不到的問法（問法, 題目 id）：完全相符就對到題目，不經過模型，提示詞也不用動。
     """
 
     refuse: re.Pattern[str]
     note: str
     verify: str
+    known: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,10 @@ def match_question(asked: str, menu: Menu, *, model: Model | None) -> Match:
     def miss(reason: str, why: str = "no_fit") -> Match:
         return Match(None, model.name, prompt_version, (reason,), why)
 
+    known_id = dict(scope.known).get(asked.rstrip("?？。. ")) if scope else None
+    known = next((q for q in questions if q.id == known_id), None)
+    if known:
+        return Match(known, None, prompt_version)
     if scope and scope.refuse.search(asked):
         # 沒有呼叫模型，紀錄的 model 留空，追溯時才不會以為模型判斷過
         return Match(None, None, prompt_version, ("提問不在固定問題能回答的範圍",), "no_fit")

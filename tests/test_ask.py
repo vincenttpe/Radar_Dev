@@ -145,3 +145,28 @@ def test_a_menu_without_a_scope_still_makes_one_call():
     model = FakeModel("2")
     assert match_question("為什麼走不好", MENU, model=model).question == MENU.questions[1]
     assert len(model.prompts) == 1
+
+
+# ── 已確認的問法（MenuScope.known，2026-11-04，PR #79 審查決定）：完全相符就對到題目，不經過模型 ──
+KNOWN = Menu(MENU.questions, "menu-v3", scope=MenuScope(re.compile("為什麼"), "", "範圍。", known=(("走得如何", "walk"),)))
+
+
+@pytest.mark.parametrize("asked", ["走得如何", " 走得如何？", "走得如何?"])
+def test_a_known_question_picks_its_question_without_calling_the_model(asked):
+    model = FakeModel("0")
+    match = match_question(asked, KNOWN, model=model)
+    assert model.prompts == []
+    assert (match.question, match.model, match.prompt_version, match.rejected) == (MENU.questions[0], None, "menu-v3", ())
+
+
+def test_only_the_exact_known_question_skips_the_model():
+    model = FakeModel("0")
+    assert match_question("他走得如何", KNOWN, model=model).question is None
+    assert len(model.prompts) == 1
+
+
+def test_a_known_question_whose_id_is_not_on_the_menu_goes_to_the_model():
+    menu = Menu(MENU.questions, "menu-v3", scope=MenuScope(re.compile("為什麼"), "", "範圍。", known=(("走得如何", "gone"),)))
+    model = FakeModel("1", "1")
+    assert match_question("走得如何", menu, model=model).question == MENU.questions[0]
+    assert len(model.prompts) == 2

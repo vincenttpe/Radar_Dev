@@ -39,7 +39,7 @@ def menu_digest(menu: Menu) -> str:
     scope = menu.scope
     text = build_prompt("{提問}", menu.questions, scope.note if scope else "")
     if scope:  # 規則與第二次確認也決定讀者拿到哪一題，一起算
-        text += scope.refuse.pattern + build_verify_prompt("{提問}", menu.questions[0], scope.verify)
+        text += scope.refuse.pattern + build_verify_prompt("{提問}", menu.questions[0], scope.verify) + repr(scope.known)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
