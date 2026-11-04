@@ -10,7 +10,7 @@ import hashlib
 import inspect
 import textwrap
 
-from radar_agent.ask import Menu, build_prompt
+from radar_agent.ask import Menu, build_prompt, build_verify_prompt
 from radar_agent.rewrite import RewriteKind
 
 
@@ -36,7 +36,11 @@ def rule_digest(*parts: object) -> str:
 
 def menu_digest(menu: Menu) -> str:
     """一份選單的 prompt 指紋：題目套進 build_prompt 的文字（2026-11-02 起每份選單都用這個算，不另外手寫）。"""
-    return hashlib.sha256(build_prompt("{提問}", menu.questions).encode("utf-8")).hexdigest()[:16]
+    scope = menu.scope
+    text = build_prompt("{提問}", menu.questions, scope.note if scope else "")
+    if scope:  # 規則與第二次確認也決定讀者拿到哪一題，一起算
+        text += scope.refuse.pattern + build_verify_prompt("{提問}", menu.questions[0], scope.verify)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
 def kind_digest(kind: RewriteKind) -> str:

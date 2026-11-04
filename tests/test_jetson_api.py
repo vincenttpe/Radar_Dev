@@ -89,11 +89,11 @@ def test_ask_uses_the_local_model_and_pick_does_not(api):
     _, asked, _ = _call(server, body=_job(kind="ask", question="早上有人跌倒嗎"))
     assert (asked["status"], asked["result"]["question"]["id"]) == ("done", "falls")
     assert asked["result"]["confirm"] == "您是想問「有沒有人跌倒？」嗎？"
-    assert len(model.prompts) == 1
+    assert len(model.prompts) == 2  # 選題一次，確認一次（ask.MenuScope）
 
     _, picked, _ = _call(server, body=_job(kind="pick", question_id="visits"))
     assert picked["result"]["answer"] == pick("visits", summarize(MORNING), place=PLACE).answer
-    assert len(model.prompts) == 1  # 點題不經過模型
+    assert len(model.prompts) == 2  # 點題不經過模型
 
 
 def test_records_outside_the_range_are_not_counted(api):

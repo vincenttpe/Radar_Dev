@@ -13,8 +13,8 @@ from fingerprints import menu_digest
 from records import write_jsonl
 
 from radar_agent.device_events import read_records, summarize
-from radar_agent.event_ask import EVENT_QUESTIONS, answer, ask_events, main, pick
-from radar_agent.model_eval import EVENT_ASK_CASES, PLACE, event_cases
+from radar_agent.event_ask import EVENT_QUESTIONS, EVENT_SCOPE, NOTICES, answer, ask_events, main, pick
+from radar_agent.model_eval import DEMO_ASK_CASES, EVENT_ASK_CASES, PLACE, SCOPE_CASES, event_cases
 from radar_agent.output_check import check_output
 
 DEMO = Path(__file__).resolve().parents[1] / "data" / "samples_demo" / "bathroom_morning.jsonl"
@@ -74,12 +74,12 @@ def test_quiet_period_says_so():
 
 
 def test_model_picks_a_number_and_the_answer_comes_from_the_facts():
-    model = FakeModel("3")
+    model = FakeModel("3", "1")
     reply = ask_events("有人待很久嗎", SUMMARY, place="1 號廁所", model=model)
     data = reply.data()
     assert data["question"]["id"] == "longstay" and data["confirm"] == "您是想問「有沒有人待太久？久待警報有幾次？」嗎？"
     assert data["answer"].startswith("1 號廁所 10/14 08:00–11:59：在線期間久待警報 1 次（10:45）。")
-    assert (data["model"], data["prompt_version"], data["rejected"]) == ("fake-0.1", "event-prompt-v1", [])
+    assert (data["model"], data["prompt_version"], data["rejected"]) == ("fake-0.1", "event-prompt-v2", [])
     assert "有人待很久嗎" not in json.dumps(data, ensure_ascii=False), "不保存讀者打的原文"
 
 
@@ -293,7 +293,7 @@ def test_prompt_version_is_bumped_when_the_prompt_or_menu_changes():
     """紀錄只記 prompt_version；選單或提示詞改了卻沒升版，就分不出模型當時看到哪一版。"""
     from radar_agent.event_ask import EVENT_MENU
 
-    assert (EVENT_MENU.prompt_version, menu_digest(EVENT_MENU)) == ("event-prompt-v1", "e8fa8590ffbc5d73"), \
+    assert (EVENT_MENU.prompt_version, menu_digest(EVENT_MENU)) == ("event-prompt-v2", "8741ea1142c83714"), \
         "EVENT_QUESTIONS 或 ask.build_prompt 改了：升 event_ask.PROMPT_VERSION，再更新這裡的版本與雜湊"
 
 
@@ -328,3 +328,19 @@ def test_every_notice_passes_the_wording_check():
     from radar_agent.output_check import wording_problems
 
     assert all(wording_problems(text) == [] for text in NOTICES.values())
+
+
+@pytest.mark.parametrize("asked", [
+    "他剛剛為什麼不回答", "回覆沒事是不是代表沒跌倒", "沒有回應的有幾次", "有人回答要幫忙嗎", "離線代表什麼意思", "她要不要去看醫生",
+])
+def test_questions_the_menu_cannot_answer_go_to_the_menu_without_calling_the_model(asked):
+    model = FakeModel("1")
+    reply = ask_events(asked, SUMMARY, place="1 號廁所", model=model)
+    assert model.prompts == [] and reply.answer is None
+    assert reply.notice() == NOTICES["no_fit"]
+
+
+def test_the_refuse_rule_only_stops_the_cases_that_should_get_no_answer():
+    """規則誤擋雖然只是改列選單，有答案的題組都不該被關鍵字擋；超過 20 字的長句是刻意的取捨，全部改列選單。"""
+    refused = [c.asked for c in (*DEMO_ASK_CASES, *SCOPE_CASES) if c.expected and EVENT_SCOPE.refuse.search(c.asked)]
+    assert refused and all(len(asked) > 20 for asked in refused)
