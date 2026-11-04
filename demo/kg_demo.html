@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* 版面：模擬資料橫幅 → 五步流程（事件 → 換算 → 量測值 → 門檻 → 句子）→ 對話 → 五項指標的狀態 → 邊界情境 → 還缺什麼 → 事件明細。色彩與字型沿用 demo/template.html */
+/* 版面：模擬資料橫幅 → 五步流程（事件 → 換算 → 量測值 → 門檻 → 句子）→ 試算 → 對話 → 五項指標的狀態 → 邊界情境 → 還缺什麼 → 事件明細。色彩與字型沿用 demo/template.html */
 :root {
   --bg: #eef2f3; --surface: #ffffff; --ink: #16232a; --muted: #56676f; --line: #d3dce0;
   --accent: #1c6a72; --accent-soft: #d5e8ea;
@@ -108,6 +108,17 @@ details summary { cursor: pointer; font-weight: 500; }
 details summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: var(--bg); padding: 12px; border-radius: 8px; }
 .notes { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 14px; display: grid; gap: 4px; max-width: 72ch; }
+
+/* 試算 */
+.try { display: grid; gap: 12px; }
+.try p { margin: 0; }
+.try-form { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: end; }
+.try-form label { display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); }
+.try-form select, .try-form input { font: 15px var(--f-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; min-height: 40px; }
+.try-form input { font-family: var(--f-mono); width: 9em; }
+.try-form select:focus-visible, .try-form input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.try-result { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.try-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 </style>
 
 <div class="sim"><div class="wrap">
@@ -128,6 +139,19 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
   </section>
 
   <!--preview-cut：以下到 /preview-cut 只在內部版（客戶版 kg_build.preview_page 會整段拿掉）-->
+  <section aria-labelledby="h-try">
+    <div class="head-row"><h2 id="h-try">換一個測試值，看句子怎麼變</h2><span class="hint">只換輸入，知識圖譜的門檻與建議不變</span></div>
+    <div class="panel try">
+      <div class="try-form">
+        <label for="try-metric">指標<select id="try-metric"></select></label>
+        <label for="try-value"><span id="try-label"></span><input id="try-value" type="number" min="0" inputmode="decimal" autocomplete="off"></label>
+      </div>
+      <p class="hint" id="try-range"></p>
+      <div class="try-result" id="try-result" aria-live="polite"></div>
+      <p class="hint">這裡是測試值，非真實長者。測試值不會送審，也不會儲存；句中若出現「已交由審核人確認」，是正式句子的固定用語。句子來自 rewrite() 範本，尚未接上在地模型。</p>
+    </div>
+  </section>
+
   <section aria-labelledby="h-chat">
     <div class="head-row"><h2 id="h-chat">誰在問，能問什麼</h2><span class="hint">每種讀者一組固定問題，點選提問；回答只用上面的事實</span></div>
     <div class="tabs" role="tablist" aria-label="讀者" id="tabs"></div>
@@ -191,7 +215,8 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
       <li>居服員看到的句子來自正式的範本並通過輸出檢查；接上在地模型之前不稱為「LLM 產生」。</li>
       <li>量不到、沒有規則、落在門檻重疊的情況，一律寫「無法評估」，不猜一個等級。</li>
       <li>不同讀者看到不同的問題；主管機關不能看個人資料，所以沒有題目。居服員以外的句子是草案，題目與範本都要經過審核。</li>
-      <li>沒有輸入框：在地模型能力有限，問題固定，答案可以事先算好、逐題檢查。超出範圍的問題（「其他問題」）系統不回答。</li>
+      <li>問答沒有輸入框：在地模型能力有限，問題固定，答案可以事先算好、逐題檢查。超出範圍的問題（「其他問題」）系統不回答。</li>
+      <li>測試值只換輸入，等級與句子都是規則引擎與範本事先算好的結果，頁面只查表；範圍是為了試算訂的，未經審核，不代表量測的合理範圍。</li>
     </ul>
   </section>
   <!--/preview-cut-->
@@ -1443,6 +1468,295 @@ const DATA = {
    "why": "2 分鐘原地抬腳是施測動作，日常生活不會出現"
   }
  ],
+ "tester": {
+  "metrics": [
+   {
+    "metric": "下肢肌力",
+    "unit": "次/30 秒",
+    "max": "40",
+    "step": "1",
+    "codes": "00000001111222333344444444444444444444444",
+    "outcomes": [
+     {
+      "status": "assessed",
+      "score": 0,
+      "rank": "不好",
+      "source_text": "起站30秒 0~6次",
+      "rest": "，屬於「不好」（0 分）。\n建議：下肢肌力不足，建議先由醫師或物理治療師評估，再安排安全的增肌訓練。\n建議量：每週 18 下以下；每日坐站 2-3 下\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "assessed",
+      "score": 1,
+      "rank": "稍差",
+      "source_text": "起站30秒 7~10次",
+      "rest": "，屬於「稍差」（1 分）。\n建議：下肢肌力偏弱，建議從椅子坐站、扶椅半蹲等低負荷動作開始，必要時進一步接受復健或專業評估。\n建議量：每週 24-36 下；每次 6-9 下 (需扶椅子)；休 1-2 分鐘\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "assessed",
+      "score": 2,
+      "rank": "普通",
+      "source_text": "起站30秒 11~13次",
+      "rest": "，屬於「普通」（2 分）。\n建議：下肢肌力普通，建議開始固定做下肢肌力訓練，先從徒手或彈力帶開始。\n建議量：每週 42-54 下；每次 7-9 下 x 2-3 組 (彈力帶/徒手)\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "assessed",
+      "score": 3,
+      "rank": "尚好",
+      "source_text": "起站30秒 14~17次",
+      "rest": "，屬於「尚好」（3 分）。\n建議：下肢肌力良好，建議規律加入坐站、半蹲、抬腿等訓練，逐步增加次數或阻力。\n建議量：每週 60 下；每次 10 下 x 2-3 組 (坐站/抬腿)；漸增至 15 下\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "assessed",
+      "score": 4,
+      "rank": "很好",
+      "source_text": "起站30秒 18次以上",
+      "rest": "，屬於「很好」（4 分）。\n建議：下肢肌力很好，持續每週下肢肌力訓練（坐站、深蹲、弓箭步），並搭配快走或爬樓梯。\n建議量：每週 66-78 下；每次 11-13 下 x 2-3 組 (深蹲等)；加快走\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     }
+    ]
+   },
+   {
+    "metric": "單腳站立",
+    "unit": "秒",
+    "max": "60",
+    "step": "0.5",
+    "codes": "0101012121313131314141414141415151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515",
+    "outcomes": [
+     {
+      "status": "assessed",
+      "score": 0,
+      "rank": "不好",
+      "source_text": "單腳站立 0~2秒",
+      "rest": "，屬於「不好」（0 分）。\n建議：跌倒風險極高，建議先由醫師或物理治療師評估，再規劃安全的平衡訓練。\n建議量：每週 18 秒以下；扶持站立 3-5 秒\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "unassessable",
+      "score": null,
+      "rank": null,
+      "source_text": null,
+      "rest": "：目前無法評估，已交由審核人確認。\n（知識圖譜尚未核准，僅供測試）",
+      "reason": "比來源寫出的精度（1）更細；來源沒有定義取整方式，不由程式代決定（會議清單 E5）"
+     },
+     {
+      "status": "assessed",
+      "score": 1,
+      "rank": "稍差",
+      "source_text": "單腳站立 3~4秒",
+      "rest": "，屬於「稍差」（1 分）。\n建議：跌倒風險較高，建議優先做平衡與步態訓練，必要時進一步接受復健或專業評估。\n建議量：每週 24-36 秒；扶椅單腳站 6-9 秒；坐站訓練\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "assessed",
+      "score": 2,
+      "rank": "普通",
+      "source_text": "單腳站立 5~8秒",
+      "rest": "，屬於「普通」（2 分）。\n建議：跌倒風險普通，建議同時做平衡+下肢肌力訓練，並增加練習頻率。\n建議量：每週 42-54 秒；單腳站 10-13 秒；搭配側走 5 公尺\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "assessed",
+      "score": 3,
+      "rank": "尚好",
+      "source_text": "單腳站立 9~14秒",
+      "rest": "，屬於「尚好」（3 分）。\n建議：跌倒風險偏低，建議加入單腳站、腳跟腳尖走、側走或後退走，持續提升穩定性。\n建議量：每週 60 秒；單腳站 15-20 秒；腳跟腳尖走 5-10 公尺\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "assessed",
+      "score": 4,
+      "rank": "很好",
+      "source_text": "單腳站立 15秒以上",
+      "rest": "，屬於「很好」（4 分）。\n建議：跌倒風險極低，持續每週平衡訓練（單腳站、太極、走直線），維持穩定度。\n建議量：每週 66-78 秒；單腳站 22-26 秒 x 3 次\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     }
+    ]
+   },
+   {
+    "metric": "來回行走",
+    "unit": "秒（2.44 公尺）",
+    "max": "20",
+    "step": "0.05",
+    "codes": "01010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101212121212121213131313131414141414141414141515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515151515",
+    "outcomes": [
+     {
+      "status": "assessed",
+      "score": 4,
+      "rank": "很好",
+      "source_text": "2.44公尺行走 0~5.4秒",
+      "rest": "，屬於「很好」（4 分）。\n建議：跌倒風險極低，持續規律步行，並搭配肌力與平衡訓練維持步態穩定。\n建議量：每週 165-195 分鐘；每次快走 25-30 分鐘；步速 ≥ 1.0 m/s\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "unassessable",
+      "score": null,
+      "rank": null,
+      "source_text": null,
+      "rest": "：目前無法評估，已交由審核人確認。\n（知識圖譜尚未核准，僅供測試）",
+      "reason": "比來源寫出的精度（0.1）更細；來源沒有定義取整方式，不由程式代決定（會議清單 E5）"
+     },
+     {
+      "status": "assessed",
+      "score": 3,
+      "rank": "尚好",
+      "source_text": "2.44公尺行走 5.5~6.1秒",
+      "rest": "，屬於「尚好」（3 分）。\n建議：跌倒風險偏低，建議持續快走與日常步行，並保留每週的肌力與平衡訓練。\n建議量：每週 150 分鐘；每次快走 20-30 分鐘；步速 0.9-1.0 m/s\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "assessed",
+      "score": 2,
+      "rank": "普通",
+      "source_text": "2.44公尺行走 6.2~6.6秒",
+      "rest": "，屬於「普通」（2 分）。\n建議：跌倒風險普通，建議加入快走與下肢肌力訓練，必要時加入步態訓練。\n建議量：每週 105-135 分鐘；每次快走 15-20 分鐘；加步態訓練\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "assessed",
+      "score": 1,
+      "rank": "稍差",
+      "source_text": "2.44公尺行走 6.7~7.5秒",
+      "rest": "，屬於「稍差」（1 分）。\n建議：跌倒風險較高，建議在專業指導下漸進訓練，必要時進一步接受復健或專業評估。\n建議量：每週 60-90 分鐘；每次慢走 12-18 分鐘；步速 0.6-0.8 m/s\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "assessed",
+      "score": 0,
+      "rank": "不好",
+      "source_text": "2.44公尺行走 7.6秒以上",
+      "rest": "，屬於「不好」（0 分）。\n建議：跌倒風險極高，建議先由醫師或物理治療師評估，再規劃安全的行走訓練。\n建議量：每週 45 分鐘以下；每日慢走 3-5 分鐘 x 1 次\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     }
+    ]
+   },
+   {
+    "metric": "心肺耐力",
+    "unit": "次/2 分鐘",
+    "max": "200",
+    "step": "1",
+    "codes": "000000000000000000000000000000000000000000000000001111111111111111111111111222222222222223333333333344444444444455555555555555555555555555555555555555555555555555555555555555555555555555555555555555555",
+    "outcomes": [
+     {
+      "status": "assessed",
+      "score": 0,
+      "rank": "不好",
+      "source_text": "抬腳2分鐘 0~49次",
+      "rest": "，屬於「不好」（0 分）。\n建議：心肺耐力不足，建議先由醫師或物理治療師評估，再規劃安全的有氧訓練。\n建議量：每週 45 分鐘以下；每日 3-5 分鐘\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "assessed",
+      "score": 1,
+      "rank": "稍差",
+      "source_text": "抬腳2分鐘 50~74次",
+      "rest": "，屬於「稍差」（1 分）。\n建議：心肺耐力偏弱，建議先分段式低強度活動開始，等身體適應後再慢慢加量，必要時進一步接受復健或專業評估。\n建議量：每週 60-90 分鐘；每次 12-18 分鐘\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "assessed",
+      "score": 2,
+      "rank": "普通",
+      "source_text": "抬腳2分鐘 75~88次",
+      "rest": "，屬於「普通」（2 分）。\n建議：心肺耐力普通，建議採取間歇式訓練，中等強度有氧運動（快走、固定式腳踏車或游泳）。\n建議量：每週 105-135 分鐘；每次 15-25 分鐘；週增 10%\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "assessed",
+      "score": 3,
+      "rank": "尚好",
+      "source_text": "抬腳2分鐘 89~99次",
+      "rest": "，屬於「尚好」（3 分）。\n建議：心肺耐力良好，持續中等強度有氧（快走、游泳、腳踏車）運動。\n建議量：每週 150 分鐘；每次 30 分鐘\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "unassessable",
+      "score": null,
+      "rank": null,
+      "source_text": null,
+      "rest": "：目前無法評估，已交由審核人確認。\n（知識圖譜尚未核准，僅供測試）",
+      "reason": "不屬於任何等級（門檻缺口，待審核人決定，會議清單 E5）"
+     },
+     {
+      "status": "assessed",
+      "score": 4,
+      "rank": "很好",
+      "source_text": "抬腳2分鐘 112次以上",
+      "rest": "，屬於「很好」（4 分）。\n建議：心肺耐力很好，持續每週中等強度有氧，並可加入間歇快走或騎車。\n建議量：每週 165-195 分鐘 (中強度) 或 83-98 分鐘 (高強度)\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     }
+    ]
+   },
+   {
+    "metric": "步行速度",
+    "unit": "m/s",
+    "max": "2",
+    "step": "0.01",
+    "codes": "000000000000000000000000000000000000000000000000001222222222222222222222222222223444444444444444444456666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666",
+    "outcomes": [
+     {
+      "status": "assessed",
+      "score": 0,
+      "rank": "不好",
+      "source_text": "步行速度 0~0.5 m/s",
+      "rest": "，屬於「不好」（0 分）。\n建議：步行速度極慢，建議先由醫師或物理治療師評估，再規劃安全的步行速度訓練。\n建議量：每週 45 分鐘以下；每日 5-10 分鐘分段走；步速 < 0.6 m/s\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "unassessable",
+      "score": null,
+      "rank": null,
+      "source_text": null,
+      "rest": "：目前無法評估，已交由審核人確認。\n（知識圖譜尚未核准，僅供測試）",
+      "reason": "同時屬於 0 分「不好」、1 分「稍差」（門檻重疊，邊界歸屬待審核人決定，會議清單 E5）"
+     },
+     {
+      "status": "assessed",
+      "score": 1,
+      "rank": "稍差",
+      "source_text": "步行速度 0.5~0.8 m/s",
+      "rest": "，屬於「稍差」（1 分）。\n建議：步行速度偏慢，建議加強步態訓練與下肢肌力訓練，必要時進一步接受復健或專業評估。\n建議量：每週 60-90 分鐘；每次 12-18 分鐘；步速 0.6 m/s；加平衡\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "unassessable",
+      "score": null,
+      "rank": null,
+      "source_text": null,
+      "rest": "：目前無法評估，已交由審核人確認。\n（知識圖譜尚未核准，僅供測試）",
+      "reason": "同時屬於 1 分「稍差」、2 分「普通」（門檻重疊，邊界歸屬待審核人決定，會議清單 E5）"
+     },
+     {
+      "status": "assessed",
+      "score": 2,
+      "rank": "普通",
+      "source_text": "步行速度 0.8~1.0 m/s",
+      "rest": "，屬於「普通」（2 分）。\n建議：步行速度普通，建議增加日常步行量，並搭配下肢肌力與平衡訓練，逐步提升行走穩定性與速度。\n建議量：每週 105-135 分鐘；每次 15-25 分鐘；步速 0.7 m/s\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     },
+     {
+      "status": "unassessable",
+      "score": null,
+      "rank": null,
+      "source_text": null,
+      "rest": "：目前無法評估，已交由審核人確認。\n（知識圖譜尚未核准，僅供測試）",
+      "reason": "同時屬於 2 分「普通」、3 分「尚好」（門檻重疊，邊界歸屬待審核人決定，會議清單 E5）"
+     },
+     {
+      "status": "assessed",
+      "score": 3,
+      "rank": "尚好",
+      "source_text": "步行速度 1.0 m/s以上",
+      "rest": "，屬於「尚好」（3 分）。\n建議：步行速度良好，建議持續規律步行，並每週加入平衡與下肢肌力訓練，以維持移動能力。\n建議量：每週 150 分鐘；每次 20-30 分鐘；步速 0.8-1.0 m/s\n（知識圖譜尚未核准，僅供測試）",
+      "reason": null
+     }
+    ]
+   }
+  ]
+ },
  "profiles": [
   {
    "profile": "居服員",
@@ -1760,6 +2074,42 @@ for (const s of steps) {
 }
 
 /*preview-cut*/
+// 測試值試算：查 kg_build.tester_data() 算好的表，這裡不判定等級。數值換成整數再算，避免浮點誤差
+function tryLookup(m, raw) {
+  if (!/^\d+(\.\d+)?$/.test(raw)) return null;
+  const decimals = (m.step.split(".")[1] || "").length;
+  const [whole, frac = ""] = raw.split(".");
+  const kept = frac.replace(/0+$/, "");
+  if (kept.length > decimals) return null;
+  const scaled = Number(whole + kept.padEnd(decimals, "0"));
+  const step = Number(m.step.replace(".", ""));
+  if (scaled % step) return null;
+  return m.outcomes[m.codes[scaled / step]] ?? null;
+}
+function renderTry() {
+  const m = DATA.tester.metrics.find(x => x.metric === $("try-metric").value);
+  const raw = $("try-value").value.trim(), box = $("try-result");
+  box.replaceChildren();
+  const hit = tryLookup(m, raw);
+  if (!hit) { box.append(el("p", "hint", raw ? "這個數值不在可試算的範圍或間隔內，請依上方說明輸入。" : "請輸入數字。")); return; }
+  const meta = el("div", "try-meta");
+  meta.append(hit.status === "assessed" ? el("span", "chip ok", `${hit.score} 分「${hit.rank}」`) : el("span", "chip off", "無法評估"), kgChip());
+  if (hit.source_text) meta.append(el("span", "hint", `門檻原文：${hit.source_text}`));
+  box.append(meta, el("p", "says", `${m.metric} ${raw} ${m.unit}${hit.rest}`));
+  if (hit.reason) box.append(el("p", "hint", `審核用的原因（不給居服員）：數值 ${raw} ${hit.reason}`));
+}
+function selectTry(m, value) {
+  $("try-label").textContent = `測試值（${m.unit}）`;
+  Object.assign($("try-value"), { max: m.max, step: m.step, value });
+  $("try-range").textContent = `可試算 0～${m.max}，間隔 ${m.step}。`;
+  renderTry();
+}
+for (const m of DATA.tester.metrics) { const o = el("option", null, m.metric); o.value = m.metric; $("try-metric").append(o); }
+$("try-metric").value = a.metric;
+$("try-metric").onchange = e => selectTry(DATA.tester.metrics.find(m => m.metric === e.target.value), "");
+$("try-value").oninput = renderTry;
+selectTry(DATA.tester.metrics.find(m => m.metric === a.metric), sp.value);
+
 // 讀者切換：每個 Profile 一組固定問題；答完再列出延伸問題
 const tabs = $("tabs"), chat = $("chat"), menu = $("menu");
 let current = DATA.profiles[0], asked = [];
