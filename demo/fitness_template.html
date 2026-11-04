@@ -1,0 +1,164 @@
+<title>下肢三項測驗 Demo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 版面：模擬資料橫幅 → 三項測驗卡片（量測 → 官方表 → v1 對照）→ 官方表與讀法 → 待確認 → 事件明細。色彩與字型沿用 demo/kg_template.html */
+:root {
+  --bg: #eef2f3; --surface: #ffffff; --ink: #16232a; --muted: #56676f; --line: #d3dce0;
+  --accent: #1c6a72; --accent-soft: #d5e8ea;
+  --check: #925f00; --check-bg: #faf0d9; --device: #4f5d65; --device-bg: #e3e8eb; --ok: #2a7548; --ok-bg: #e2f2e8;
+  --sim-bg: #2b2438; --sim-ink: #f4effa; --draft: #7a4fb0; --draft-bg: #efe7f8;
+  --f-display: "Noto Serif TC", "Songti TC", serif;
+  --f-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f161a; --surface: #172227; --ink: #e2eaed; --muted: #94a5ad; --line: #2a3940;
+  --accent: #66b6be; --accent-soft: #1d3a3e;
+  --check: #e2b45c; --check-bg: #342a18; --device: #a9b6bd; --device-bg: #222e34; --ok: #7fd09f; --ok-bg: #1a3325;
+  --sim-bg: #3a3150; --sim-ink: #f4effa; --draft: #c4a5ee; --draft-bg: #2c2340; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #0f161a; --surface: #172227; --ink: #e2eaed; --muted: #94a5ad; --line: #2a3940;
+  --accent: #66b6be; --accent-soft: #1d3a3e;
+  --check: #e2b45c; --check-bg: #342a18; --device: #a9b6bd; --device-bg: #222e34; --ok: #7fd09f; --ok-bg: #1a3325;
+  --sim-bg: #3a3150; --sim-ink: #f4effa; --draft: #c4a5ee; --draft-bg: #2c2340; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.65 var(--f-body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--sim-bg); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.sim { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--sim-bg); color: var(--sim-ink); font-size: 13px; }
+.sim .wrap { display: flex; flex-wrap: wrap; gap: 4px 16px; padding-block: 8px; align-items: baseline; }
+.sim strong { letter-spacing: .08em; }
+header.top .wrap { padding-block: 28px 8px; display: grid; gap: 6px; }
+.eyebrow { font-size: 12px; letter-spacing: .12em; color: var(--muted); }
+h1 { font: 600 clamp(24px, 4vw, 32px)/1.25 var(--f-display); margin: 0; text-wrap: balance; }
+h2 { font: 600 19px/1.3 var(--f-display); margin: 0; text-wrap: balance; }
+h3 { font: 700 13px/1.4 var(--f-body); letter-spacing: .06em; color: var(--muted); margin: 0; }
+.lede { color: var(--muted); margin: 0; max-width: 66ch; }
+main .wrap { display: grid; gap: 32px; padding-block: 16px 56px; }
+section { display: grid; gap: 12px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.hint { font-size: 13px; color: var(--muted); }
+.head-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.chip { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em; padding: 1px 8px; border-radius: 999px; }
+td .chip { white-space: nowrap; }
+.chip.draft { background: var(--draft-bg); color: var(--draft); }
+.chip.pending { background: var(--check-bg); color: var(--check); }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+.chip.off { background: var(--device-bg); color: var(--device); }
+
+/* 測驗卡片 */
+.tests { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.card { display: grid; gap: 10px; align-content: start; overflow-wrap: anywhere; }
+.card .big { font: 500 28px/1.1 var(--f-mono); font-variant-numeric: tabular-nums; }
+.card .big small { font: 13px var(--f-body); color: var(--muted); margin-left: 4px; }
+.card ul { margin: 0; padding-left: 1.1em; font-size: 13px; color: var(--muted); display: grid; gap: 2px; }
+.card .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; font-size: 14px; }
+.card .row b { font-size: 12px; letter-spacing: .06em; color: var(--muted); font-weight: 500; min-width: 7em; }
+.card.na { border-style: dashed; }
+.chip.grade { background: var(--accent-soft); color: var(--accent); }  /* 等級不分好壞配色：百分等級不是健康判斷 */
+.notes { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 14px; display: grid; gap: 4px; max-width: 76ch; }
+.events { min-width: 520px; font-size: 13px; }
+.events td { font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.events tr.low td { color: var(--check); }
+</style>
+
+<div class="sim"><div class="wrap">
+  <strong>模擬資料・內部用・草案</strong>
+  <span id="sim-note"></span>
+</div></div>
+
+<header class="top"><div class="wrap">
+  <div class="eyebrow">雷達照護助理・下肢三項測驗（ADR 0012 提議）</div>
+  <h1>指定測驗時段的雷達事件，怎麼變成官方表的等級</h1>
+  <p class="lede">現場人員按下開始後，雷達在測驗時段記下起身、行走、坐下。量測規則把事件換成次數、步速與秒數，再依長者的年齡與性別查體育署官方表的五個等級，旁邊列出知識圖譜 v1 的結果對照。全部是模擬資料，規則是草案。</p>
+</div></header>
+
+<main><div class="wrap">
+  <section aria-labelledby="h-tests">
+    <div class="head-row"><h2 id="h-tests">三項測驗</h2><span class="hint" id="subject"></span></div>
+    <div class="tests" id="tests"></div>
+  </section>
+
+  <section aria-labelledby="h-norms">
+    <h2 id="h-norms">官方表與讀法</h2>
+    <div class="panel" style="display:grid;gap:8px">
+      <p style="margin:0" id="norms-source"></p>
+      <p class="hint" style="margin:0" id="norms-reading"></p>
+      <div class="table-wrap"><table><thead><tr id="norms-head"></tr></thead><tbody><tr id="norms-pr"></tr></tbody></table></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-open">
+    <h2 id="h-open">還要確認的事</h2>
+    <ul class="notes">
+      <li>測驗時段由誰開始、雷達能不能輸出坐→站、站→坐、行走事件與信心值（docs/05 E7、A45–A50）。</li>
+      <li>量測規則 FT-DRAFT-0 是草案，要和碼表或影像對照驗證後才能用（ADR 0012；驗證計畫另訂）。</li>
+      <li>官方表「每格是下限」是推定；2.44 公尺（動態平衡與敏捷力）方向待確認；步行速度官方表沒有（docs/25 Q1 來源 5）。</li>
+      <li>採不採用官方表（docs/05 E5 選項 e）由審核人決定；確認可行後，再向運動部申請 106～114 年資料與寶典原文。</li>
+      <li>「4 公尺步道」「30 秒內站好才算」「發令到坐下」是量測規則 FT-DRAFT-0 自己定的，還沒對照官方的施測細則。</li>
+      <li>官方表和知識圖譜 v1 的名稱與分級方式不同，不能直接比較（例如這位模擬長者 15 次坐站，官方女 70～74 歲是「稍差」、v1 是「尚好」）；v1 的 2.44 公尺分級也沒有和官方表核對過方向。</li>
+      <li>年齡與性別是模擬值；正式使用屬單向門「個人資料的流向」。</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="h-events">
+    <h2 id="h-events">事件明細</h2>
+    <details class="panel">
+      <summary id="events-summary"></summary>
+      <div class="table-wrap" style="margin-top:12px"><table class="events">
+        <thead><tr><th>事件編號</th><th>種類</th><th>開始</th><th>秒數</th><th>信心值</th></tr></thead>
+        <tbody id="events"></tbody>
+      </table></div>
+    </details>
+  </section>
+</div></main>
+
+<script>
+const DATA = /*FT_DATA*/null;
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const S = DATA.subject, N = DATA.norms;
+$("sim-note").textContent = `非真實裝置紀錄；長者 ${S.id}（模擬：${S.sex_text}，${S.age} 歲）、裝置 ${DATA.device} 都是模擬的。量測規則 ${DATA.rule_id} 是草案。`;
+$("subject").textContent = `模擬長者：${S.sex_text}，${S.age} 歲`;
+const UNIT = { chair_stand: "次", chair_stand_retry: "次", gait_speed: "m/s", up_and_go: "秒" };
+const row = (label, ...nodes) => { const r = el("div", "row"); r.append(el("b", null, label), ...nodes); return r; };
+for (const [key, t] of Object.entries(DATA.tests)) {
+  const m = t.measure, o = t.official, v = t.v1;
+  const card = el("div", "panel card" + (m.value === null ? " na" : ""));
+  card.append(el("h3", null, t.test));
+  if (m.value === null) card.append(el("div", "big", "無法評估"));
+  else { const b = el("div", "big", m.value); b.append(el("small", null, UNIT[key])); card.append(b); }
+  const ul = el("ul"); t.rules.forEach(r => ul.append(el("li", null, r))); card.append(ul);
+  if (m.reason) card.append(el("p", "hint", m.reason));
+  else card.append(el("p", "hint", `用了 ${m.used.length} 筆事件` + (m.late.length ? `；${m.late.length} 筆在 30 秒之後才站好，不算` : "")));
+  const off = o.status === "graded"
+    ? el("span", "chip grade", `${o.level}（${o.pr}）`)
+    : el("span", "chip off", "不分級");
+  card.append(row("官方 115 年", off));
+  if (o.status === "graded") card.append(el("p", "hint", `${o.item}・${S.sex_text} ${o.ages}・下限 ${o.lower_bounds.join("／")}（推定讀法）`));
+  else card.append(el("p", "hint", o.reason));
+  if (v) {
+    const chip = v.status === "assessed" ? el("span", "chip pending", `${v.score} 分「${v.rank}」・僅供測試`) : el("span", "chip off", "無法評估");
+    card.append(row(`知識圖譜 ${DATA.kg.version}`, chip));
+    card.append(el("p", "hint", v.status === "assessed" ? `${t.v1_metric}：${v.source_text}（不分年齡、性別）` : v.reason));
+  }
+  $("tests").append(card);
+}
+$("norms-source").textContent = `${N.source.title}，${N.source.year} 年、${N.source.group}（${N.source.read} 讀取）`;
+$("norms-reading").textContent = N.reading + "　這是和同齡同性別比較的百分等級，不是健康切點。";
+N.levels.forEach(l => $("norms-head").append(el("th", null, l)));
+N.pr.forEach(p => $("norms-pr").append(el("td", "mono", p)));
+$("events-summary").textContent = `${DATA.events.length} 筆模擬事件（橘色是信心值低於 0.8）`;
+for (const e of DATA.events) {
+  const tr = el("tr", e.confidence < 0.8 ? "low" : null);
+  [e.id, e.label, e.start, e.seconds, e.confidence.toFixed(2)].forEach(x => tr.append(el("td", null, String(x))));
+  $("events").append(tr);
+}
+</script>
