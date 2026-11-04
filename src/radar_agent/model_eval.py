@@ -43,6 +43,7 @@ from radar_agent.local_model import CommandModel, EchoModel, HttpChatModel, add_
 from radar_agent.text_metrics import bleu, rouge_1, rouge_l
 from radar_agent.device_events import Summary, summarize
 from radar_agent.event_ask import DEMO_MENU, EVENT_MENU
+from radar_agent.event_scope_cases import SCOPE_ROWS
 from radar_agent.kg_rules import Assessment
 from radar_agent.rewrite import Rewritten, rewrite
 
@@ -256,6 +257,9 @@ DEMO_ASK_CASES: list[AskCase] = [
     AskCase("H6", "整理一下這班的狀況給下一班", "handover"),
 ]
 
+# 題目沒有、主題相同的問法會不會對到別題（#76），量 7 題選單
+SCOPE_CASES: list[AskCase] = [AskCase(*row) for row in SCOPE_ROWS]
+
 
 def evaluate_asks(model: Any, cases: list[AskCase], *, menu: Menu = ASK_MENU,
                   clock: Callable[[], float] = time.perf_counter) -> tuple[str, list[AskResult]]:
@@ -407,6 +411,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--questions", action="store_true", help="改量提問對應（打字提問對到哪一個固定問題）")
     ap.add_argument("--event-questions", action="store_true", help="改量事件提問（radar-ask 的題目）")
     ap.add_argument("--demo-questions", action="store_true", help="改量 Jetson 內部 Demo 的 7 題提問（多了交班重點）")
+    ap.add_argument("--scope-questions", action="store_true", help="改量選單範圍題組：題目沒有、主題相同的問法會不會對到別題（7 題選單）")
     ap.add_argument("--records", action="store_true", help="改量照護紀錄改寫")
     ap.add_argument("--references", help="--records 用：參考紀錄 JSON（{題號: 紀錄}），有它才算 BLEU、ROUGE")
     ap.add_argument("--style", help="--records 用：機構紀錄格式樣本（文字檔，需先去識別）")
@@ -421,7 +426,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"設定：reasoning_effort={args.reasoning_effort}")
     # 印出提示詞版本：選單改過時，評估結果才分得出量的是哪一版
     for flag, menu, ask_cases in ((args.questions, ASK_MENU, ASK_CASES), (args.event_questions, EVENT_MENU, EVENT_ASK_CASES),
-                                  (args.demo_questions, DEMO_MENU, DEMO_ASK_CASES)):
+                                  (args.demo_questions, DEMO_MENU, DEMO_ASK_CASES), (args.scope_questions, DEMO_MENU, SCOPE_CASES)):
         if flag:
             print(f"提示詞版本：{menu.prompt_version}")
             print(report_asks(evaluate_asks(model, ask_cases, menu=menu)))

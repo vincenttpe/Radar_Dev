@@ -1,8 +1,10 @@
 """提問對應：讀者打字提問，在地模型只選最接近的固定問題，不自己寫答案。只透過 ask.match_question() 驗證。"""
+import re
+
 import pytest
 from fakes import FakeModel
 
-from radar_agent.ask import Menu, Question, match_question
+from radar_agent.ask import Menu, MenuScope, Question, match_question
 
 MENU = Menu((
     Question("walk", "這週走路的狀況怎麼樣？"),
@@ -93,3 +95,53 @@ def test_asked_text_is_not_kept_in_the_result():
     """提問原文可能有姓名，不留在對應結果裡（結果會進追溯紀錄）。"""
     match = match_question("王小明走路還好嗎", MENU, model=FakeModel("1"))
     assert "王小明" not in repr(match)
+
+
+# ── 選單範圍（MenuScope，2026-11-04，#76）：題目沒有的問法不要對到主題相同的題目 ──────────
+SCOPED = Menu(MENU.questions, "menu-v2", scope=MenuScope(re.compile("為什麼"), "注意事項。\n", "系統範圍說明。"))
+
+
+def test_a_question_the_rule_refuses_never_reaches_the_model():
+    model = FakeModel("1")
+    match = match_question("為什麼走不好", SCOPED, model=model)
+    assert model.prompts == []
+    assert (match.question, match.model, match.why, match.prompt_version) == (None, None, "no_fit", "menu-v2")
+    assert match.rejected == ("提問不在固定問題能回答的範圍",)
+
+
+def test_the_note_goes_before_the_menu_and_the_second_call_checks_the_chosen_question():
+    model = FakeModel("2", "1")
+    match = match_question("速度怎麼算的", SCOPED, model=model)
+    assert match.question == MENU.questions[1]
+    assert "注意事項。\n問題清單：" in model.prompts[0]
+    assert all(t in model.prompts[1] for t in ("系統範圍說明。", "固定問題：步速是怎麼算出來的？", "使用者的提問：速度怎麼算的"))
+
+
+@pytest.mark.parametrize("reply", ["0", "2", "是", "1，因為"])
+def test_only_an_exact_yes_keeps_the_chosen_question(reply):
+    match = match_question("速度怎麼算的", SCOPED, model=FakeModel("2", reply))
+    assert (match.question, match.why) == (None, "no_fit")
+    assert match.rejected == ("模型確認這一題答不到提問",)
+
+
+def test_the_check_is_skipped_when_the_model_picked_nothing():
+    model = FakeModel("0")
+    assert match_question("今天天氣如何", SCOPED, model=model).question is None
+    assert len(model.prompts) == 1
+
+
+def test_a_model_error_during_the_check_counts_as_a_model_error():
+    class FailsSecond(FakeModel):
+        def __call__(self, prompt: str) -> str:
+            if self.prompts:
+                raise TimeoutError
+            return super().__call__(prompt)
+
+    match = match_question("速度怎麼算的", SCOPED, model=FailsSecond("2"))
+    assert (match.question, match.why, match.rejected) == (None, "model_error", ("模型錯誤：TimeoutError",))
+
+
+def test_a_menu_without_a_scope_still_makes_one_call():
+    model = FakeModel("2")
+    assert match_question("為什麼走不好", MENU, model=model).question == MENU.questions[1]
+    assert len(model.prompts) == 1
