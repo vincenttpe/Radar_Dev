@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 from collections.abc import Callable
@@ -16,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from radar_agent.ask import MAX_ASKED, Match, Menu, Question, match_question
+from radar_agent.ask import MAX_ASKED, Match, Menu, MenuScope, Question, match_question
 from radar_agent.caregiver import SUMMARY_TOPICS, no_data, period_head, topic_sentences
 from radar_agent.device_events import Summary, read_records, summarize
 from radar_agent.local_model import add_model_args, model_from_args
@@ -25,8 +26,9 @@ from radar_agent.rewrite import Model, rewrite_handover
 
 SCHEMA = "event-ask-v0"
 # 提示詞（ask.build_prompt）加上 EVENT_QUESTIONS 的版本，記進每次提問的紀錄（prompt_version）。
-# 改了 EVENT_QUESTIONS 或 ask.build_prompt 都要升版：v1 是 2026-10-28 longstay 題目加上「久待警報有幾次」
-PROMPT_VERSION = "event-prompt-v1"
+# 改了 EVENT_QUESTIONS、EVENT_SCOPE 或 ask.build_prompt 都要升版：v1 是 2026-10-28 longstay 題目加上「久待警報有幾次」；
+# v2 是 2026-11-04 加上 EVENT_SCOPE（#76）
+PROMPT_VERSION = "event-prompt-v2"
 
 EVENT_QUESTIONS: tuple[Question, ...] = (
     Question("falls", "有沒有人跌倒？"),
@@ -37,6 +39,25 @@ EVENT_QUESTIONS: tuple[Question, ...] = (
     Question("alerts", "有哪些警報？要怎麼處理？"),
 )
 _BY_ID = {q.id: q for q in EVENT_QUESTIONS}
+# 選單答不到的問法（2026-11-04，#76；radar-model-eval --scope-questions 量）。規則只擋字面明確的，其餘靠 note 與 verify。
+# 選單沒有長者回應的題目，所以提到回應的一律不送模型；誤擋時讀者仍可從選單點
+EVENT_SCOPE = MenuScope(
+    re.compile(
+        r"為什麼|為何|怎麼會|原因"  # 問原因
+        r"|代表|意思|可信|可靠|安全嗎|安全了|危險|嚴重|要緊"  # 問解讀或判斷
+        r"|要不要|該不該|需不需要|不用去|不必去"
+        r"|沒事|回答|回覆|回應|沒回|不回"  # 長者回應
+        r"|通知|傳給|傳送|寄給|轉給|告訴|聯絡|打給|打電話|關掉|設定|調整"  # 要系統代辦或改設定
+        r"|變多|變少|增加|減少|趨勢|比上|比昨|比前|比較多|比較少"  # 比較與趨勢
+        r"|會不會|預計|預測"  # 預測
+        r"|受傷|骨折|血壓|失智|生病|吃藥|看醫生|送醫|救護車"  # 身體與醫療
+        r"|.{21,}"  # 長句：先講一件事再追問，模型會依前半句對題；題組裡有答案的問法幾乎都在 20 字內
+    ),
+    "注意：提到相同主題不代表符合。只有提問要的就是該題的答案才算符合。"
+    "問原因、身分（誰、哪一位）、身體狀況、預測未來、比較或趨勢、判斷該怎麼做或代表什麼，或要系統代辦事情，都輸出 0。\n"
+    "例：「跌倒的人有沒有受傷」輸出 0；「誰跌倒了」輸出 0；「明天會不會斷線」輸出 0；「幫我通知家屬」輸出 0；「這個月跌倒有變多嗎」輸出 0；「今天有人摔倒嗎」輸出跌倒那一題的編號。\n",
+    "系統只能回答下面這個固定問題，答案只有事件有沒有發生、次數、時間與處理步驟，不知道是誰、原因、身體狀況，不能預測、比較趨勢，也不能代辦事情。",
+)
 # 沒有答案時給讀者的提示，依原因不同（2026-11-02 決定由本 repo 產生，Dashboard 照原文顯示，不自己寫句子）。
 # 鍵是 ask.Match.why；unavailable 是對到題目、但答案沒通過輸出檢查
 NOTICES = {
@@ -83,17 +104,17 @@ def checked_answer(question: Question, summary: Summary, place: str) -> tuple[st
     return (None, tuple(problems)) if problems else (text, ())
 
 
-EVENT_MENU = EventMenu(EVENT_QUESTIONS, PROMPT_VERSION, SCHEMA, checked_answer)
+EVENT_MENU = EventMenu(EVENT_QUESTIONS, PROMPT_VERSION, SCHEMA, checked_answer, scope=EVENT_SCOPE)
 
 
 # ── Jetson 內部 Demo 的 7 題選單（docs/21）：多一題「交班重點」────────────
 # 只在 Jetson 內部 Demo（2026-10-30 決定）；radar-ask 與 Dashboard 仍是上面的 6 題。2026-11-02 從 demo/jetson_serve.py
 # 搬來，model_eval 才能用同一份選單評估（--demo-questions）。「幫我寫一份交班紀錄」也對到這一題，答案開頭註明不是正式紀錄。
-# 題目或 ask.build_prompt 改了要升 DEMO_PROMPT_VERSION（tests/test_jetson_serve.py 會檢查）
+# 題目、EVENT_SCOPE 或 ask.build_prompt 改了要升 DEMO_PROMPT_VERSION（tests/test_jetson_serve.py 會檢查）；v1 加上 EVENT_SCOPE
 # 題目文字就是確認句裡的「您是想問『幫我整理交班重點』嗎？」。只寫「交班重點」實測有 2 題對錯題（2026-10-30）
 HANDOVER_QUESTION = Question("handover", "幫我整理交班重點")
 HANDOVER_NOTE = "以下是交班重點，不是機構的正式交班紀錄。"
-DEMO_PROMPT_VERSION = "jetson-demo-ask-v0"
+DEMO_PROMPT_VERSION = "jetson-demo-ask-v1"
 DEMO_SCHEMA = "jetson-demo-ask-v0"  # 選單 7 題、多了 handover，和 Dashboard 用的 event-ask-v0 不同
 
 
@@ -108,7 +129,7 @@ def _demo_answer(question: Question, summary: Summary, place: str) -> tuple[str 
         return None, (str(e),)
 
 
-DEMO_MENU = EventMenu((*EVENT_QUESTIONS, HANDOVER_QUESTION), DEMO_PROMPT_VERSION, DEMO_SCHEMA, _demo_answer)
+DEMO_MENU = EventMenu((*EVENT_QUESTIONS, HANDOVER_QUESTION), DEMO_PROMPT_VERSION, DEMO_SCHEMA, _demo_answer, scope=EVENT_SCOPE)
 
 
 @dataclass(frozen=True)

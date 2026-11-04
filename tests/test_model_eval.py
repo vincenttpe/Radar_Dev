@@ -22,6 +22,7 @@ from radar_agent.model_eval import (
     ASK_CASES,
     ASK_MENU,
     PLACE,
+    SCOPE_CASES,
     CommandModel,
     EchoModel,
     HttpChatModel,
@@ -306,13 +307,13 @@ def test_cli_refuses_chinese_models_before_calling_them(argv, capsys):
 def test_cli_event_questions(capsys):
     assert main(["--echo", "--event-questions"]) == 0
     out = capsys.readouterr().out
-    assert out.startswith(f"提示詞版本：event-prompt-v1\n模型：echo　題數：{len(EVENT_ASK_CASES)}　正確 ")
+    assert out.startswith(f"提示詞版本：event-prompt-v2\n模型：echo　題數：{len(EVENT_ASK_CASES)}　正確 ")
 
 
 def test_cli_demo_questions(capsys):
     assert main(["--echo", "--demo-questions"]) == 0
     out = capsys.readouterr().out
-    assert out.startswith(f"提示詞版本：jetson-demo-ask-v0\n模型：echo　題數：{len(DEMO_ASK_CASES)}　正確 ")
+    assert out.startswith(f"提示詞版本：jetson-demo-ask-v1\n模型：echo　題數：{len(DEMO_ASK_CASES)}　正確 ")
 
 
 def test_demo_cases_reuse_the_six_question_cases_and_point_at_the_demo_menu():
@@ -328,3 +329,19 @@ def test_demo_cases_reuse_the_six_question_cases_and_point_at_the_demo_menu():
 def test_empty_command_counts_as_model_errors_instead_of_crashing(capsys):
     assert main(["--cmd", "", "--event-questions"]) == 0
     assert "模型錯誤" in capsys.readouterr().out
+
+
+# ── 選單範圍題組（--scope-questions，#76）──────────────────
+
+
+def test_scope_cases_have_unique_ids_and_point_at_the_demo_menu():
+    ids = {q.id for q in DEMO_MENU.questions}
+    assert len({c.id for c in SCOPE_CASES}) == len(SCOPE_CASES) == 372
+    assert all(c.expected is None or c.expected in ids for c in SCOPE_CASES)
+    assert sum(c.expected is None for c in SCOPE_CASES) == 212
+
+
+def test_cli_scope_questions(capsys):
+    assert main(["--echo", "--scope-questions"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith(f"提示詞版本：{DEMO_MENU.prompt_version}\n模型：echo　題數：{len(SCOPE_CASES)}　正確 ")

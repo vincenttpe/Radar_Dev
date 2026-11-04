@@ -368,7 +368,7 @@ def test_adopted_rewrite_is_not_no_reply(server):
 def test_handover_question_answers_with_the_handover_original_and_a_note(serve_mod, server):
     from radar_agent.caregiver import handover_text
 
-    demo, url = server(FakeModel("7", name="fake-model"))
+    demo, url = server(FakeModel("7", "1", name="fake-model"))
     code, data = _ask(url, "交接報告")
     assert code == 200 and data["question"]["id"] == "handover"
     assert data["answer"] == f"{HANDOVER_NOTE}\n{handover_text(demo.summary, place=demo.place)}"
@@ -387,7 +387,7 @@ def test_radar_ask_keeps_its_six_questions(serve_mod):
 
 def test_demo_ask_prompt_version_is_bumped_when_the_prompt_or_menu_changes(serve_mod):
     """紀錄只記 prompt_version；Demo 的選單或提示詞改了卻沒升版，就分不出模型當時看到哪一版。"""
-    assert (DEMO_MENU.prompt_version, menu_digest(DEMO_MENU)) == ("jetson-demo-ask-v0", "fb0409607c9c42ac"), \
+    assert (DEMO_MENU.prompt_version, menu_digest(DEMO_MENU)) == ("jetson-demo-ask-v1", "9b7f38a64858d906"), \
         "event_ask.DEMO_MENU 的題目或 ask.build_prompt 改了：升 event_ask.DEMO_PROMPT_VERSION，再更新這裡的版本與雜湊"
 
 
@@ -396,12 +396,12 @@ def test_an_unmatched_demo_question_still_lists_the_seven_question_menu(server):
     code, data = _ask(url, "今天天氣如何")
     assert code == 200 and data["question"] is None and data["answer"] is None
     assert data["schema"] == "jetson-demo-ask-v0" and [m["id"] for m in data["menu"]][-1] == "handover"
-    assert len(data["menu"]) == 7 and data["prompt_version"] == "jetson-demo-ask-v0"
+    assert len(data["menu"]) == 7 and data["prompt_version"] == "jetson-demo-ask-v1"
 
 
 def test_handover_question_whose_template_fails_its_check_shows_no_text_and_says_why(server):
     """和前 6 題一致：原句沒通過輸出檢查時不交出文字、寫出原因（不斷線、不回 500）。"""
-    demo, url = server(FakeModel("7", name="fake-model"))
+    demo, url = server(FakeModel("7", "1", name="fake-model"))
     demo.place = "治療室"  # 「治療」是不能出現的用語
     code, data = _ask(url, "交接報告")
     assert code == 200 and data["question"]["id"] == "handover" and data["answer"] is None
