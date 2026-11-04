@@ -291,8 +291,6 @@ def test_every_question_is_a_summary_topic():
 
 def test_prompt_version_is_bumped_when_the_prompt_or_menu_changes():
     """紀錄只記 prompt_version；選單或提示詞改了卻沒升版，就分不出模型當時看到哪一版。"""
-    from radar_agent.event_ask import EVENT_MENU
-
     assert (EVENT_MENU.prompt_version, menu_digest(EVENT_MENU)) == ("event-prompt-v3", "2685bfb51ac324f6"), \
         "EVENT_QUESTIONS 或 ask.build_prompt 改了：升 event_ask.PROMPT_VERSION，再更新這裡的版本與雜湊"
 
