@@ -62,7 +62,7 @@ Ollama gemma4:e4b（127.0.0.1:11434，GPU）
 
 ## 提問「交接報告」（2026-10-30 決定）
 
-提問選單在 Jetson 內部 Demo 多一題〔幫我整理交班重點〕（`event_ask.DEMO_MENU`，提示詞版本 `jetson-demo-ask-v0`；在 Jetson 上可用 `radar-model-eval … --demo-questions` 量對應正確率）；`radar-ask` 與 Dashboard 的 6 題不動。打「交接報告」「交班」「幫我寫一份交班紀錄」這類問法，模型對到這一題，按〔對〕後對話裡依序出現：
+提問選單在 Jetson 內部 Demo 多一題〔幫我整理交班重點〕（`event_ask.DEMO_MENU`，提示詞版本 `jetson-demo-ask-v1`；在 Jetson 上可用 `radar-model-eval … --demo-questions` 量對應正確率）；`radar-ask` 與 Dashboard 的 6 題不動。打「交接報告」「交班」「幫我寫一份交班紀錄」這類問法，模型對到這一題，按〔對〕後對話裡依序出現：
 
 1. 「以下是交班重點，不是機構的正式交班紀錄。」加上交班重點原句，標「沒經過模型（規則產生）」；
 2. 在地模型改寫的版本，標「經過在地模型改寫 · 秒數」；沒通過檢查時標「未採用」並加刪除線，列出原因。
