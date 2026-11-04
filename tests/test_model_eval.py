@@ -336,7 +336,7 @@ def test_empty_command_counts_as_model_errors_instead_of_crashing(capsys):
 
 def test_scope_cases_have_unique_ids_and_point_at_the_demo_menu():
     ids = {q.id for q in DEMO_MENU.questions}
-    assert len({c.id for c in SCOPE_CASES}) == len(SCOPE_CASES) == 372
+    assert len({c.id for c in SCOPE_CASES}) == len(SCOPE_CASES) == 373
     assert all(c.expected is None or c.expected in ids for c in SCOPE_CASES)
     assert sum(c.expected is None for c in SCOPE_CASES) == 212
 
