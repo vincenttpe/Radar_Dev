@@ -5,6 +5,7 @@
 import json
 import sys
 import threading
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from itertools import count
 from typing import ClassVar
@@ -13,8 +14,10 @@ import pytest
 from fakes import FakeModel
 from fingerprints import menu_digest
 
+from radar_agent.ask import match_question
+from radar_agent.care_record import care_record
 from radar_agent.caregiver import caregiver_text, event_notes
-from radar_agent.device_events import Summary
+from radar_agent.device_events import Summary, summarize
 from radar_agent.event_ask import DEMO_MENU
 from radar_agent.model_eval import (
     DEMO_ASK_CASES,
@@ -27,6 +30,7 @@ from radar_agent.model_eval import (
     EchoModel,
     HttpChatModel,
     _reason_kind,
+    _records,
     all_cases,
     evaluate,
     evaluate_asks,
@@ -120,6 +124,7 @@ def test_reason_kinds(reason, kind):
 class _Handler(BaseHTTPRequestHandler):
     reply = ""
     status = 200
+    finish_reason: str | None = None
     seen: ClassVar[list] = []
 
     def do_POST(self):
@@ -127,7 +132,10 @@ class _Handler(BaseHTTPRequestHandler):
         _Handler.seen.append((self.path, body))
         prompt = body["messages"][0]["content"]
         content = _Handler.reply or prompt.rsplit("原文：\n", 1)[-1]
-        data = json.dumps({"choices": [{"message": {"content": content}}], "usage": {"completion_tokens": 40}}).encode()
+        choice = {"message": {"content": content}}
+        if _Handler.finish_reason:
+            choice["finish_reason"] = _Handler.finish_reason
+        data = json.dumps({"choices": [choice], "usage": {"completion_tokens": 40}}).encode()
         self.send_response(_Handler.status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
@@ -140,7 +148,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def server():
-    _Handler.reply, _Handler.status, _Handler.seen = "", 200, []
+    _Handler.reply, _Handler.status, _Handler.finish_reason, _Handler.seen = "", 200, None, []
     httpd = HTTPServer(("127.0.0.1", 0), _Handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{httpd.server_port}/v1/"
@@ -173,6 +181,40 @@ def test_cli_passes_reasoning_effort(server, capsys):
     assert capsys.readouterr().out.startswith("設定：reasoning_effort=none\n模型：m")
     assert main(["--echo", "--reasoning-effort", "none", "--only", "E1"]) == 2
     assert "--reasoning-effort 只能搭配 --endpoint" in capsys.readouterr().err
+
+
+def _thirty_longstays() -> Summary:
+    """30 個久待事件，每個事件的時、分都會在別的事件出現，漏事件時數字比對抓不到。"""
+    start = datetime(2026, 10, 14, 8, 0)
+    events = {f"{start + timedelta(minutes=2 + 6 * i):%H:%M:%S}": {
+        "event": "longstay", "mode": "radar", "trigger": "timeout", "delaysec": 600} for i in range(30)}
+    return summarize(_records("08:00:00", "11:02:00", events=events))
+
+
+def test_truncated_output_never_reaches_the_care_record(server):
+    """輸出撞到 max_tokens 時少的是最後幾個事件；要整份退回範本，不能當成完整紀錄採用。"""
+    summary = _thirty_longstays()
+    lines = [n.record for n in event_notes(summary, PLACE)]
+    assert len(lines) == 30
+    _Handler.reply = "\n".join(lines[:27])
+    _Handler.finish_reason = "length"
+    out = care_record(summary, place=PLACE, model=HttpChatModel(server, "m"))
+    assert (out.layer, out.rejected) == ("template", ("模型錯誤：OutputTruncated",))
+    assert out.text.splitlines() == lines
+
+
+def test_complete_output_is_still_adopted(server):
+    summary = _thirty_longstays()
+    _Handler.reply = "\n".join(n.record for n in event_notes(summary, PLACE))
+    _Handler.finish_reason = "stop"
+    assert care_record(summary, place=PLACE, model=HttpChatModel(server, "m")).layer == "model"
+
+
+def test_truncated_reply_is_a_model_error_for_question_matching(server):
+    _Handler.reply = "1"
+    _Handler.finish_reason = "length"
+    match = match_question("有人跌倒嗎", ASK_MENU, model=HttpChatModel(server, "m"))
+    assert (match.question, match.why, match.rejected) == (None, "model_error", ("模型錯誤：OutputTruncated",))
 
 
 def test_server_errors_fall_back_to_the_template(server):
