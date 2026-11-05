@@ -24,6 +24,10 @@ class EchoModel:
         return prompt.rsplit("原文：\n", 1)[-1]
 
 
+class OutputTruncated(Exception):
+    """模型的輸出撞到 max_tokens 被截斷。少的是最後的內容（照護紀錄就是最晚的事件），檢查不一定抓得到，所以不能當成回答。"""
+
+
 class HttpChatModel:
     """OpenAI 相容的 /chat/completions。只給本機或區網的模型伺服器用，刻意不走 proxy。"""
 
@@ -51,7 +55,10 @@ class HttpChatModel:
             data = json.loads(resp.read().decode("utf-8"))
         usage = data.get("usage") or {}
         self.last_tokens = usage.get("completion_tokens")
-        return str(data["choices"][0]["message"]["content"])
+        choice = data["choices"][0]
+        if choice.get("finish_reason") == "length":  # 伺服器沒回這個欄位時無從判斷，照常交給後面的檢查
+            raise OutputTruncated(f"輸出超過 max_tokens={self.max_tokens}")
+        return str(choice["message"]["content"])
 
 
 class CommandModel:
