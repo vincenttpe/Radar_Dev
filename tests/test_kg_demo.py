@@ -249,6 +249,24 @@ def test_every_metric_regenerates_the_answers_with_its_own_wording(data):
         assert "走路" not in answers[profile][qid]["a"] and "行走紀錄" not in answers[profile][qid]["a"]
 
 
+def test_doctor_data_answer_says_the_data_cannot_be_judged(data):
+    """「資料夠不夠？」要回答這一題，不能只說數值是手動輸入。"""
+    for entry in data["tester"]["metrics"]:
+        for outcome in entry["outcomes"]:
+            assert "無法判斷資料夠不夠" in outcome["answers"]["醫師"]["data"]["a"]
+
+
+def test_test_value_sentences_read_cleanly_with_every_unit(data):
+    """單位本身可能帶括號（來回行走），句子不能出現連著的兩層括號，單位和後面的字之間也不留空格。"""
+    for entry in data["tester"]["metrics"]:
+        unit = entry["unit"]
+        for outcome in entry["outcomes"]:
+            answers = outcome["answers"]
+            assert "）（" not in answers["醫師"]["value"]["a"].split("。")[0]
+            assert "這是測試值" in answers["醫師"]["value"]["a"]
+            assert f"{unit}是手動輸入" in answers["居服員"]["how"]["a"]
+
+
 def test_internal_page_has_a_regenerate_button(repo):
     page = (repo / "demo" / "kg_demo.html").read_text(encoding="utf-8")
     assert "重新生成" in page and "回到模擬資料" in page
