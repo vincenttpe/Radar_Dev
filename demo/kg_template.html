@@ -118,6 +118,21 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
 .try-go:focus-visible, .try-reset:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .try-status { font-weight: 500; color: var(--check); }
 .try-result { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+/* 門檻數線：分數越高顏色越深；重疊與缺口用斜線，不只靠顏色區分 */
+.scale { display: grid; gap: 6px; }
+.scale-track { position: relative; height: 44px; }
+.scale-bar { position: absolute; inset: 22px 0 0; }
+.seg { position: absolute; top: 0; bottom: 0; min-width: 3px; }
+.seg.level, .swatch.level { background: color-mix(in srgb, var(--accent) calc(var(--s) * 18% + 18%), var(--surface)); }
+.seg.issue, .swatch.issue { background: repeating-linear-gradient(45deg, var(--check), var(--check) 2px, var(--check-bg) 2px, var(--check-bg) 4px); }
+.scale-pin { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink); }
+.scale-pin span { position: absolute; top: 0; left: 50%; transform: translateX(-50%); font: 500 12px/1.4 var(--f-mono); white-space: nowrap; }
+.scale-pin.start span { left: 0; transform: none; }
+.scale-pin.end span { left: auto; right: 0; transform: none; }
+.scale-ends { display: flex; justify-content: space-between; font: 12px var(--f-mono); color: var(--muted); }
+.scale-legend { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
+.scale-legend li { display: flex; align-items: center; gap: 6px; }
+.swatch { flex: none; width: 12px; height: 12px; border-radius: 3px; }
 .try-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 </style>
 
@@ -150,6 +165,7 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
       </form>
       <p class="hint" id="try-range"></p>
       <p class="hint try-status" id="try-status" aria-live="polite"></p>
+      <div class="scale" id="try-scale"></div>
       <div class="try-result" id="try-result" aria-live="polite"></div>
       <p class="hint">這裡是測試值，非真實長者。測試值不會送審，也不會儲存；句中若出現「已交由審核人確認」，是正式句子的固定用語。句子來自 rewrite() 範本，尚未接上在地模型。</p>
     </div>
@@ -219,6 +235,7 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
       <li>量不到、沒有規則、落在門檻重疊的情況，一律寫「無法評估」，不猜一個等級。</li>
       <li>不同讀者看到不同的問題；主管機關不能看個人資料，所以沒有題目。居服員以外的句子是草案，題目與範本都要經過審核。</li>
       <li>問答沒有輸入框：在地模型能力有限，問題固定，答案可以事先算好、逐題檢查。超出範圍的問題（「其他問題」）系統不回答。</li>
+      <li>門檻數線的區段也來自規則引擎：重疊與缺口是來源本來就有的（會議清單 E5），比來源精度細的值雖然落在區段內，一樣無法評估。</li>
       <li>測試值只換輸入，等級與句子都是規則引擎與範本事先算好的結果，頁面只查表；範圍是為了試算訂的，未經審核，不代表量測的合理範圍。按「重新生成」會同時更新試算結果與問答，五項指標都一樣；答案仍來自模擬資料的題目會標明不隨測試值變，上方五步流程、五項指標與邊界情境也仍是模擬資料。</li>
     </ul>
   </section>
@@ -242,8 +259,8 @@ const steps = [
   { title: "雷達事件", draft: true, big: [DATA.events.length, "筆"], body: [`${DATA.period}，行走 ${walks} 筆、坐→站 ${sits} 筆`, "照事件格式草案產生"] },
   { title: "換算規則", draft: true, chip: el("span", "chip draft", `${DATA.rule.id}・${DATA.rule.status}`), list: DATA.rule.text },
   { title: "量測值", big: [sp.value, a.unit], body: [`用了 ${count(sp.used)} 筆，排除短距離 ${count(sp.short)} 筆、信心值不足 ${count(sp.unsure)} 筆`] },
-  { title: "知識圖譜門檻", chip: kgChip(), big: [`${a.score} 分`, a.rank], body: [`門檻原文：${a.source_text}`] },
-  { title: "居服員看到的句子", says: DATA.caregiver, body: ["rewrite() 範本，已通過輸出檢查"] },
+  { title: "知識圖譜門檻", draft: !DATA.kg.approved, chip: kgChip(), big: [`${a.score} 分`, a.rank], body: [`門檻原文：${a.source_text}`] },
+  { title: "居服員看到的句子", draft: true, says: DATA.caregiver, body: ["rewrite() 範本；數字與用語檢查通過，內容尚未審核"] },
 ];
 for (const s of steps) {
   const box = el("div", "step" + (s.draft ? " draft" : ""));
@@ -270,12 +287,37 @@ function tryLookup(m, raw) {
   return m.outcomes[m.codes[scaled / step]] ?? null;
 }
 const tryMetric = () => DATA.tester.metrics.find(x => x.metric === $("try-metric").value);
+// 門檻數線：區段由 kg_build._tester_bands() 算好，這裡只換算位置；raw 為 null 時不畫目前數值
+const ISSUE = { overlap: "門檻重疊", gap: "門檻缺口" };
+function renderScale(m, raw) {
+  const pct = v => Number(v) / Number(m.max) * 100;
+  const bandText = b => b.kind === "level" ? `${b.score} 分「${b.rank}」` : `無法評估（${ISSUE[b.kind]}）`;
+  const bandRange = b => b.source_text ?? (b.from === b.to ? `${b.from}` : `${b.from}~${b.to}`);
+  const swatch = (cls, b) => { const e = el("span", `${cls} ${b.kind === "level" ? "level" : "issue"}`); if (b.kind === "level") e.style.setProperty("--s", b.score); return e; };
+  const bar = el("div", "scale-bar"), legend = el("ul", "scale-legend");
+  m.bands.forEach((b, i) => {
+    const seg = swatch("seg", b), end = i + 1 < m.bands.length ? m.bands[i + 1].from : m.max;
+    seg.style.left = `${pct(b.from)}%`; seg.style.width = `${pct(end) - pct(b.from)}%`;
+    bar.append(seg);
+    const li = el("li"); li.append(swatch("swatch", b), el("span", null, `${bandText(b)}：${bandRange(b)}`)); legend.append(li);
+  });
+  const track = el("div", "scale-track"); track.append(bar);
+  track.setAttribute("role", "img");
+  track.setAttribute("aria-label", `${m.metric}的門檻數線，${m.bands.map(b => `${bandText(b)} ${bandRange(b)}`).join("；")}${raw === null ? "" : `；目前數值 ${raw} ${m.unit}`}`);
+  if (raw !== null) {
+    const at = pct(raw), pin = el("div", "scale-pin" + (at < 8 ? " start" : at > 92 ? " end" : ""));
+    pin.style.left = `${at}%`; pin.append(el("span", null, raw)); track.append(pin);
+  }
+  const ends = el("div", "scale-ends"); ends.append(el("span", null, "0"), el("span", null, `${m.max} ${m.unit}`));
+  $("try-scale").replaceChildren(track, ends, legend);
+}
 let testState = null;  // 問答目前套用的測試值；null＝模擬資料算出的結果
 function renderTry() {
   const m = tryMetric();
   const raw = $("try-value").value.trim(), box = $("try-result");
   box.replaceChildren();
   const hit = tryLookup(m, raw);
+  renderScale(m, hit ? raw : null);
   if (!hit) { box.append(el("p", "hint", raw ? "這個數值不在可試算的範圍或間隔內，請依上方說明輸入。" : "請輸入數字。")); return hit; }
   const meta = el("div", "try-meta");
   meta.append(hit.status === "assessed" ? el("span", "chip ok", `${hit.score} 分「${hit.rank}」`) : el("span", "chip off", "無法評估"), kgChip());

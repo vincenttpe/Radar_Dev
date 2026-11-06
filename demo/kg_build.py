@@ -32,7 +32,7 @@ import demo_page  # demo/ 底下的共用外殼；直接執行或測試時 demo/
 from radar_agent.output_check import FORBIDDEN, check_output
 from radar_agent.event_validation import validate_event
 from radar_agent.audience import ALLOWED, check_audience
-from radar_agent.kg_rules import Assessment, KgInfo, KnowledgeGraph, assess, load
+from radar_agent.kg_rules import Assessment, KgInfo, KnowledgeGraph, assess, load, on_grid
 from radar_agent.rewrite import rewrite
 
 HERE = Path(__file__).resolve().parent
@@ -294,6 +294,27 @@ def _test_answers(a: Assessment, reason: str | None, kg_info: KgInfo) -> dict[st
     }
 
 
+def _tester_bands(kg: KnowledgeGraph, metric: str, maximum: str, step: str) -> list[dict[str, Any]]:
+    """門檻數線的區段：沿著軸逐點問 assess()，相同結果併成一段，頁面只負責畫。
+
+    只看精度格點上的值：比精度細的值不是門檻的缺口，算進來來回行走會被切成一條條「無法評估」。
+    """
+    grid = Decimal(step)
+    bands: list[dict[str, Any]] = []
+    for k in range(int(Decimal(maximum) / grid) + 1):
+        number = Decimal(k) * grid
+        if not on_grid(kg.thresholds[metric], number):
+            continue
+        a = assess(kg, metric, str(number))
+        kind = "level" if a["status"] == "assessed" else "overlap" if a["candidates"] else "gap"
+        if bands and (bands[-1]["kind"], bands[-1]["score"]) == (kind, a["score"]):
+            bands[-1]["to"] = str(number)
+        else:
+            bands.append({"kind": kind, "score": a["score"], "rank": a["rank"], "source_text": a["source_text"],
+                          "from": str(number), "to": str(number)})
+    return bands
+
+
 def _tester_metric(kg: KnowledgeGraph, metric: str, maximum: str, step: str) -> dict[str, Any]:
     """一個指標範圍內每個測試值的結果，全由 assess() 與 rewrite() 算好，頁面只查表，不自己判定等級。
 
@@ -316,7 +337,8 @@ def _tester_metric(kg: KnowledgeGraph, metric: str, maximum: str, step: str) -> 
         codes += str(outcomes.index(outcome))
     if len(outcomes) > 10:
         raise ValueError(f"「{metric}」的結果超過 10 種，codes 一個字放不下")
-    return {"metric": metric, "unit": unit, "max": maximum, "step": step, "codes": codes, "outcomes": outcomes}
+    return {"metric": metric, "unit": unit, "max": maximum, "step": step, "codes": codes, "outcomes": outcomes,
+            "bands": _tester_bands(kg, metric, maximum, step)}
 
 
 def tester_data(kg: KnowledgeGraph) -> dict[str, Any]:
@@ -389,7 +411,7 @@ _PREVIEW_EDITS = (  # 內部版的字 → 客戶版的字；範本改了對不�
     ("→ 對話 → 五項指標的狀態 → 邊界情境 → 還缺什麼 → 事件明細。", "。"),
     # 客戶版沒有問答，標題不說「回答」；第 5 步不露出程式的函式名稱
     ("怎麼變成一段回答</h1>", "怎麼變成照護人員看的句子</h1>"),
-    ('"rewrite() 範本，已通過輸出檢查"', '"固定範本產生，已通過輸出檢查"'),
+    ('"rewrite() 範本；數字與用語檢查通過，內容尚未審核"', '"固定範本產生；數字與用語檢查通過，內容尚未審核"'),
 )
 
 
