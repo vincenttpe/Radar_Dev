@@ -255,6 +255,45 @@ def profile_menus(kg_info: KgInfo, speed: dict[str, Any], a: Assessment, boundar
     return result
 
 
+def _test_answers(a: Assessment, reason: str | None, kg_info: KgInfo) -> dict[str, dict[str, dict[str, str]]]:
+    """按「重新生成」後，問答裡跟著測試值變的題目（{v} 由頁面換成輸入的數值）；答案仍來自模擬資料的題目只加註（note）。
+
+    無法評估時不給等級與建議；門檻重疊等審核用語只給醫師。句子是 Demo 草案，與 profile_menus() 同一層級。
+    """
+    test_only = "" if kg_info["approved"] else "（知識圖譜尚未核准，僅供測試）"
+    unit, metric, assessed = a["unit"], a["metric"], a["status"] == "assessed"
+    value = f"{metric} {{v}} {unit}"
+    origin = {"q": "這個數值是怎麼來的？", "a": f"{{v}} {unit}是手動輸入的測試值，不是由事件換算出來的，所以沒有對應的事件紀錄。"}
+    if assessed:
+        level = f"屬於「{a['rank']}」。{test_only}"
+        advice = f"建議：{a['suggestion']}\n建議量：{a['recommended_dose']}\n{test_only}".rstrip()
+        doctor = f"{value}，這是測試值，落在知識圖譜門檻「{a['source_text']}」，{a['score']} 分「{a['rank']}」。{test_only}"
+    else:
+        level = f"目前無法評估。{test_only}"
+        advice = f"目前無法評估，沒有對應的建議。{test_only}"
+        doctor = f"{value}，這是測試值，無法評估。數值 {{v}} {reason}。{test_only}"
+    family = f"如果這週的{metric}是 {{v}} {unit}，{level}"
+    elder = f"如果您這週的{metric}是 {{v}} {unit}，{level}"
+    for text in (family, elder, advice):
+        problems = check_output(text.replace("{v}", a["value"]), a)
+        if problems:
+            raise ValueError(f"測試值 {a['value']} 的回答：{problems}")
+    no_data = "這是手動輸入的測試值，沒有事件紀錄，無法判斷資料夠不夠。"
+    for text in (origin["a"], doctor, no_data):
+        problems = _wording(text)
+        if problems:
+            raise ValueError(f"測試值 {a['value']} 的回答：{problems}")
+    simulated = {"note": "此題為模擬資料，不隨測試值變"}  # 答案來自模擬事件或換算規則，換不了，只標明
+    return {
+        "居服員": {"walk": {"q": f"這週{metric}的狀況怎麼樣？",
+                         "a": value + _personal(a).removeprefix(f"{metric} {a['value']} {unit}")}, "how": origin,
+                "others": simulated},
+        "醫師": {"value": {"a": doctor}, "data": {"a": no_data}, "rule": simulated, "unassessed": simulated},
+        "家屬": {"walk": {"a": family}, "advice": {"a": advice}},
+        "長者本人": {"walk": {"q": f"我這週的{metric}怎麼樣？", "a": elder}, "advice": {"a": advice}},
+    }
+
+
 def _tester_metric(kg: KnowledgeGraph, metric: str, maximum: str, step: str) -> dict[str, Any]:
     """一個指標範圍內每個測試值的結果，全由 assess() 與 rewrite() 算好，頁面只查表，不自己判定等級。
 
@@ -270,7 +309,8 @@ def _tester_metric(kg: KnowledgeGraph, metric: str, maximum: str, step: str) -> 
         a = assess(kg, metric, value)
         reason = a["reason"].removeprefix(f"數值 {value} ") if a["reason"] else None
         outcome = {"status": a["status"], "score": a["score"], "rank": a["rank"], "source_text": a["source_text"],
-                   "rest": _personal(a).removeprefix(f"{metric} {value} {unit}"), "reason": reason}
+                   "rest": _personal(a).removeprefix(f"{metric} {value} {unit}"), "reason": reason,
+                   "answers": _test_answers(a, reason, kg.info)}
         if outcome not in outcomes:
             outcomes.append(outcome)
         codes += str(outcomes.index(outcome))

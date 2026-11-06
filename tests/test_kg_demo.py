@@ -190,6 +190,88 @@ def test_tester_can_reach_every_kind_of_result(data, metric, value, status, scor
     assert (outcome["status"], outcome["score"]) == (status, score)
 
 
+def test_regenerated_answers_follow_the_test_value(data):
+    """重新生成後，問答要跟著測試值走：等級來自引擎，事件才算得出的說明不能沿用。"""
+    speed = _tester(data, "步行速度")
+    outcome, text, _ = _point(speed, "0.3")
+    answers = outcome["answers"]
+    assert answers["居服員"]["walk"]["a"].replace("{v}", "0.3") == text
+    assert "「不好」" in answers["家屬"]["walk"]["a"] and "0 分「不好」" in answers["醫師"]["value"]["a"]
+    assert "34" not in answers["居服員"]["how"]["a"] and "不是由事件換算" in answers["居服員"]["how"]["a"]
+    assert "0.90" not in answers["居服員"]["how"]["q"]
+    assert "僅供測試" in answers["家屬"]["walk"]["a"]
+
+
+def test_regenerated_answers_cover_only_questions_in_the_menu(data):
+    menus = {p["profile"]: {q["id"] for q in p["questions"]} for p in data["profiles"]}
+    for entry in data["tester"]["metrics"]:
+        for outcome in entry["outcomes"]:
+            assert set(outcome["answers"]) == {"居服員", "醫師", "家屬", "長者本人"}
+            for profile, answers in outcome["answers"].items():
+                assert set(answers) <= menus[profile]
+
+
+def test_regenerated_answers_do_not_guess_a_level_when_unassessable(data):
+    outcome, _, _ = _point(_tester(data, "步行速度"), "0.80")
+    answers = outcome["answers"]
+    for profile, qid in (("家屬", "walk"), ("家屬", "advice"), ("長者本人", "walk"), ("長者本人", "advice")):
+        text = answers[profile][qid]["a"]
+        assert "無法評估" in text and "稍差" not in text and "普通" not in text and "None" not in text
+    assert "重疊" in answers["醫師"]["value"]["a"], "審核用語只給醫師"
+    for profile in ("居服員", "家屬", "長者本人"):
+        assert not any("重疊" in a.get("a", "") for a in answers[profile].values())
+
+
+def test_simulated_only_answers_say_they_do_not_follow_the_test_value(data):
+    """頁首寫「目前顯示測試值」時，答案仍來自模擬事件的題目要標明，不能看起來像測試值的結果。"""
+    menus = {p["profile"]: {q["id"]: q["a"] for q in p["questions"]} for p in data["profiles"]}
+    for entry in data["tester"]["metrics"]:
+        for outcome in entry["outcomes"]:
+            for profile, qid in (("居服員", "others"), ("醫師", "rule"), ("醫師", "unassessed")):
+                note = outcome["answers"][profile][qid]
+                assert "模擬資料" in note["note"] and "a" not in note
+    assert "56 次" in menus["居服員"]["others"], "這題確實引用模擬事件的筆數"
+
+
+def test_every_metric_regenerates_the_answers_with_its_own_wording(data):
+    """每項指標都能換問答；題目與句子要講那項指標，不能還在問走路。"""
+    for entry in data["tester"]["metrics"]:
+        metric = entry["metric"]
+        for outcome in entry["outcomes"]:
+            answers = outcome["answers"]
+            assert metric in answers["居服員"]["walk"]["q"] and metric in answers["長者本人"]["walk"]["q"]
+            assert metric in answers["家屬"]["walk"]["a"] and metric in answers["長者本人"]["walk"]["a"]
+            assert metric in answers["醫師"]["value"]["a"]
+    answers = _point(_tester(data, "下肢肌力"), "12")[0]["answers"]
+    assert "這週下肢肌力" in answers["居服員"]["walk"]["q"] and "走" not in answers["居服員"]["walk"]["q"]
+    assert "「普通」" in answers["家屬"]["walk"]["a"] and "q" not in answers["家屬"]["walk"], "家屬的題目本來就不限於走路"
+    for profile, qid in (("家屬", "walk"), ("長者本人", "walk"), ("居服員", "how")):
+        assert "走路" not in answers[profile][qid]["a"] and "行走紀錄" not in answers[profile][qid]["a"]
+
+
+def test_doctor_data_answer_says_the_data_cannot_be_judged(data):
+    """「資料夠不夠？」要回答這一題，不能只說數值是手動輸入。"""
+    for entry in data["tester"]["metrics"]:
+        for outcome in entry["outcomes"]:
+            assert "無法判斷資料夠不夠" in outcome["answers"]["醫師"]["data"]["a"]
+
+
+def test_test_value_sentences_read_cleanly_with_every_unit(data):
+    """單位本身可能帶括號（來回行走），句子不能出現連著的兩層括號，單位和後面的字之間也不留空格。"""
+    for entry in data["tester"]["metrics"]:
+        unit = entry["unit"]
+        for outcome in entry["outcomes"]:
+            answers = outcome["answers"]
+            assert "）（" not in answers["醫師"]["value"]["a"].split("。")[0]
+            assert "這是測試值" in answers["醫師"]["value"]["a"]
+            assert f"{unit}是手動輸入" in answers["居服員"]["how"]["a"]
+
+
+def test_internal_page_has_a_regenerate_button(repo):
+    page = (repo / "demo" / "kg_demo.html").read_text(encoding="utf-8")
+    assert "重新生成" in page and "回到模擬資料" in page
+
+
 def test_tester_explains_that_test_values_are_not_sent_for_review(repo):
     """「已交由審核人確認」是正式句子的固定用語，試算時不成立，頁面要講清楚。"""
     page = (repo / "demo" / "kg_demo.html").read_text(encoding="utf-8")
@@ -218,7 +300,7 @@ def test_preview_page_keeps_only_the_five_step_flow(build, data):
     assert 'id="flow"' in page and "虛線框是還沒定案的部分" in page
     for internal in ("內部用", "內部確認功能用", "還缺什麼", "展示時要說明", "誰提供", "週一清單",
                      "誰在問，能問什麼", "五項指標", "邊界情境", "事件明細", 'id="sim-note"',
-                     "測試值", 'id="try-metric"', "DATA.tester"):
+                     "測試值", 'id="try-metric"', "DATA.tester", "重新生成", "回到模擬資料"):
         assert internal not in page, internal
 
 
