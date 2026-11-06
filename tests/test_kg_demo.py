@@ -204,10 +204,11 @@ def test_regenerated_answers_follow_the_test_value(data):
 
 def test_regenerated_answers_cover_only_questions_in_the_menu(data):
     menus = {p["profile"]: {q["id"] for q in p["questions"]} for p in data["profiles"]}
-    for outcome in _tester(data, "步行速度")["outcomes"]:
-        assert set(outcome["answers"]) == {"居服員", "醫師", "家屬", "長者本人"}
-        for profile, answers in outcome["answers"].items():
-            assert set(answers) <= menus[profile]
+    for entry in data["tester"]["metrics"]:
+        for outcome in entry["outcomes"]:
+            assert set(outcome["answers"]) == {"居服員", "醫師", "家屬", "長者本人"}
+            for profile, answers in outcome["answers"].items():
+                assert set(answers) <= menus[profile]
 
 
 def test_regenerated_answers_do_not_guess_a_level_when_unassessable(data):
@@ -218,13 +219,34 @@ def test_regenerated_answers_do_not_guess_a_level_when_unassessable(data):
         assert "無法評估" in text and "稍差" not in text and "普通" not in text and "None" not in text
     assert "重疊" in answers["醫師"]["value"]["a"], "審核用語只給醫師"
     for profile in ("居服員", "家屬", "長者本人"):
-        assert not any("重疊" in a["a"] for a in answers[profile].values())
+        assert not any("重疊" in a.get("a", "") for a in answers[profile].values())
 
 
-def test_only_the_metric_the_questions_are_about_has_answers(data):
+def test_simulated_only_answers_say_they_do_not_follow_the_test_value(data):
+    """頁首寫「目前顯示測試值」時，答案仍來自模擬事件的題目要標明，不能看起來像測試值的結果。"""
+    menus = {p["profile"]: {q["id"]: q["a"] for q in p["questions"]} for p in data["profiles"]}
     for entry in data["tester"]["metrics"]:
-        has_answers = all("answers" in o for o in entry["outcomes"])
-        assert has_answers == (entry["metric"] == "步行速度")
+        for outcome in entry["outcomes"]:
+            for profile, qid in (("居服員", "others"), ("醫師", "rule"), ("醫師", "unassessed")):
+                note = outcome["answers"][profile][qid]
+                assert "模擬資料" in note["note"] and "a" not in note
+    assert "56 次" in menus["居服員"]["others"], "這題確實引用模擬事件的筆數"
+
+
+def test_every_metric_regenerates_the_answers_with_its_own_wording(data):
+    """每項指標都能換問答；題目與句子要講那項指標，不能還在問走路。"""
+    for entry in data["tester"]["metrics"]:
+        metric = entry["metric"]
+        for outcome in entry["outcomes"]:
+            answers = outcome["answers"]
+            assert metric in answers["居服員"]["walk"]["q"] and metric in answers["長者本人"]["walk"]["q"]
+            assert metric in answers["家屬"]["walk"]["a"] and metric in answers["長者本人"]["walk"]["a"]
+            assert metric in answers["醫師"]["value"]["a"]
+    answers = _point(_tester(data, "下肢肌力"), "12")[0]["answers"]
+    assert "這週下肢肌力" in answers["居服員"]["walk"]["q"] and "走" not in answers["居服員"]["walk"]["q"]
+    assert "「普通」" in answers["家屬"]["walk"]["a"] and "q" not in answers["家屬"]["walk"], "家屬的題目本來就不限於走路"
+    for profile, qid in (("家屬", "walk"), ("長者本人", "walk"), ("居服員", "how")):
+        assert "走路" not in answers[profile][qid]["a"] and "行走紀錄" not in answers[profile][qid]["a"]
 
 
 def test_internal_page_has_a_regenerate_button(repo):
