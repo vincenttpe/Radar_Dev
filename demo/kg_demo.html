@@ -122,15 +122,17 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
 .try-go:focus-visible, .try-reset:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .try-status { font-weight: 500; color: var(--check); }
 .try-result { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
-/* 門檻數線：分數越高顏色越深；重疊與缺口用斜線，不只靠顏色區分 */
+/* 門檻數線：分數越高越接近主色；缺口用斜線，重疊是突出軸外的短標記，不只靠顏色區分 */
 .scale { display: grid; gap: 6px; }
 .scale-track { position: relative; height: 44px; }
 .scale-bar { position: absolute; inset: 22px 0 0; }
 .seg { position: absolute; top: 0; bottom: 0; min-width: 3px; }
 .seg.level, .swatch.level { background: color-mix(in srgb, var(--accent) calc(var(--s) * 18% + 18%), var(--surface)); }
-.seg.issue, .swatch.issue { background: repeating-linear-gradient(45deg, var(--check), var(--check) 2px, var(--check-bg) 2px, var(--check-bg) 4px); }
-.scale-pin { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink); }
-.scale-pin span { position: absolute; top: 0; left: 50%; transform: translateX(-50%); font: 500 12px/1.4 var(--f-mono); white-space: nowrap; }
+.seg.gap, .swatch.gap { background: repeating-linear-gradient(45deg, var(--check), var(--check) 2px, var(--check-bg) 2px, var(--check-bg) 4px); }
+.seg.overlap, .swatch.overlap { background: var(--check); }
+.seg.overlap { top: -5px; bottom: -5px; min-width: 5px; margin-left: -2px; border-radius: 2px; }
+.scale-pin { position: absolute; top: 18px; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink); }
+.scale-pin span { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font: 500 12px/1.4 var(--f-mono); white-space: nowrap; }
 .scale-pin.start span { left: 0; transform: none; }
 .scale-pin.end span { left: auto; right: 0; transform: none; }
 .scale-ends { display: flex; justify-content: space-between; font: 12px var(--f-mono); color: var(--muted); }
@@ -1778,6 +1780,7 @@ const DATA = {
       "score": 0,
       "rank": "不好",
       "source_text": "起站30秒 0~6次",
+      "between": [],
       "from": "0",
       "to": "6"
      },
@@ -1786,6 +1789,7 @@ const DATA = {
       "score": 1,
       "rank": "稍差",
       "source_text": "起站30秒 7~10次",
+      "between": [],
       "from": "7",
       "to": "10"
      },
@@ -1794,6 +1798,7 @@ const DATA = {
       "score": 2,
       "rank": "普通",
       "source_text": "起站30秒 11~13次",
+      "between": [],
       "from": "11",
       "to": "13"
      },
@@ -1802,6 +1807,7 @@ const DATA = {
       "score": 3,
       "rank": "尚好",
       "source_text": "起站30秒 14~17次",
+      "between": [],
       "from": "14",
       "to": "17"
      },
@@ -1810,6 +1816,7 @@ const DATA = {
       "score": 4,
       "rank": "很好",
       "source_text": "起站30秒 18次以上",
+      "between": [],
       "from": "18",
       "to": "40"
      }
@@ -2153,6 +2160,7 @@ const DATA = {
       "score": 0,
       "rank": "不好",
       "source_text": "單腳站立 0~2秒",
+      "between": [],
       "from": "0.0",
       "to": "2.0"
      },
@@ -2161,6 +2169,7 @@ const DATA = {
       "score": 1,
       "rank": "稍差",
       "source_text": "單腳站立 3~4秒",
+      "between": [],
       "from": "3.0",
       "to": "4.0"
      },
@@ -2169,6 +2178,7 @@ const DATA = {
       "score": 2,
       "rank": "普通",
       "source_text": "單腳站立 5~8秒",
+      "between": [],
       "from": "5.0",
       "to": "8.0"
      },
@@ -2177,6 +2187,7 @@ const DATA = {
       "score": 3,
       "rank": "尚好",
       "source_text": "單腳站立 9~14秒",
+      "between": [],
       "from": "9.0",
       "to": "14.0"
      },
@@ -2185,6 +2196,7 @@ const DATA = {
       "score": 4,
       "rank": "很好",
       "source_text": "單腳站立 15秒以上",
+      "between": [],
       "from": "15.0",
       "to": "60.0"
      }
@@ -2528,6 +2540,7 @@ const DATA = {
       "score": 4,
       "rank": "很好",
       "source_text": "2.44公尺行走 0~5.4秒",
+      "between": [],
       "from": "0.00",
       "to": "5.40"
      },
@@ -2536,6 +2549,7 @@ const DATA = {
       "score": 3,
       "rank": "尚好",
       "source_text": "2.44公尺行走 5.5~6.1秒",
+      "between": [],
       "from": "5.50",
       "to": "6.10"
      },
@@ -2544,6 +2558,7 @@ const DATA = {
       "score": 2,
       "rank": "普通",
       "source_text": "2.44公尺行走 6.2~6.6秒",
+      "between": [],
       "from": "6.20",
       "to": "6.60"
      },
@@ -2552,6 +2567,7 @@ const DATA = {
       "score": 1,
       "rank": "稍差",
       "source_text": "2.44公尺行走 6.7~7.5秒",
+      "between": [],
       "from": "6.70",
       "to": "7.50"
      },
@@ -2560,6 +2576,7 @@ const DATA = {
       "score": 0,
       "rank": "不好",
       "source_text": "2.44公尺行走 7.6秒以上",
+      "between": [],
       "from": "7.60",
       "to": "20.00"
      }
@@ -2903,6 +2920,7 @@ const DATA = {
       "score": 0,
       "rank": "不好",
       "source_text": "抬腳2分鐘 0~49次",
+      "between": [],
       "from": "0",
       "to": "49"
      },
@@ -2911,6 +2929,7 @@ const DATA = {
       "score": 1,
       "rank": "稍差",
       "source_text": "抬腳2分鐘 50~74次",
+      "between": [],
       "from": "50",
       "to": "74"
      },
@@ -2919,6 +2938,7 @@ const DATA = {
       "score": 2,
       "rank": "普通",
       "source_text": "抬腳2分鐘 75~88次",
+      "between": [],
       "from": "75",
       "to": "88"
      },
@@ -2927,6 +2947,7 @@ const DATA = {
       "score": 3,
       "rank": "尚好",
       "source_text": "抬腳2分鐘 89~99次",
+      "between": [],
       "from": "89",
       "to": "99"
      },
@@ -2935,6 +2956,7 @@ const DATA = {
       "score": null,
       "rank": null,
       "source_text": null,
+      "between": [],
       "from": "100",
       "to": "111"
      },
@@ -2943,6 +2965,7 @@ const DATA = {
       "score": 4,
       "rank": "很好",
       "source_text": "抬腳2分鐘 112次以上",
+      "between": [],
       "from": "112",
       "to": "200"
      }
@@ -3340,6 +3363,7 @@ const DATA = {
       "score": 0,
       "rank": "不好",
       "source_text": "步行速度 0~0.5 m/s",
+      "between": [],
       "from": "0.00",
       "to": "0.49"
      },
@@ -3348,6 +3372,10 @@ const DATA = {
       "score": null,
       "rank": null,
       "source_text": null,
+      "between": [
+       "不好",
+       "稍差"
+      ],
       "from": "0.50",
       "to": "0.50"
      },
@@ -3356,6 +3384,7 @@ const DATA = {
       "score": 1,
       "rank": "稍差",
       "source_text": "步行速度 0.5~0.8 m/s",
+      "between": [],
       "from": "0.51",
       "to": "0.79"
      },
@@ -3364,6 +3393,10 @@ const DATA = {
       "score": null,
       "rank": null,
       "source_text": null,
+      "between": [
+       "稍差",
+       "普通"
+      ],
       "from": "0.80",
       "to": "0.80"
      },
@@ -3372,6 +3405,7 @@ const DATA = {
       "score": 2,
       "rank": "普通",
       "source_text": "步行速度 0.8~1.0 m/s",
+      "between": [],
       "from": "0.81",
       "to": "0.99"
      },
@@ -3380,6 +3414,10 @@ const DATA = {
       "score": null,
       "rank": null,
       "source_text": null,
+      "between": [
+       "普通",
+       "尚好"
+      ],
       "from": "1.00",
       "to": "1.00"
      },
@@ -3388,6 +3426,7 @@ const DATA = {
       "score": 3,
       "rank": "尚好",
       "source_text": "步行速度 1.0 m/s以上",
+      "between": [],
       "from": "1.01",
       "to": "2.00"
      }
@@ -3395,6 +3434,12 @@ const DATA = {
    }
   ]
  },
+ "unsettled": [
+  "雷達事件",
+  "換算規則",
+  "知識圖譜門檻",
+  "居服員看到的句子"
+ ],
  "profiles": [
   {
    "profile": "居服員",
@@ -3694,14 +3739,14 @@ const sits = DATA.events.length - walks;
 
 // 五步流程
 const steps = [
-  { title: "雷達事件", draft: true, big: [DATA.events.length, "筆"], body: [`${DATA.period}，行走 ${walks} 筆、坐→站 ${sits} 筆`, "照事件格式草案產生"] },
-  { title: "換算規則", draft: true, chip: el("span", "chip draft", `${DATA.rule.id}・${DATA.rule.status}`), list: DATA.rule.text },
+  { title: "雷達事件", big: [DATA.events.length, "筆"], body: [`${DATA.period}，行走 ${walks} 筆、坐→站 ${sits} 筆`, "照事件格式草案產生"] },
+  { title: "換算規則", chip: el("span", "chip draft", `${DATA.rule.id}・${DATA.rule.status}`), list: DATA.rule.text },
   { title: "量測值", big: [sp.value, a.unit], body: [`用了 ${count(sp.used)} 筆，排除短距離 ${count(sp.short)} 筆、信心值不足 ${count(sp.unsure)} 筆`] },
-  { title: "知識圖譜門檻", draft: !DATA.kg.approved, chip: kgChip(), big: [`${a.score} 分`, a.rank], body: [`門檻原文：${a.source_text}`] },
-  { title: "居服員看到的句子", draft: true, says: DATA.caregiver, body: ["rewrite() 範本；數字與用語檢查通過，內容尚未審核"] },
+  { title: "知識圖譜門檻", chip: kgChip(), big: [`${a.score} 分`, a.rank], body: [`門檻原文：${a.source_text}`] },
+  { title: "居服員看到的句子", says: DATA.caregiver, body: ["rewrite() 範本；數字與用語檢查通過，內容尚未審核"] },
 ];
 for (const s of steps) {
-  const box = el("div", "step" + (s.draft ? " draft" : ""));
+  const box = el("div", "step" + (DATA.unsettled.includes(s.title) ? " draft" : ""));
   box.append(el("h3", null, s.title));
   if (s.chip) box.append(s.chip);
   if (s.big) { const b = el("div", "big", s.big[0]); b.append(el("small", null, s.big[1])); box.append(b); }
@@ -3730,8 +3775,9 @@ const ISSUE = { overlap: "門檻重疊", gap: "門檻缺口" };
 function renderScale(m, raw) {
   const pct = v => Number(v) / Number(m.max) * 100;
   const bandText = b => b.kind === "level" ? `${b.score} 分「${b.rank}」` : `無法評估（${ISSUE[b.kind]}）`;
-  const bandRange = b => b.source_text ?? (b.from === b.to ? `${b.from}` : `${b.from}~${b.to}`);
-  const swatch = (cls, b) => { const e = el("span", `${cls} ${b.kind === "level" ? "level" : "issue"}`); if (b.kind === "level") e.style.setProperty("--s", b.score); return e; };
+  const bandRange = b => b.source_text ?? (b.from === b.to ? `${b.from}` : `${b.from}~${b.to}`) +
+    (b.between.length ? `，同時屬於${b.between.map(r => `「${r}」`).join("與")}` : "");
+  const swatch = (cls, b) => { const e = el("span", `${cls} ${b.kind}`); if (b.kind === "level") e.style.setProperty("--s", b.score); return e; };
   const bar = el("div", "scale-bar"), legend = el("ul", "scale-legend");
   m.bands.forEach((b, i) => {
     const seg = swatch("seg", b), end = i + 1 < m.bands.length ? m.bands[i + 1].from : m.max;

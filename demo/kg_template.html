@@ -118,15 +118,17 @@ pre { margin: 0; overflow-x: auto; font: 12.5px/1.5 var(--f-mono); background: v
 .try-go:focus-visible, .try-reset:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .try-status { font-weight: 500; color: var(--check); }
 .try-result { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
-/* 門檻數線：分數越高顏色越深；重疊與缺口用斜線，不只靠顏色區分 */
+/* 門檻數線：分數越高越接近主色；缺口用斜線，重疊是突出軸外的短標記，不只靠顏色區分 */
 .scale { display: grid; gap: 6px; }
 .scale-track { position: relative; height: 44px; }
 .scale-bar { position: absolute; inset: 22px 0 0; }
 .seg { position: absolute; top: 0; bottom: 0; min-width: 3px; }
 .seg.level, .swatch.level { background: color-mix(in srgb, var(--accent) calc(var(--s) * 18% + 18%), var(--surface)); }
-.seg.issue, .swatch.issue { background: repeating-linear-gradient(45deg, var(--check), var(--check) 2px, var(--check-bg) 2px, var(--check-bg) 4px); }
-.scale-pin { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink); }
-.scale-pin span { position: absolute; top: 0; left: 50%; transform: translateX(-50%); font: 500 12px/1.4 var(--f-mono); white-space: nowrap; }
+.seg.gap, .swatch.gap { background: repeating-linear-gradient(45deg, var(--check), var(--check) 2px, var(--check-bg) 2px, var(--check-bg) 4px); }
+.seg.overlap, .swatch.overlap { background: var(--check); }
+.seg.overlap { top: -5px; bottom: -5px; min-width: 5px; margin-left: -2px; border-radius: 2px; }
+.scale-pin { position: absolute; top: 18px; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink); }
+.scale-pin span { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font: 500 12px/1.4 var(--f-mono); white-space: nowrap; }
 .scale-pin.start span { left: 0; transform: none; }
 .scale-pin.end span { left: auto; right: 0; transform: none; }
 .scale-ends { display: flex; justify-content: space-between; font: 12px var(--f-mono); color: var(--muted); }
@@ -256,14 +258,14 @@ const sits = DATA.events.length - walks;
 
 // 五步流程
 const steps = [
-  { title: "雷達事件", draft: true, big: [DATA.events.length, "筆"], body: [`${DATA.period}，行走 ${walks} 筆、坐→站 ${sits} 筆`, "照事件格式草案產生"] },
-  { title: "換算規則", draft: true, chip: el("span", "chip draft", `${DATA.rule.id}・${DATA.rule.status}`), list: DATA.rule.text },
+  { title: "雷達事件", big: [DATA.events.length, "筆"], body: [`${DATA.period}，行走 ${walks} 筆、坐→站 ${sits} 筆`, "照事件格式草案產生"] },
+  { title: "換算規則", chip: el("span", "chip draft", `${DATA.rule.id}・${DATA.rule.status}`), list: DATA.rule.text },
   { title: "量測值", big: [sp.value, a.unit], body: [`用了 ${count(sp.used)} 筆，排除短距離 ${count(sp.short)} 筆、信心值不足 ${count(sp.unsure)} 筆`] },
-  { title: "知識圖譜門檻", draft: !DATA.kg.approved, chip: kgChip(), big: [`${a.score} 分`, a.rank], body: [`門檻原文：${a.source_text}`] },
-  { title: "居服員看到的句子", draft: true, says: DATA.caregiver, body: ["rewrite() 範本；數字與用語檢查通過，內容尚未審核"] },
+  { title: "知識圖譜門檻", chip: kgChip(), big: [`${a.score} 分`, a.rank], body: [`門檻原文：${a.source_text}`] },
+  { title: "居服員看到的句子", says: DATA.caregiver, body: ["rewrite() 範本；數字與用語檢查通過，內容尚未審核"] },
 ];
 for (const s of steps) {
-  const box = el("div", "step" + (s.draft ? " draft" : ""));
+  const box = el("div", "step" + (DATA.unsettled.includes(s.title) ? " draft" : ""));
   box.append(el("h3", null, s.title));
   if (s.chip) box.append(s.chip);
   if (s.big) { const b = el("div", "big", s.big[0]); b.append(el("small", null, s.big[1])); box.append(b); }
@@ -292,8 +294,9 @@ const ISSUE = { overlap: "門檻重疊", gap: "門檻缺口" };
 function renderScale(m, raw) {
   const pct = v => Number(v) / Number(m.max) * 100;
   const bandText = b => b.kind === "level" ? `${b.score} 分「${b.rank}」` : `無法評估（${ISSUE[b.kind]}）`;
-  const bandRange = b => b.source_text ?? (b.from === b.to ? `${b.from}` : `${b.from}~${b.to}`);
-  const swatch = (cls, b) => { const e = el("span", `${cls} ${b.kind === "level" ? "level" : "issue"}`); if (b.kind === "level") e.style.setProperty("--s", b.score); return e; };
+  const bandRange = b => b.source_text ?? (b.from === b.to ? `${b.from}` : `${b.from}~${b.to}`) +
+    (b.between.length ? `，同時屬於${b.between.map(r => `「${r}」`).join("與")}` : "");
+  const swatch = (cls, b) => { const e = el("span", `${cls} ${b.kind}`); if (b.kind === "level") e.style.setProperty("--s", b.score); return e; };
   const bar = el("div", "scale-bar"), legend = el("ul", "scale-legend");
   m.bands.forEach((b, i) => {
     const seg = swatch("seg", b), end = i + 1 < m.bands.length ? m.bands[i + 1].from : m.max;

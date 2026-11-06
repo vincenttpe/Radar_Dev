@@ -299,11 +299,27 @@ def test_bands_ignore_values_finer_than_the_source_precision(data):
         assert len(_tester(data, metric)["bands"]) == 5
 
 
-def test_steps_that_are_not_final_are_dashed(repo):
+def test_knowledge_graph_step_is_dashed_only_until_approved(build):
+    pending = build.unsettled_steps({"version": "v1", "approval": "pending", "approved": False})
+    approved = build.unsettled_steps({"version": "v1", "approval": "approved", "approved": True})
+    assert pending == ["雷達事件", "換算規則", "知識圖譜門檻", "居服員看到的句子"]
+    assert approved == ["雷達事件", "換算規則", "居服員看到的句子"], "核准後第 4 步就定案了，第 5 步仍是範本"
+
+
+def test_dashed_steps_reach_both_pages_and_name_real_steps(repo, build, data):
+    """頁面照資料畫虛線；清單裡的名稱要對得上流程步驟，對不上就等於沒有虛線。"""
+    assert data["unsettled"] == build.unsettled_steps(data["kg"]) and "unsettled" in build.PREVIEW_KEYS
     template = (repo / "demo" / "kg_template.html").read_text(encoding="utf-8")
-    steps = re.search(r"const steps = \[(.*?)\n\];", template, re.S).group(1).splitlines()
-    dashed = {re.search(r'title: "(.*?)"', s).group(1): "draft:" in s for s in steps if "title:" in s}
-    assert dashed == {"雷達事件": True, "換算規則": True, "量測值": False, "知識圖譜門檻": True, "居服員看到的句子": True}
+    titles = re.findall(r'\{ title: "(.*?)"', template)
+    assert set(data["unsettled"]) <= set(titles) and "量測值" in titles and "量測值" not in data["unsettled"]
+    assert "DATA.unsettled.includes(s.title)" in template
+
+
+def test_overlap_bands_name_the_levels_they_belong_to(data):
+    bands = {b["from"]: b for b in _tester(data, "步行速度")["bands"] if b["kind"] == "overlap"}
+    assert bands["0.80"]["between"] == ["稍差", "普通"]
+    assert bands["0.50"]["between"] == ["不好", "稍差"] and bands["1.00"]["between"] == ["普通", "尚好"]
+    assert all(b["between"] == [] for b in _tester(data, "心肺耐力")["bands"])
 
 
 def test_output_check_is_not_presented_as_content_approval(repo, build, data):

@@ -294,6 +294,11 @@ def _test_answers(a: Assessment, reason: str | None, kg_info: KgInfo) -> dict[st
     }
 
 
+def unsettled_steps(kg_info: KgInfo) -> list[str]:
+    """五步流程裡還沒定案、要畫虛線的步驟。量測值由前面的規則算出，不另外標。"""
+    return ["雷達事件", "換算規則", *([] if kg_info["approved"] else ["知識圖譜門檻"]), "居服員看到的句子"]
+
+
 def _tester_bands(kg: KnowledgeGraph, metric: str, maximum: str, step: str) -> list[dict[str, Any]]:
     """門檻數線的區段：沿著軸逐點問 assess()，相同結果併成一段，頁面只負責畫。
 
@@ -311,7 +316,7 @@ def _tester_bands(kg: KnowledgeGraph, metric: str, maximum: str, step: str) -> l
             bands[-1]["to"] = str(number)
         else:
             bands.append({"kind": kind, "score": a["score"], "rank": a["rank"], "source_text": a["source_text"],
-                          "from": str(number), "to": str(number)})
+                          "between": [c["rank"] for c in a["candidates"]], "from": str(number), "to": str(number)})
     return bands
 
 
@@ -384,6 +389,7 @@ def kg_data() -> dict[str, Any]:
         "boundary": {"value": BOUNDARY_VALUE, "reason": boundary["reason"], "caregiver": _personal(boundary)},
         "not_assessed": NOT_ASSESSED,
         "tester": tester_data(kg),
+        "unsettled": unsettled_steps(kg.info),
         "profiles": menus,
         "sample_event": events[0],
     }
@@ -401,7 +407,7 @@ def page(data: dict[str, Any]) -> str:
 # 2026-11-03 使用者決定：Demo 時向客戶預告知識圖譜，說明開發中、尚未完成確認；只保留五步流程，
 # 拿掉問答、五項指標、邊界情境、事件明細，以及內部用的「還缺什麼」「展示時要說明」。橫幅句子由使用者選定。
 PREVIEW_BANNER = "功能預告・開發中：知識圖譜的換算規則與句子尚未完成專業審核；畫面資料是模擬的，不是真實長者。"
-PREVIEW_KEYS = ("period", "kg", "rule", "events", "speed", "assessment", "caregiver")  # 五步流程用得到的資料
+PREVIEW_KEYS = ("period", "kg", "rule", "events", "speed", "assessment", "caregiver", "unsettled")  # 五步流程用得到的資料
 _CUT = re.compile(r"<!--preview-cut.*?<!--/preview-cut-->\n|/\*preview-cut\*/.*?/\*/preview-cut\*/\n?", re.S)
 _PREVIEW_EDITS = (  # 內部版的字 → 客戶版的字；範本改了對不上就丟錯，不會悄悄留下內部用字
     ("<strong>模擬資料・內部用</strong>\n  <span id=\"sim-note\"></span>", f"<strong>{PREVIEW_BANNER}</strong>"),
