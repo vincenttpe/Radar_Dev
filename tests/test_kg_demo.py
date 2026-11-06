@@ -8,6 +8,7 @@ import json
 import re
 import sys
 from decimal import Decimal
+from itertools import pairwise
 
 import pytest
 
@@ -267,6 +268,67 @@ def test_test_value_sentences_read_cleanly_with_every_unit(data):
             assert f"{unit}是手動輸入" in answers["居服員"]["how"]["a"]
 
 
+def test_bands_are_what_the_engine_says_at_their_edges(data):
+    """數線的每個區段都來自引擎：兩端的判定和區段標示一致，區段之間不留空、不重疊。"""
+    kg = load()
+    for entry in data["tester"]["metrics"]:
+        bands = entry["bands"]
+        assert Decimal(bands[0]["from"]) == 0 and Decimal(bands[-1]["to"]) == Decimal(entry["max"])
+        assert all(Decimal(a["to"]) < Decimal(b["from"]) for a, b in pairwise(bands))
+        for band in bands:
+            for value in (band["from"], band["to"]):
+                result = assess(kg, entry["metric"], value)
+                if band["kind"] == "level":
+                    assert (result["status"], result["score"], result["rank"]) == ("assessed", band["score"], band["rank"])
+                else:
+                    assert result["status"] == "unassessable" and bool(result["candidates"]) == (band["kind"] == "overlap")
+
+
+def test_bands_show_the_known_gaps_and_overlaps(data):
+    speed = [(b["kind"], b["from"], b["to"]) for b in _tester(data, "步行速度")["bands"] if b["kind"] != "level"]
+    assert speed == [("overlap", "0.50", "0.50"), ("overlap", "0.80", "0.80"), ("overlap", "1.00", "1.00")]
+    heart = [(b["kind"], b["from"], b["to"]) for b in _tester(data, "心肺耐力")["bands"] if b["kind"] != "level"]
+    assert heart == [("gap", "100", "111")]
+    assert all(b["kind"] == "level" for b in _tester(data, "下肢肌力")["bands"])
+
+
+def test_bands_ignore_values_finer_than_the_source_precision(data):
+    """比精度細的值不是門檻的缺口：來回行走不能被切成一條條「無法評估」。"""
+    for metric in ("來回行走", "單腳站立"):
+        assert all(b["kind"] == "level" for b in _tester(data, metric)["bands"])
+        assert len(_tester(data, metric)["bands"]) == 5
+
+
+def test_knowledge_graph_step_is_dashed_only_until_approved(build):
+    pending = build.unsettled_steps({"version": "v1", "approval": "pending", "approved": False})
+    approved = build.unsettled_steps({"version": "v1", "approval": "approved", "approved": True})
+    assert pending == ["雷達事件", "換算規則", "知識圖譜門檻", "居服員看到的句子"]
+    assert approved == ["雷達事件", "換算規則", "居服員看到的句子"], "核准後第 4 步就定案了，第 5 步仍是範本"
+
+
+def test_dashed_steps_reach_both_pages_and_name_real_steps(repo, build, data):
+    """頁面照資料畫虛線；清單裡的名稱要對得上流程步驟，對不上就等於沒有虛線。"""
+    assert data["unsettled"] == build.unsettled_steps(data["kg"]) and "unsettled" in build.PREVIEW_KEYS
+    template = (repo / "demo" / "kg_template.html").read_text(encoding="utf-8")
+    titles = re.findall(r'\{ title: "(.*?)"', template)
+    assert set(data["unsettled"]) <= set(titles) and "量測值" in titles and "量測值" not in data["unsettled"]
+    assert "DATA.unsettled.includes(s.title)" in template
+
+
+def test_overlap_bands_name_the_levels_they_belong_to(data):
+    bands = {b["from"]: b for b in _tester(data, "步行速度")["bands"] if b["kind"] == "overlap"}
+    assert bands["0.80"]["between"] == ["稍差", "普通"]
+    assert bands["0.50"]["between"] == ["不好", "稍差"] and bands["1.00"]["between"] == ["普通", "尚好"]
+    assert all(b["between"] == [] for b in _tester(data, "心肺耐力")["bands"])
+
+
+def test_output_check_is_not_presented_as_content_approval(repo, build, data):
+    """輸出檢查只看數字與用語，不等於內容審核過；內部版與客戶版都要分開講。"""
+    internal, preview = build.page(data), build.preview_page(data)
+    for page in (internal, preview):
+        assert "已通過輸出檢查" not in page and "數字與用語檢查通過，內容尚未審核" in page
+
+
 def test_internal_page_has_a_regenerate_button(repo):
     page = (repo / "demo" / "kg_demo.html").read_text(encoding="utf-8")
     assert "重新生成" in page and "回到模擬資料" in page
@@ -300,7 +362,7 @@ def test_preview_page_keeps_only_the_five_step_flow(build, data):
     assert 'id="flow"' in page and "虛線框是還沒定案的部分" in page
     for internal in ("內部用", "內部確認功能用", "還缺什麼", "展示時要說明", "誰提供", "週一清單",
                      "誰在問，能問什麼", "五項指標", "邊界情境", "事件明細", 'id="sim-note"',
-                     "測試值", 'id="try-metric"', "DATA.tester", "重新生成", "回到模擬資料"):
+                     "測試值", 'id="try-metric"', "DATA.tester", "重新生成", "回到模擬資料", 'id="try-scale"'):
         assert internal not in page, internal
 
 
@@ -325,7 +387,7 @@ def test_preview_page_lede_does_not_promise_answers_it_does_not_show(build, data
     assert "回答照護人員的問題" not in page and "最後產生照護人員看的句子。</p>" in page
     assert "等級只由知識圖譜的門檻決定" not in page  # 屬於拿掉的「展示時要說明」，不放回導言
     assert "怎麼變成照護人員看的句子" in page and "一段回答" not in page
-    assert "rewrite()" not in page and "固定範本產生，已通過輸出檢查" in page
+    assert "rewrite()" not in page and "固定範本產生；數字與用語檢查通過，內容尚未審核" in page
 
 
 def test_internal_page_is_unchanged_by_the_preview(build, data):
